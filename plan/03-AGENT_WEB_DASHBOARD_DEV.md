@@ -51,3 +51,14 @@ When the user adds a phone (Slot 1) via Whimbrel:
 ### 2.4 UI Updates
 *   Add text fields for "Device Name" during the "Add Phone" wizard.
 *   Add an "Edit Name" button next to active slots in the dashboard view, triggering the `RENAME` command.
+
+---
+
+## 3. Session Progress & Adjustments (Phase 1 Complete)
+*Date: 2026-03-11*
+
+*   **USB Provisioning Refactor**: Removed the legacy single-key generation logic in favor of a clean multi-slot flow. Flash Receiver provisions Slot 0 (Uguisu) locally. Flash Key Fob mirrors this to the physical hardware. Crucially, the "Phone Key" setup has been extracted out of the USB flow and is now purely wireless to ensure plug-and-play simplicity for fob-only users.
+*   **Web Bluetooth Dashboard (`dashboard.js` & `ble.js`)**: Built a fully responsive, animated modal overlay (accessed via a footer button) that connects to Guillemot's Proximity Service. Implemented `SLOTS?` fetching, UI rendering, and `RENAME` commands over the authenticated Management Characteristic.
+*   **Argon2id & AES-CCM Implementation (`ccm.js`)**: Included `argon2-browser` and `aes-js` to correctly derive the AES-128 key from the 6-digit PIN and encrypt the Phone Slot payload into the final `immogen://prov...` QR string.
+*   **Fob-Authorized Provisioning Window**: Adjusted the architecture so that an `Unlock` payload from Uguisu triggers a 30-second window during which Guillemot allows `SETPIN` and `PROV:1` over BLE. The dashboard's tutorial flow perfectly models this: instructing the user to press the fob before establishing the connection.
+*   **Demo Mode Sync**: Brought all these changes over to the `demo` branch, mocking the BLE slot responses, connection delays, and QR derivations flawlessly.
