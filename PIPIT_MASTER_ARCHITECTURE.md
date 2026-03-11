@@ -254,7 +254,7 @@ Used when a phone is lost or destroyed. The user only needs their 6-digit BLE Pa
 ### 7.4 Fob-Authorized Provisioning Window
 To ensure users aren't forced to set and memorize a PIN if they don't want a phone key initially, the system relies on physical possession of the Uguisu hardware fob to authorize late-stage wireless provisioning.
 
-*   **Trigger:** Whenever Guillemot successfully receives and parses a valid `Unlock` or `Lock` payload from Slot 0 (Uguisu), it starts or resets a **30-second Provisioning Window**.
+*   **Trigger:** Whenever Guillemot successfully receives and parses a valid `Unlock` payload from Slot 0 (Uguisu), it starts or resets a **30-second Provisioning Window**.
 *   **Behavior During Window:**
     *   Guillemot accepts `SETPIN:<6digits>` over the BLE Management Command characteristic without requiring prior SMP authentication (or using a default/Just Works pairing).
     *   Guillemot accepts `PROV:1:<key>:<ctr>:[name]` over the BLE Management Command characteristic.

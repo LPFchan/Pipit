@@ -69,7 +69,7 @@ You only need to care about the embedded logic. Ignore mobile UI/UX or dashboard
 
 ### 2.6 Fob-Authorized Provisioning Window
 *   To allow users to add a Phone Key seamlessly later without needing USB, Guillemot must implement a **30-second Provisioning Window**.
-*   **Trigger:** Whenever Guillemot successfully receives and parses a valid `Unlock` or `Lock` payload from Slot 0 (Uguisu), it starts or resets a 30-second timer.
+*   **Trigger:** Whenever Guillemot successfully receives and parses a valid `Unlock` payload from Slot 0 (Uguisu), it starts or resets a 30-second timer.
 *   **Behavior During Window:**
     *   Guillemot accepts `SETPIN:<6digits>` over the BLE Management Command characteristic (even if not SMP authenticated, or using Just Works/000000).
     *   Guillemot accepts `PROV:1:<key>:<ctr>:[name]` over the BLE Management Command characteristic.
