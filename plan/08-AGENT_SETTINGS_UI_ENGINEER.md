@@ -34,6 +34,85 @@ Your goal is to build the Settings view (which the 3D screen flips into) and all
 ### 2.1 Settings UI Layout
 Settings is presented as a scrollable sheet containing sections: PROXIMITY, KEYS, DEVICE, and ABOUT. The UI renders differently based on the user's tier (Slot 1 = Owner, Slot 2/3 = Guest).
 
+**Owner Settings (Slot 1)**
+```
+┌─────────────────────────────┐
+│  Settings                 ✕ │
+│─────────────────────────────│
+│                             │
+│  PROXIMITY                  │
+│  ┌─────────────────────────┐│
+│  │ Background Unlock  [ON] ││
+│  │─────────────────────────││
+│  │ Unlock Distance   ━━●━━ ││
+│  │ (~2m / -65 dBm)        ││
+│  │─────────────────────────││
+│  │ Lock Distance     ━●━━━ ││
+│  │ (~5m / -75 dBm)        ││
+│  └─────────────────────────┘│
+│                             │
+│  KEYS                       │
+│  ┌─────────────────────────┐│
+│  │ Slot 0  Uguisu     🔑 ⋮││
+│  │─────────────────────────││
+│  │ Slot 1  Owner's iPhone  ││
+│  │         OWNER           ││
+│  │─────────────────────────││
+│  │ Slot 2  Guest 1        ⋮││
+│  │         GUEST           ││
+│  │─────────────────────────││
+│  │ Slot 3       ⊕          ││
+│  │         GUEST           ││
+│  └─────────────────────────┘│
+│                             │
+│  DEVICE                     │
+│  ┌─────────────────────────┐│
+│  │ Transfer to New Phone ▶ ││
+│  │─────────────────────────││
+│  │ Change PIN (USB)      ▶ ││
+│  │─────────────────────────││
+│  │ Flash Firmware (USB)  ▶ ││
+│  └─────────────────────────┘│
+│                             │
+│  ABOUT                      │
+│  ┌─────────────────────────┐│
+│  │ Version            1.0  ││
+│  └─────────────────────────┘│
+│                             │
+└─────────────────────────────┘
+```
+
+**Guest Settings (Slot 2–3)**
+```
+┌─────────────────────────────┐
+│  Settings                 ✕ │
+│─────────────────────────────│
+│                             │
+│  PROXIMITY                  │
+│  ┌─────────────────────────┐│
+│  │ Background Unlock  [ON] ││
+│  │─────────────────────────││
+│  │ Unlock Distance   ━━●━━ ││
+│  │ (~2m / -65 dBm)        ││
+│  │─────────────────────────││
+│  │ Lock Distance     ━●━━━ ││
+│  │ (~5m / -75 dBm)        ││
+│  └─────────────────────────┘│
+│                             │
+│  YOUR KEY                   │
+│  ┌─────────────────────────┐│
+│  │ Slot 2 · Guest 1       ││
+│  │ Transfer to New Phone ▶ ││
+│  └─────────────────────────┘│
+│                             │
+│  ABOUT                      │
+│  ┌─────────────────────────┐│
+│  │ Version            1.0  ││
+│  └─────────────────────────┘│
+│                             │
+└─────────────────────────────┘
+```
+
 ### 2.2 Proximity Controls
 *   Toggle: "Background Unlock".
 *   Slider 1: Unlock Distance (-50 to -85 dBm, default -65).
@@ -50,6 +129,102 @@ This section queries `SLOTS?` via BLE Management Command to populate the UI.
 *   **Guest View:** Only shows a "YOUR KEY" section with their own slot name and a "Transfer to New Phone" button. They see no other slots.
 
 ### 2.4 Workflows (Driven by KMP and BLE Headless Services)
-*   **Provision Guest Phone:** Triggered via ⊕ on empty guest slot. Generates new AES key, sends `PROV:<slot>:<key>:0:Guest X` via BLE. Displays a **plaintext QR code** for the guest to scan.
-*   **Replace Flow (Break-Glass):** Triggered via 3-dot menu -> Replace. Sends `REVOKE:<slot>`, generates new key, sends `PROV:<slot>:<key>:0:<name>`. Generates the appropriate QR (plaintext for guest slots, Argon2id encrypted for Owner slot).
-*   **Transfer to New Phone (Migration):** Generates a QR containing the existing key AND the current counter value. Guest keys generate plaintext QR; Owner keys generate Argon2id PIN-encrypted QR. On confirmation of scan, the key is permanently deleted from the local secure keystore.
+
+**1. Provision Guest Phone**
+Triggered via ⊕ on an empty guest slot. Generates new AES key, sends `PROV:<slot>:<key>:0:Guest X` via BLE. Displays a **plaintext QR code** for the guest to scan.
+```
+┌─────────────────────────────┐
+│                             │
+│   Add a guest key?          │
+│                             │
+│   This will create a key    │
+│   for Slot 2 (Guest 1).    │
+│   The guest will be able    │
+│   to lock and unlock only.  │
+│                             │
+│        [ Create Key ]       │
+│        [ Cancel ]           │
+│                             │
+└─────────────────────────────┘
+```
+*(QR Display Screen)*
+```
+┌─────────────────────────────┐
+│                             │
+│   Scan this on the          │
+│   guest's phone             │
+│                             │
+│   ┌───────────────────┐     │
+│   │                   │     │
+│   │    [QR Code]      │     │
+│   │                   │     │
+│   └───────────────────┘     │
+│                             │
+│   The guest just needs to   │
+│   scan — no PIN required.   │
+│                             │
+│        [ Done ]             │
+│                             │
+└─────────────────────────────┘
+```
+
+**2. Replace Flow (Break-Glass)**
+Triggered via 3-dot menu -> Replace. Sends `REVOKE:<slot>`, generates new key, sends `PROV:<slot>:<key>:0:<name>`. Generates the appropriate QR (plaintext for guest slots, Argon2id encrypted for Owner slot).
+```
+┌─────────────────────────────┐
+│                             │
+│   ⚠ Replace "Jamie's       │
+│   iPhone" (Slot 1)?         │
+│                             │
+│   This will permanently     │
+│   lock out the old device   │
+│   and create a new key      │
+│   for a replacement phone.  │
+│                             │
+│   [ Replace ]               │
+│   [ Cancel ]                │
+│                             │
+└─────────────────────────────┘
+```
+
+**3. Transfer to New Phone (Migration)**
+Generates a QR containing the existing key AND the current counter value. Guest keys generate plaintext QR; Owner keys generate Argon2id PIN-encrypted QR. On confirmation of scan, the key is permanently deleted from the local secure keystore.
+```
+┌─────────────────────────────┐
+│                             │
+│   Transfer your key to a    │
+│   new phone?                │
+│                             │
+│   This will generate a QR   │
+│   code for your new phone   │
+│   to scan. After the        │
+│   transfer, this phone      │
+│   will no longer work as    │
+│   a key.                    │
+│                             │
+│   [ Generate QR Code ]      │
+│   [ Cancel ]                │
+│                             │
+└─────────────────────────────┘
+```
+*(QR Display Screen)*
+```
+┌─────────────────────────────┐
+│                             │
+│   Scan this on your         │
+│   new phone                 │
+│                             │
+│   ┌───────────────────┐     │
+│   │                   │     │
+│   │    [QR Code]      │     │
+│   │                   │     │
+│   └───────────────────┘     │
+│                             │
+│   Open Pipit on your new    │
+│   phone and scan this code. │
+│                             │
+│   [ Done — I've Scanned ]   │
+│   [ Cancel ]                │
+│                             │
+└─────────────────────────────┘
+```

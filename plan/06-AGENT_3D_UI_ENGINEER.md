@@ -34,6 +34,26 @@ Your goal is to build the "single-screen utility model" that serves as the root 
 Pipit uses a single-screen utility model. The Home screen (key fob) is always the root view. Settings is the only secondary surface, accessed via a 3D flip. The app respects the system dark/light theme.
 
 ### 2.2 Home Screen (Key Fob)
+```
+┌─────────────────────────────┐
+│ ⚙                          │
+│                             │
+│                             │
+│                             │
+│   ╔═══════════════════════╗  │
+│   ║                       ║  │
+│   ║   [Uguisu 3D model]   ║  │
+│   ║   perspective, lit    ║  │
+│   ║   LED: off (idle)      ║  │
+│   ║                       ║  │
+│   ║                       ║  │
+│   ╚═══════════════════════╝  │
+│     Tap · Hold to lock      │
+│                             │
+│                             │
+│                             │
+└─────────────────────────────┘
+```
 *   **Layout:** A gear icon in the top-left. A dominant, centered 3D model of the Uguisu fob. A subtle text hint "Tap · Hold to lock" below it (hidden after first use).
 *   **Interaction:**
     *   **Short press (tap):** Triggers Unlock. Model physically depresses 1-2mm.
@@ -54,6 +74,20 @@ Pipit uses a single-screen utility model. The Home screen (key fob) is always th
 *   *Audio must strictly respect the hardware silent switch / ringer mode.*
 
 ### 2.5 Disconnect Overlay
+```
+┌─────────────────────────────┐
+│ ⚙                          │
+│▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒│
+│▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒│
+│▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒│
+│▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒│
+│▒▒▒▒▒ ○ Disconnected ▒▒▒▒▒▒▒│
+│▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒│
+│▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒│
+│▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒│
+│▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒│
+└─────────────────────────────┘
+```
 When Guillemot is unreachable via BLE, show a full-screen semi-transparent overlay (white/black depending on system theme, ~60% opacity). The 3D model sits faintly beneath it, non-interactive.
 *   Shows `○ Disconnected` or `✕ Bluetooth is off`.
 *   Fades out (200ms) instantly upon BLE connection. The gear icon remains accessible.
