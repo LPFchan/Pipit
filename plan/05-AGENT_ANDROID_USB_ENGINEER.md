@@ -4,6 +4,7 @@
 
 **Status:** Active Brief
 **Scope:** Android-Specific USB Mass Storage and Serial Operations
+**Working Directory:** `Pipit/androidApp/src/main/java/com/immogen/pipit/usb/` (You must execute all work within this specific directory)
 **Role:** You are the Android Systems Engineer. Your task is to implement the low-level USB OTG functionality required for physical management of the immobilizer devices.
 
 ---

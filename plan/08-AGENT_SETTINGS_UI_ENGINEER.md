@@ -4,6 +4,7 @@
 
 **Status:** Active Brief
 **Scope:** Inline Slot Management, Proximity Controls, and Key Workflows
+**Working Directory:** `Pipit/` (You must execute all work within this specific directory)
 **Role:** You are the Mobile UI/UX Engineer. Your task is to build the Settings interface and the complex BLE management dialogue flows.
 
 ---

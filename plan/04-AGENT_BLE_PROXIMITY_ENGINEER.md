@@ -4,6 +4,7 @@
 
 **Status:** Active Brief
 **Scope:** iOS & Android Headless Background BLE Services
+**Working Directory:** `Pipit/` (You must execute all work within this specific directory)
 **Role:** You are the Mobile BLE Engineer. Your task is to build the low-level, headless proximity engine for Pipit. You are not building UI.
 
 ---

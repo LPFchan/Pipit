@@ -4,6 +4,7 @@
 
 **Status:** Active Brief
 **Scope:** The Main Fob Screen, 3D Rendering, and Navigation Shell
+**Working Directory:** `Pipit/` (You must execute all work within this specific directory)
 **Role:** You are the Mobile UI/UX Engineer specialized in native 3D frameworks. Your task is to build Pipit's primary interface: a photorealistic interactive 3D key fob.
 
 ---

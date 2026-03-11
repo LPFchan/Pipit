@@ -4,6 +4,7 @@
 
 **Status:** Active Brief
 **Scope:** Guillemot & Uguisu Firmware Updates for Pipit Integration
+**Working Directory:** `Immogen/` (You must execute all work within this specific directory)
 **Role:** You are the Firmware Engineer responsible for the embedded C++ nRF52 codebase in the Immogen monorepo. Your task is to update the firmware to support the Pipit app's BLE Proximity and Key Management features.
 
 ---

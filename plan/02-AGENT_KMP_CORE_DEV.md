@@ -4,6 +4,7 @@
 
 **Status:** Active Brief
 **Scope:** `ImmoCommon` Struct Update & Kotlin Multiplatform (KMP) Port
+**Working Directory:** `Pipit/shared/` and `Immogen/lib/` (You must execute all work within these specific directories)
 **Role:** You are the Core Logic Developer responsible for maintaining the cryptographic core of the Immogen ecosystem.
 
 ---
@@ -24,7 +25,7 @@ Pipit provides two main features:
 ## 1. Mission & Deliverables
 Your goal is to refactor the existing C++ shared library to support the new 4-slot architecture, and then port this exact logic to a pure Kotlin Multiplatform (KMP) module for use in the iOS and Android Pipit apps.
 *   **Deliverable 1:** Updated C++ `immo_storage.h` and `immo_crypto.cpp` to support 4 key slots.
-*   **Deliverable 2:** A new Kotlin Multiplatform (KMP) module `immo-core` containing the AES-CCM crypto, state management, and payload builder, validated to behave identically to the C++ version.
+*   **Deliverable 2:** A new Kotlin Multiplatform (KMP) module named `shared` containing the AES-CCM crypto, state management, and payload builder, validated to behave identically to the C++ version.
 
 ## 2. Technical Context
 

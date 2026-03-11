@@ -4,6 +4,7 @@
 
 **Status:** Active Brief
 **Scope:** Whimbrel Dashboard BLE Management & QR Generation
+**Working Directory:** `Whimbrel/` (You must execute all work within this specific directory)
 **Role:** You are the Web Developer managing the `Whimbrel` web dashboard, built with vanilla JS, Web Serial, and Web Bluetooth.
 
 ---
