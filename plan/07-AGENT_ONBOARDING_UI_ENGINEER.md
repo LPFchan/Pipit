@@ -31,6 +31,26 @@ Your goal is to build the immediate "Camera-First" onboarding flow triggered whe
 ## 2. Technical Context
 
 ### 2.1 Step 1: Camera-First QR Scan
+```
+┌─────────────────────────────┐
+│                             │
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │
+│  ▓▓▓▓▓┌───────────┐▓▓▓▓▓▓  │
+│  ▓▓▓▓▓│           │▓▓▓▓▓▓  │
+│  ▓▓▓▓▓│  [camera] │▓▓▓▓▓▓  │
+│  ▓▓▓▓▓│           │▓▓▓▓▓▓  │
+│  ▓▓▓▓▓└───────────┘▓▓▓▓▓▓  │
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │
+│  ▓  Scan from Whimbrel    ▓  │
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │
+│                             │
+│   recover key from lost phone >│
+│                             │
+└─────────────────────────────┘
+```
 *   The app launches directly into the camera. No welcome screens.
 *   **UI:** Darkened overlay (~70% black) with a transparent rounded-rectangle viewfinder in the center. Text: "Scan from Whimbrel" below it. A subtle link "recover key from lost phone >" at the bottom.
 *   **Parsing:** Scan for QR codes starting with `immogen://prov?`. Silently ignore non-matching codes.
@@ -39,6 +59,22 @@ Your goal is to build the immediate "Camera-First" onboarding flow triggered whe
     *   If QR has a `key` parameter (Guest Plaintext): Skip Step 2. Save the key to the keystore and jump directly to Step 3 (Animation).
 
 ### 2.2 Step 2: PIN Entry (Owner Only)
+```
+┌─────────────────────────────┐
+│                             │
+│   Enter your 6-digit PIN    │
+│                             │
+│   This is the PIN you set   │
+│   during Guillemot setup.   │
+│                             │
+│     ┌─┐┌─┐┌─┐┌─┐┌─┐┌─┐    │
+│     │ ││ ││ ││ ││ ││ │    │
+│     └─┘└─┘└─┘└─┘└─┘└─┘    │
+│                             │
+│        [ Confirm ]          │
+│                             │
+└─────────────────────────────┘
+```
 *   **UI:** "Enter your 6-digit PIN. This is the PIN you set during Guillemot setup." with a 6-box input field.
 *   **Logic:** Use Argon2id (parameters from QR salt) to derive the AES-128 key and decrypt the `ekey`. The UI must handle incorrect PINs with an inline error message.
 
@@ -50,5 +86,50 @@ On successful PIN entry (or immediately for Guest scans), play a ~1 second anima
 *(If the Argon2id KDF runs slow on older hardware, pause the animation at the convergence phase until decryption finishes).*
 
 ### 2.4 Step 4 & 5: Completion
-*   **Step 4 (iOS Only):** Prompt for "Always Allow" location permission with clear text explaining Proximity Unlock. Offer "Enable Proximity" or "Skip for Now".
-*   **Step 5 (Slot Overview):** Show a success screen listing all 4 slots (0–3) with tier labels (`OWNER` / `GUEST`). Highlight the user's slot. "Done" button dismisses onboarding.
+**Step 4 (iOS Only):** Location Permission
+```
+┌─────────────────────────────┐
+│                             │
+│   Enable proximity unlock?  │
+│                             │
+│   Pipit can automatically   │
+│   unlock your vehicle when  │
+│   you walk up to it.        │
+│                             │
+│   This requires "Always     │
+│   Allow" location access    │
+│   so the app can detect     │
+│   your vehicle in the       │
+│   background.               │
+│                             │
+│   Your location is never    │
+│   stored or transmitted.    │
+│                             │
+│   [ Enable Proximity ]      │
+│   [ Skip for Now ]          │
+│                             │
+└─────────────────────────────┘
+```
+*   Prompt for "Always Allow" location permission with clear text explaining Proximity Unlock. Offer "Enable Proximity" or "Skip for Now".
+
+**Step 5:** Slot Overview
+```
+┌─────────────────────────────┐
+│                             │
+│            ✓                │
+│                             │
+│   You're all set.           │
+│                             │
+│   Slot 0   Uguisu       🔑 │
+│   Slot 1   Jamie's iPhone ● │
+│            OWNER            │
+│   Slot 2   — empty —       │
+│            GUEST            │
+│   Slot 3   — empty —       │
+│            GUEST            │
+│                             │
+│        [ Done ]             │
+│                             │
+└─────────────────────────────┘
+```
+*   Show a success screen listing all 4 slots (0–3) with tier labels (`OWNER` / `GUEST`). Highlight the user's slot. "Done" button dismisses onboarding.
