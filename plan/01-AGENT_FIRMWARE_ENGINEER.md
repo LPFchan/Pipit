@@ -57,7 +57,7 @@ You only need to care about the embedded logic. Ignore mobile UI/UX or dashboard
 *   Guillemot must store a `session_slot` variable for the lifetime of the GATT connection if `IDENTIFY` succeeds (MIC/counter valid). If invalid, session remains unbound.
 
 ### 2.5 Serial & Management Protocol Parser
-*   **USB-C Serial Only:** `SETPIN:<6digits>`, `RESETLOCK`. (Must be rejected if source is GATT).
+*   **USB-C Serial Only:** `SETPIN:<6digits>`, `RESETLOCK`. (Must be rejected if source is GATT, *except during the Provisioning Window*).
 *   **GATT & Serial:** 
     *   `IDENTIFY` (GATT only)
     *   `PROV:<slot>:<key>:<ctr>:[name]`
@@ -66,3 +66,11 @@ You only need to care about the embedded logic. Ignore mobile UI/UX or dashboard
     *   `REVOKE:<slot>`
     *   `RECOVER:<slot>:<key>:<ctr>:[name]` (Requires Unlocked vehicle hardware state if unidentified).
 *   **Response Format:** Structured JSON over both transports (e.g., `{"status":"ok","slot":1,"name":"iPhone","counter":0}`).
+
+### 2.6 Fob-Authorized Provisioning Window
+*   To allow users to add a Phone Key seamlessly later without needing USB, Guillemot must implement a **30-second Provisioning Window**.
+*   **Trigger:** Whenever Guillemot successfully receives and parses a valid `Unlock` or `Lock` payload from Slot 0 (Uguisu), it starts or resets a 30-second timer.
+*   **Behavior During Window:**
+    *   Guillemot accepts `SETPIN:<6digits>` over the BLE Management Command characteristic (even if not SMP authenticated, or using Just Works/000000).
+    *   Guillemot accepts `PROV:1:<key>:<ctr>:[name]` over the BLE Management Command characteristic.
+*   **Condition:** This window is ideally utilized only when Slot 1 (Owner Phone) is empty, allowing the user to seamlessly opt-in to the Phone Key ecosystem wirelessly.
