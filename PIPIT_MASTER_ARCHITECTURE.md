@@ -209,13 +209,15 @@ All management commands respond with structured JSON over both transports:
 ## 7. Key Provisioning, Migration, and Recovery
 
 ### 7.1 Initial Provisioning — Owner (Whimbrel)
-1. Flash Guillemot and Uguisu via USB-C.
-2. Whimbrel asks user to set the 6-digit PIN (`SETPIN:123456`).
-3. Whimbrel provisions Slot 1 (`PROV:1:<key>:0:iPhone`).
-4. Whimbrel generates an **encrypted QR code:**
-   * Derives an AES-128 key from the PIN using **Argon2id** (parameters: `m=262144` (256 MB), `t=3`, `p=1`, with a random 16-byte salt).
-   * Encrypts the slot key using AES-CCM with the derived key.
-   * QR contains: `immogen://prov?slot=1&salt=<hex>&ekey=<encrypted_key_hex>&ctr=0&name=iPhone`
+1. Flash Guillemot via USB-C. Whimbrel provisions the Uguisu key into Slot 0 (`PROV:0:<fob_key>`). *No PIN is set at this stage.*
+2. Flash Uguisu via USB-C with the same key.
+3. User unplugs both devices. The hardware fob now "just works" out of the box with zero cognitive load.
+4. **Optional Phone Key Setup:** Whimbrel asks the user if they want to add a phone key now.
+   * If yes, the user presses the Uguisu fob to trigger the **Fob-Authorized Provisioning Window** (see Section 7.4).
+   * Whimbrel connects via BLE, prompts the user to create a 6-digit PIN, and sends `SETPIN:<pin>` and `PROV:1:<key>` wirelessly.
+   * Whimbrel derives an AES-128 key from the PIN using **Argon2id** (parameters: `m=262144` (256 MB), `t=3`, `p=1`, with a random 16-byte salt).
+   * Encrypts the newly generated slot key using AES-CCM with the derived key.
+   * QR contains: `immogen://prov?slot=1&salt=<hex>&ekey=<encrypted_key_hex>&ctr=0&name=`
    * The PIN is **never** included in the QR code.
 5. User scans the QR on their phone. Pipit prompts for the 6-digit PIN, derives the same AES key via Argon2id, decrypts the slot key, and stores it in the platform's secure keystore.
 
@@ -248,6 +250,15 @@ Used when a phone is lost or destroyed. The user only needs their 6-digit BLE Pa
 5. Pipit issues `REVOKE:1`, instantly locking out the stolen phone.
 6. Pipit generates a random 16-byte AES key using the platform's secure random generator (`SecRandomCopyBytes` on iOS, `SecureRandom` on Android) and provisions itself into that vacated slot via `PROV:1:<new_key>:0:New iPhone`.
 *Result: Securely locks out the old device and establishes a brand new cryptographic counter baseline.*
+
+### 7.4 Fob-Authorized Provisioning Window
+To ensure users aren't forced to set and memorize a PIN if they don't want a phone key initially, the system relies on physical possession of the Uguisu hardware fob to authorize late-stage wireless provisioning.
+
+*   **Trigger:** Whenever Guillemot successfully receives and parses a valid `Unlock` or `Lock` payload from Slot 0 (Uguisu), it starts or resets a **30-second Provisioning Window**.
+*   **Behavior During Window:**
+    *   Guillemot accepts `SETPIN:<6digits>` over the BLE Management Command characteristic without requiring prior SMP authentication (or using a default/Just Works pairing).
+    *   Guillemot accepts `PROV:1:<key>:<ctr>:[name]` over the BLE Management Command characteristic.
+*   **Condition:** This window is ideally utilized when Slot 1 (Owner Phone) is empty, allowing the user to seamlessly opt-in to the Phone Key ecosystem wirelessly even months after the immobilizer was physically installed in the vehicle.
 
 ---
 
