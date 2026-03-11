@@ -21,6 +21,9 @@ Pipit connects to the **Guillemot** deck receiver and acts as a software alterna
 
 | Path             | Description                                                                                                                                                                       |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shared/`        | **[Agent 2]** Kotlin Multiplatform core containing platform-agnostic business logic, AES-CCM crypto math, and monotonic counter models (`commonMain`, `androidMain`, `iosMain`). |
+| `androidApp/`    | **[Agents 4, 5, 6, 7, 8]** Native Android application. Contains Jetpack Compose/SceneView UI (`ui/`), Background GATT Services (`ble/`), and USB OTG/CDC utilities (`usb/`). |
+| `iosApp/`        | **[Agents 4, 6, 7, 8]** Native iOS application. Contains SwiftUI/RealityKit UI (`UI/`) and CoreLocation/CoreBluetooth Background Services (`BLE/`). |
 | `plan/`          | AI Project Management briefs outlining specific domains (Firmware, KMP, BLE, UI) used to delegate tasks across multiple autonomous AI agents. |
 | `33-PIPIT_MASTER_ARCHITECTURE.md` | The definitive architectural blueprint for the entire Pipit system, key slot management, and GATT protocol. |
 
