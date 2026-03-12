@@ -553,12 +553,13 @@ The primary and only persistent screen. Stripped down to the essential interacti
 1. **Gear Icon (top-left):** Opens Settings via the 3D flip transition (Section 10.4.2).
 2. **3D Uguisu Model (center, dominant):** A real-time photorealistic render of the Uguisu fob. This is the only interactive element on the screen.
   **Gesture model (mirroring the physical fob):**
-  - **Short press (tap):** Sends the **Unlock** AES-CCM payload.
+  - **Short press (tap):** Sends the **Unlock** AES-CCM payload. 
   - **Long press (~700 ms hold):** Sends the **Lock** AES-CCM payload automatically the instant the 700 ms threshold is reached — no release required. A haptic fires at the same moment the packet is sent.
+  - **Visual Feedback (Button Depression):** Regardless of short or long press, **the physical button geometry on the 3D model MUST physically depress (move inward on its local Z/Y axis by ~1-2mm)** the instant the user touches the screen over the model. It remains held down as long as the user's finger is on the screen, and visually springs back up when the user releases their finger.
     **Visual states (matching real Uguisu fire-and-forget behaviour — LED flashes once per action, never holds):**
   - **Idle (locked or unlocked):** Model rendered under neutral ambient lighting. The Uguisu's RGB LED is unlit (dark). There is no persistent visual difference between locked and unlocked — the model looks the same at rest regardless of latch state.
-  - **Unlock flash (on tap):** Model physically depresses (a subtle 1–2 mm push-in animation on the tactile button geometry). LED flashes green once (fade in 100 ms, hold 200 ms, fade out 200 ms), then returns to dark. Model button springs back.
-  - **Lock flash (on 700 ms threshold):** Model depresses briefly. LED flashes red once (same fade in/hold/fade out timing as unlock). Then returns to dark. Model button springs back.
+  - **Unlock flash (on tap):** LED flashes green once (fade in 100 ms, hold 200 ms, fade out 200 ms), then returns to dark.
+  - **Lock flash (on 700 ms threshold):** LED flashes red once (same fade in/hold/fade out timing as unlock). Then returns to dark.
   - **Proximity auto-action:** When the background service triggers an auto-unlock or auto-lock, the model briefly plays the corresponding button-press + LED flash animation (without user touch) to communicate what happened.
     **Passive interactivity:**
   - The model responds to device gyroscope input with a subtle parallax tilt (±5°), giving a sense of physical depth. This is purely cosmetic and can be disabled in Settings for users who find it distracting.

@@ -57,8 +57,9 @@ Pipit uses a single-screen utility model. The Home screen (key fob) is always th
 ```
 *   **Layout:** A gear icon in the top-left. A dominant, centered 3D model of the Uguisu fob. A subtle text hint "Tap · Hold to lock" below it (hidden after first use).
 *   **Interaction:**
-    *   **Short press (tap):** Triggers Unlock. Model physically depresses 1-2mm.
-    *   **Long press (~700 ms hold):** Triggers Lock instantly at the 700ms mark (no release required). Model physically depresses.
+    *   **Button Depression:** The moment the user touches the 3D model on screen, the tactile button geometry on the model MUST physically depress (move inward ~1-2mm). It must remain held down as long as the user's finger is on the screen, and spring back up upon release.
+    *   **Short press (tap):** Triggers Unlock.
+    *   **Long press (~700 ms hold):** Triggers Lock instantly at the 700ms mark (no release required).
 *   **Passive Interaction:** The model responds to device gyroscope input with a subtle parallax tilt (±5°).
 
 ### 2.3 3D Asset & Emissive LED Control
