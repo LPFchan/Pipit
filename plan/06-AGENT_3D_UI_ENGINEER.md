@@ -100,3 +100,9 @@ Tapping the gear icon flips the Home screen to Settings:
 2.  **Morph (400–600 ms):** The back surface of the model cross-fades into the Settings content pane.
 3.  **Reverse:** Closes Settings by reversing the animation.
 *   *iOS: use `CATransform3D` on a snapshot layer. Android: use `View.rotationY` with `cameraDistance`.*
+
+### 2.7 Integration Contract (BLE Engine)
+To actually trigger the lock/unlock events when the user interacts with the 3D model, you must hook into the shared BLE service built by Agent 4. 
+*   Observe the `BleState` Flow from `BleService.kt` to drive the visibility of the Disconnect Overlay.
+*   When a short press (tap) is detected, call `bleService.sendUnlockCommand()`.
+*   When a long press (700ms) is detected, call `bleService.sendLockCommand()`.
