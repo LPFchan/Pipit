@@ -65,6 +65,12 @@ Agent 8 (Settings UI) provides sliders to adjust proximity thresholds. To ensure
 *   `pref_unlock_rssi` (Integer, default: -65)
 *   `pref_lock_rssi` (Integer, default: -75)
 
+## 3. Work Log
+
+### 2026-03-12: System Architect Evaluation
+*   **Grade: A+**
+*   **Evaluation:** Agent 4 built rock-solid headless background scanning services. They implemented `BleService.kt` and `SettingsManager.kt` in the KMP shared module to centralize UUIDs and preference keys. On iOS, they correctly utilized `CLLocationManager` to monitor the `ImmogenVehicle` iBeacon region to wake the app, bypassing Apple's background BLE throttling, before handing off to `CBCentralManager` for GATT scanning. On Android, they built a stable Foreground `Service` using `BluetoothLeScanner` with `SCAN_MODE_LOW_LATENCY` and a persistent notification to prevent OS termination. Both platforms successfully maintain a 5-reading rolling average array (`rssiHistory`) and accurately evaluate it against the user's custom `unlockRssi` and `lockRssi` thresholds with proper hysteresis logic.
+
 ---
 
 ## 3. Work Log
