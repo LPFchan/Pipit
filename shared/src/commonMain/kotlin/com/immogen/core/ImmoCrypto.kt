@@ -15,21 +15,23 @@ object ImmoCrypto {
     enum class Command(val value: Byte) {
         Unlock(0x01),
         Lock(0x02),
-        Identify(0x03);
+        Identify(0x03),
+        Window(0x04);
 
         companion object {
             fun fromValue(value: Byte): Command? = values().find { it.value == value }
         }
     }
 
-    private fun le32Write(out: ByteArray, offset: Int, x: Int) {
-        out[offset] = (x and 0xFF).toByte()
-        out[offset + 1] = ((x shr 8) and 0xFF).toByte()
-        out[offset + 2] = ((x shr 16) and 0xFF).toByte()
-        out[offset + 3] = ((x shr 24) and 0xFF).toByte()
+    private fun le32Write(out: ByteArray, offset: Int, x: UInt) {
+        val xInt = x.toInt()
+        out[offset] = (xInt and 0xFF).toByte()
+        out[offset + 1] = ((xInt shr 8) and 0xFF).toByte()
+        out[offset + 2] = ((xInt shr 16) and 0xFF).toByte()
+        out[offset + 3] = ((xInt shr 24) and 0xFF).toByte()
     }
 
-    fun buildNonce(counter: Int, nonce: ByteArray) {
+    fun buildNonce(counter: UInt, nonce: ByteArray) {
         require(nonce.size >= NONCE_LEN)
         le32Write(nonce, 0, counter)
         for (i in 4 until NONCE_LEN) {
@@ -37,7 +39,7 @@ object ImmoCrypto {
         }
     }
 
-    fun buildMsg(prefix: Byte, counter: Int, command: Command, msg: ByteArray) {
+    fun buildMsg(prefix: Byte, counter: UInt, command: Command, msg: ByteArray) {
         require(msg.size >= MSG_LEN)
         msg[0] = prefix
         le32Write(msg, 1, counter)

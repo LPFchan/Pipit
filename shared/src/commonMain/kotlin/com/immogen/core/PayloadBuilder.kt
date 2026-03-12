@@ -17,7 +17,7 @@ class PayloadBuilder {
         slotId: Int,
         command: ImmoCrypto.Command,
         key: ByteArray,
-        counter: Int
+        counter: UInt
     ): ByteArray {
         require(slotId in 0..3) { "Slot ID must be between 0 and 3" }
         require(key.size == 16) { "Key must be exactly 16 bytes" }
@@ -59,29 +59,29 @@ class PayloadBuilder {
  * Note: Implementers must persist the current counter value to non-volatile storage
  * to prevent replay attacks across app restarts.
  */
-class CounterState(initialCounter: Int = 0) {
-    private var _counter: Int = initialCounter
+class CounterState(initialCounter: UInt = 0u) {
+    private var _counter: UInt = initialCounter
     
     /**
      * Returns the current counter value and increments it strictly.
      * Note: Not thread-safe by default. Caller should synchronize if needed.
      */
-    fun nextCounter(): Int {
+    fun nextCounter(): UInt {
         val current = _counter
         _counter++
         // Prevent overflow to 0
-        if (_counter <= 0) {
-            _counter = 1
+        if (_counter == 0u) {
+            _counter = 1u
         }
         return current
     }
     
-    fun currentCounter(): Int = _counter
+    fun currentCounter(): UInt = _counter
     
     /**
      * Sets the counter. Must only be used when restoring state or provisioning.
      */
-    fun setCounter(value: Int) {
+    fun setCounter(value: UInt) {
         _counter = value
     }
 }

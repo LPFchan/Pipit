@@ -26,6 +26,7 @@ Pipit provides two main features:
 Your goal is to build isolated Android modules to handle USB firmware flashing and physical serial commands.
 *   **Deliverable 1:** A UF2 flashing module utilizing `libaums` to update Guillemot firmware over USB-C OTG.
 *   **Deliverable 2:** A CDC serial module utilizing `usb-serial-for-android` to interface with Guillemot and Uguisu for operations restricted to physical USB access.
+*   **Integration Contract:** Your deliverables must be exposed as clean, state-emitting classes or ViewModels (e.g., exposing a `StateFlow<UsbState>` for progress bars and status). Agent 8 (Settings UI) will build the UI and observe these states without touching raw USB logic.
 
 ## 2. Technical Context
 

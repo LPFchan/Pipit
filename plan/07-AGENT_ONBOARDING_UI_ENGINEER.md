@@ -27,6 +27,10 @@ Your goal is to build the immediate "Camera-First" onboarding flow triggered whe
 *   **Deliverable 1:** Full-screen camera viewfinder UI with dark overlay.
 *   **Deliverable 2:** QR Payload parser (`immogen://prov?...`) that routes to encrypted or plaintext flows.
 *   **Deliverable 3:** The PIN Entry UI and the visual "QR Decryption Particle Animation."
+*   **Integration Contract:** 
+    *   **App Shell:** You will build your UI inside the `OnboardingView` placeholder provided by Agent 6.
+    *   **Crypto:** Do not implement Argon2id yourself. Call the KMP wrapper provided by Agent 2 (e.g., `ImmoCrypto.deriveKey(pin, salt)`).
+    *   **BLE Scanning:** For the "Recover Key" flow, do not write raw BLE scanning logic. Subscribe to the foreground scanning hook/Flow provided by Agent 4.
 
 ## 2. Technical Context
 
@@ -133,3 +137,9 @@ On successful PIN entry (or immediately for Guest scans), play a ~1 second anima
 └─────────────────────────────┘
 ```
 *   Show a success screen listing all 4 slots (0–3) with tier labels (`OWNER` / `GUEST`). Highlight the user's slot. "Done" button dismisses onboarding.
+
+### 2.5 "Recover Key from Lost Phone" Link
+*   The "recover key from lost phone >" link at the bottom of the camera screen launches a separate, reactive UI flow.
+*   **UI Prompt:** Instructs the user to "Press the button three times on your Uguisu fob." and displays a "Scanning..." state. No manual "Connect" button.
+*   **Logic:** Pipit's BLE scanner actively listens for the Guillemot peripheral to change its Service UUID to the "Window Open" state.
+*   **Action:** When detected, Pipit vibrates, automatically initiates a GATT connection to Guillemot, fetches the `SLOTS?` list, and prompts the user to select their lost slot. If the Owner slot is selected, it prompts for the 6-digit PIN (either via OS-level SMP or an app-level input sending `SETPIN`) to prove ownership. Pipit then generates a new key, sends the `RECOVER` command, and jumps to Step 5 (Done).

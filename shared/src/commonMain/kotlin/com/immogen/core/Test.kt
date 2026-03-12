@@ -20,7 +20,7 @@ fun main() {
         slotId = 1,
         command = ImmoCrypto.Command.Unlock,
         key = key,
-        counter = 1
+        counter = 1u
     )
     println("Payload: ${payload.toHex()}")
 }

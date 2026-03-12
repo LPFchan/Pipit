@@ -28,6 +28,10 @@ Your goal is to build the Settings view (which the 3D screen flips into) and all
 *   **Deliverable 2:** The "Provision Guest Phone" Flow (QR generation).
 *   **Deliverable 3:** The "Replace Flow" (Revocation + Provisioning).
 *   **Deliverable 4:** The "Migration Flow" (Transfer to new phone).
+*   **Integration Contract:**
+    *   **App Shell:** You will build your UI inside the `SettingsView` placeholder provided by Agent 6.
+    *   **Proximity Preferences:** You must save slider/toggle values using the exact keys: `pref_proximity_enabled` (Bool), `pref_unlock_rssi` (Int), `pref_lock_rssi` (Int). Agent 4 will read these.
+    *   **USB Flashing (Android):** Hook up your UI to the `StateFlow<UsbState>` or ViewModels provided by Agent 5. Do not write raw USB logic.
 
 ## 2. Technical Context
 

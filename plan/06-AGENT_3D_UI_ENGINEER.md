@@ -27,6 +27,7 @@ Your goal is to build the "single-screen utility model" that serves as the root 
 *   **Deliverable 1:** Implementation of the 3D Uguisu model using `RealityKit` (iOS) and `SceneView` (Android) with tap/hold gesture recognition.
 *   **Deliverable 2:** The Disconnect Overlay UI.
 *   **Deliverable 3:** The 3D flip transition animation that reveals the Settings screen.
+*   **Deliverable 4:** The App Shell Architecture. You are the owner of the root navigation controller/Compose graph. You must set up the root shell and expose empty placeholder views (`OnboardingView` and `SettingsView`) that Agents 7 and 8 will populate later.
 
 ## 2. Technical Context
 

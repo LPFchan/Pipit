@@ -26,6 +26,7 @@ Pipit provides two main features:
 Your goal is to refactor the existing C++ shared library to support the new 4-slot architecture, and then port this exact logic to a pure Kotlin Multiplatform (KMP) module for use in the iOS and Android Pipit apps.
 *   **Deliverable 1:** Updated C++ `immo_storage.h` and `immo_crypto.cpp` to support 4 key slots.
 *   **Deliverable 2:** A new Kotlin Multiplatform (KMP) module named `shared` containing the AES-CCM crypto, state management, and payload builder, validated to behave identically to the C++ version.
+*   **Deliverable 3:** An Argon2id KMP wrapper or implementation. Agent 7 (Onboarding UI) will need to call this (e.g., `ImmoCrypto.deriveKey(pin, salt)`) to decrypt QR codes.
 
 ## 2. Technical Context
 
@@ -52,3 +53,13 @@ The 1-byte Prefix carries the Slot ID to route payloads to the correct AES key.
 ### 2.4 Security Model
 *   Each key slot maintains an independent strictly-monotonic counter. Any payload where `counter <= last_seen_counter` is rejected. There is no tolerance window.
 *   Your KMP port must strictly adhere to this model, exposing the payload builder (`build_payload(slot_id, command, key, counter)`) and the monotonic counter incrementing logic so the UI layer can easily call it.
+
+## 3. Implementation Log
+
+### 2026-03-12: Architecture Alignment & Final Adjustments
+*   **Kotlin (KMP) Refinements:**
+    *   Updated `PayloadBuilder.kt`, `Test.kt`, and `ImmoCrypto.kt` to use Kotlin's unsigned integers (`UInt`) for the counter parameter values to correctly parallel the C++ (`uint32_t`) implementation, ensuring behavior matching under integer overflow scenarios and aligning strictly with the `ImmoCommon` header definitions.
+*   **C++ Storage & Provisioning Updates:**
+    *   Updated `immo_storage.cpp` and `.h` to support array-based per-slot storage in `CounterStore` (`last_counters_[MAX_KEY_SLOTS]`), properly implementing monotonic counter persistence for independent access tiers. 
+    *   Updated `immo_provisioning.cpp` and `.h` to parse the newly structured 4-parameter `PROV:<slot>:<key>:<counter>:<name>` command, including URL decoding for the device name to allow names populated through Whimbrel/Pipit, aligning with the master architecture.
+*   **Reasoning:** Although the fundamental KMP crypto algorithms were ported previously, the C++ `CounterStore` strictly maintained a single slot, and provisioning expected only 3 parameters (excluding the human-readable device name and target slot). Modifying the persistent layer and parsing code was critical to satisfy the 4-slot independent security model as required by the master architecture.

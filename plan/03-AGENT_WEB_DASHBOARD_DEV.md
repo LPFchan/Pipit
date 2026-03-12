@@ -62,3 +62,10 @@ When the user adds a phone (Slot 1) via Whimbrel:
 *   **Argon2id & AES-CCM Implementation (`ccm.js`)**: Included `argon2-browser` and `aes-js` to correctly derive the AES-128 key from the 6-digit PIN and encrypt the Phone Slot payload into the final `immogen://prov...` QR string.
 *   **Fob-Authorized Provisioning Window**: Adjusted the architecture so that an `Unlock` payload from Uguisu triggers a 30-second window during which Guillemot allows `SETPIN` and `PROV:1` over BLE. The dashboard's tutorial flow perfectly models this: instructing the user to press the fob before establishing the connection.
 *   **Demo Mode Sync**: Brought all these changes over to the `demo` branch, mocking the BLE slot responses, connection delays, and QR derivations flawlessly.
+
+## 4. UI/UX Bug Fixes (Phase 1.1 Complete)
+*Date: 2026-03-12*
+*   **Dashboard Navigation & UI**: Unified the dashboard overlay navigation, corrected button text labels, replaced "Connect" buttons with "Yes"/"Skip for now" flows, and introduced a "No Phone Key" fallback section with proper back-navigation.
+*   **PIN Entry Bug**: Fixed the UI state issue where entering digits would trigger multiple circle indicators to light up; implemented a guard against multiple submissions on key-down.
+*   **BLE Handling**: Corrected the demo mode logic to completely skip BLE connection attempts if the user skips key setup, and resolved the `window.Whimbrel.abortableDelay` error by using a standard `Promise`-based delay.
+*   **Device Slots Visibility**: Resolved an issue where device slots were invisible in the "Manage Keys" pop-up by explicitly styling the `slots-container` and ensuring correct DOM visibility; updated slots to be interactable.
