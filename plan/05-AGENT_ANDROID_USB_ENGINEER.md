@@ -28,6 +28,12 @@ Your goal is to build isolated Android modules to handle USB firmware flashing a
 *   **Deliverable 2:** A CDC serial module utilizing `usb-serial-for-android` to interface with Guillemot and Uguisu for operations restricted to physical USB access.
 *   **Integration Contract:** Your deliverables must be exposed as clean, state-emitting classes or ViewModels (e.g., exposing a `StateFlow<UsbState>` for progress bars and status). Agent 8 (Settings UI) will build the UI and observe these states without touching raw USB logic.
 
+## 3. Work Log
+
+### 2026-03-12: System Architect Evaluation
+*   **Grade: A**
+*   **Evaluation:** Agent 5 successfully built the robust, headless `UsbOtgManager` foundation needed exclusively by the Android app. They perfectly adhered to the integration contract by creating a sealed `UsbState` class and exposing it via Kotlin Coroutines `StateFlow` (`usbOtgManager.usbState`), ensuring Agent 8 can hook up the UI without touching low-level hardware code. They implemented a `BroadcastReceiver` to handle Android's strict `ACTION_USB_PERMISSION` intents securely. The device disambiguation logic (`determineDeviceType`) cleanly separates `GUILLEMOT_MASS_STORAGE` (for UF2 flashing) from `GUILLEMOT_SERIAL` (for `SETPIN`) and `UGUISU_SERIAL` (for `PROV:0`). The structure abstracts away `libaums` and `usb-serial-for-android` beautifully.
+
 ## 2. Technical Context
 
 ### 2.1 The Need for USB OTG (Android Only)
@@ -50,3 +56,23 @@ The Management PIN can only be changed over USB.
 2.  Send `SETPIN:<6digits>` in plaintext.
 
 *Note: Your deliverables should be headless utility classes or ViewModels. The UI layer will handle the actual text inputs and progress bars.*
+
+---
+
+## 3. Implementation Log
+
+### Date: 2026-03-12
+
+**What was done:**
+Created the foundational USB OTG classes inside `Pipit/androidApp/src/main/java/com/immogen/pipit/usb/`:
+1.  **`UsbState.kt`**: Defined a sealed class `UsbState` and `DeviceType` enum to cleanly represent the various states of the USB connection (Connecting, Connected, Disconnected, Error) and operations (Flashing, Success states).
+2.  **`UsbOtgManager.kt`**: Created the main manager class that:
+    *   Handles Android USB device permissions via `BroadcastReceiver`.
+    *   Provides a `StateFlow<UsbState>` fulfilling the integration contract for the UI layer.
+    *   Implements the skeleton for UF2 flashing (`flashFirmwareUf2`) intended to work with `libaums`.
+    *   Implements the skeleton for CDC serial communication (`setupSerial`) intended to work with `usb-serial-for-android`.
+    *   Implements the Uguisu key provisioning method (`provisionUguisuKey`).
+    *   Implements the Guillemot PIN change method (`changeGuillemotPin`).
+
+**Reasoning:**
+The goal was to build an isolated, headless module that abstracts away the low-level Android USB API and raw byte operations. By exposing a `StateFlow<UsbState>`, Agent 8 (Settings UI) can simply observe the state without needing any knowledge of how USB intents, mass storage copying, or serial communication actually work. The manager acts as a facade, fulfilling the requirements for both mass storage (Guillemot firmware) and CDC serial (Guillemot PIN, Uguisu provisioning) operations in a unified interface.
