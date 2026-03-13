@@ -1,51 +1,37 @@
-# Pipit KMP Compatibility Phased Plan
+# Pipit KMP Compatibility Upgrade Status
 
-## Current status
+## Completed on 2026-03-13
 
-- `androidApp` now uses the Kotlin Compose plugin path required by Kotlin 2.x.
-- `shared` keeps iOS framework generation available without requiring an Android SDK.
-- The legacy shared Android target remains gated behind SDK detection because the repo is still on AGP `8.2.2`.
+- Upgraded the Gradle wrapper to `8.13`.
+- Upgraded Android Gradle Plugin usage to `8.13.2`.
+- Migrated `androidApp` to the Kotlin 2.x Compose compiler plugin path.
+- Replaced the shared module legacy `com.android.library` + `androidTarget()` bridge with `com.android.kotlin.multiplatform.library`.
+- Preserved iOS framework generation for `iosX64`, `iosArm64`, and `iosSimulatorArm64`.
+- Restored successful validation for both `:shared:assemble` and `:androidApp:assembleDebug`.
 
-## Why the full shared migration is deferred
+## Final validation state
 
-- The supported Android KMP library plugin (`com.android.kotlin.multiplatform.library`) requires AGP `8.10.0+`.
-- This repo currently uses AGP `8.2.2` and Gradle `8.6`, so switching the shared module in this pass would force a larger toolchain upgrade.
-- `androidApp` consumes classes from `shared/src/androidMain`, so removing the legacy Android target before the replacement plugin is in place would break Android compilation.
-- Preserving current Xcode linkage depends on leaving the existing iOS `binaries.framework` setup unchanged during the migration.
+- `:shared:compileIosMainKotlinMetadata` passes with Java 17.
+- `:shared:assemble` succeeds and still emits `shared.framework` outputs for all current iOS targets.
+- `:androidApp:assembleDebug` succeeds on a machine with Android SDK platform 35 available.
+- The previous Compose compiler plugin warning is resolved.
+- The previous shared `androidTarget()` compatibility warning is resolved.
 
-## Phase 1: Safe compatibility step
+## Resulting build baseline
 
-- Keep the Kotlin 2.x Compose compiler on the plugin path in `androidApp`.
-- Make the shared legacy Android target explicit and SDK-aware so iOS-only validation still works on machines without Android SDK configuration.
-- Acceptance criteria:
-  - `:shared:compileIosMainKotlinMetadata` succeeds with Java 17.
-  - `:shared:assemble` still produces the iOS framework artifacts.
-  - The Compose compiler plugin warning no longer appears during Gradle configuration.
+- Java runtime for Gradle: `17`
+- Gradle wrapper: `8.13`
+- AGP: `8.13.2`
+- Shared Android plugin: `com.android.kotlin.multiplatform.library`
+- Android compileSdk: `35`
+- Android targetSdk: `34`
 
-## Phase 2: Toolchain uplift
+## Remaining non-blocking warnings
 
-- Upgrade AGP to at least `8.10.0`.
-- Upgrade the Gradle wrapper to the version required by that AGP release.
-- Re-run `:shared:assemble` and `:androidApp:assembleDebug` on a machine with a configured Android SDK.
-- Acceptance criteria:
-  - Both shared and Android app builds pass on the upgraded toolchain.
-  - No new Kotlin, AGP, or Compose plugin compatibility warnings are introduced.
+- Android source code still has a small set of platform API deprecation warnings in BLE, theme, and USB code.
+- Native libraries from SceneView / Filament are packaged without symbol stripping during debug builds.
 
-## Phase 3: Shared Android plugin migration
+## Notes
 
-- Replace the shared module legacy `com.android.library` + `androidTarget()` path with `com.android.kotlin.multiplatform.library`.
-- Configure the Android target inside the Kotlin DSL using the Android KMP plugin block supported by the selected AGP version.
-- Keep Android-specific dependencies scoped under `androidMain`.
-- Preserve the existing iOS target list: `iosX64`, `iosArm64`, `iosSimulatorArm64`.
-- Acceptance criteria:
-  - Shared Android compilation works without `androidTarget()`.
-  - iOS framework link tasks still succeed for all current Apple targets.
-  - Xcode continues to resolve and link the generated `shared.framework` outputs.
-
-## Phase 4: Cleanup
-
-- Remove the legacy shared Android gate and any compatibility comments that only exist for the interim path.
-- Document the final Android SDK and Java requirements in the project README if they changed during the toolchain uplift.
-- Acceptance criteria:
-  - No deprecated Android target configuration remains in `shared/build.gradle.kts`.
-  - The repository build instructions match the final Gradle configuration.
+- The temporary SDK-gated legacy Android target bridge has been removed from `shared/build.gradle.kts`.
+- README build requirements were updated to match the new post-migration toolchain.

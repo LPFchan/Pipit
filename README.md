@@ -17,6 +17,21 @@ Pipit connects to the **Guillemot** deck receiver and acts as a software alterna
 *   **Native UI:** UIKit/RealityKit (iOS) and Jetpack Compose/SceneView (Android) for performant 3D rendering and platform-specific haptic schedules.
 *   **Background Services:** Native CoreLocation iBeacon monitoring + CoreBluetooth (iOS) and Foreground Service GATT scanning (Android) to ensure reliable background proximity detection.
 
+## Build Requirements
+
+*   **Java:** Use JDK 17 to run Gradle in this repository.
+*   **Gradle Wrapper:** The project now uses Gradle `8.13`.
+*   **Android Gradle Plugin:** Android modules are aligned on AGP `8.13.2`.
+*   **Android SDK:** Android builds require a configured SDK with platform 35 available, either through `local.properties` or `ANDROID_HOME` / `ANDROID_SDK_ROOT`.
+
+### Validation Commands
+
+```bash
+export JAVA_HOME=/opt/homebrew/Cellar/openjdk@17/17.0.18/libexec/openjdk.jdk/Contents/Home
+./gradlew :shared:compileIosMainKotlinMetadata :shared:assemble
+./gradlew :androidApp:assembleDebug
+```
+
 ## Repository Structure
 
 | Path             | Description                                                                                                                                                                       |

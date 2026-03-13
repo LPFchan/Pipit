@@ -6,7 +6,11 @@ plugins {
 
 android {
     namespace = "com.immogen.pipit"
-    compileSdk = 34
+    compileSdk = 35
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
     defaultConfig {
         applicationId = "com.immogen.pipit"
         minSdk = 26
@@ -15,6 +19,7 @@ android {
         versionName = "1.0"
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
     buildTypes {
