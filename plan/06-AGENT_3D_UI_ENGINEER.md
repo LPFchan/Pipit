@@ -109,19 +109,9 @@ To actually trigger the lock/unlock events when the user interacts with the 3D m
 
 ---
 
-## 3. Work Log
-
-### 2026-03-13: System Architect Evaluation & Revision Request
-*   **Grade: Incomplete (Needs Revision)**
-*   **Evaluation:** Agent 6 successfully built the App Shell Architecture (Deliverable 4). The Android Compose navigation (`PipitApp.kt`) and iOS UIKit `RootViewController` perfectly bind to Agent 4's `BleState`, swapping between the Home and Settings views while managing the Disconnect Overlay exactly as specified. The gesture recognizers correctly trigger the `bleService` commands.
-*   **Shortfall:** Agent 6 completely missed Deliverable 1. They built a 2D placeholder (`FobPlaceholderView`) using standard UI components instead of implementing the actual 3D rendering engines (`RealityKit` on iOS and `SceneView` on Android) to render the `.glb`/`.usdz` model. 
-*   **Action Required:** Agent 6 must be re-spun to implement the actual 3D engines. They need to import `io.github.sceneview:arsceneview` (or standard `sceneview`) on Android and `RealityKit` on iOS, load the `uguisu_placeholder.glb` (and convert it to `.usdz` for iOS), and map the tap/hold gestures to the 3D model's tactile button geometry to perform the ~1-2mm physical depression animation as specified in Section 2.2.
-
----
-
 ## 3. Implementation Log
 
-**Date:** 2026-03-13
+### Date: 2026-03-13
 
 **What was done**
 
@@ -149,3 +139,13 @@ To actually trigger the lock/unlock events when the user interacts with the 3D m
 - **Placeholder 3D:** The brief assumes a real Uguisu 3D asset; the user stated the 3D model was not ready. A programmatic GLB with the required mesh names (`led_rgb`, depressible “button”) lets the app shell, gestures, and BLE wiring be built and tested without blocking on CAD; the final asset can replace the placeholder with minimal code change.
 - **UIKit for iOS:** The master architecture explicitly requires UIKit for iOS. An initial implementation used SwiftUI; that was reverted so the codebase stays aligned with the spec and with the stated rationale (reliable BLE/camera/keystore integration and native 3D). All iOS UI is therefore implemented with `UIViewController`, `UIView`, and UIKit gesture recognizers.
 - **No Gradle wrapper / no Xcode project in repo:** The Pipit folder did not include a Gradle wrapper or an Xcode project file. The implementation adds the app code and build configuration (Gradle for Android, file layout and README for iOS) so that when the wrapper is added or the project is opened from a parent KMP setup, the shell builds and runs as described.
+
+---
+
+## 4. System Architect Evaluation & Revision Request
+
+### 2026-03-13
+*   **Grade: Incomplete (Needs Revision)**
+*   **Evaluation:** Agent 6 successfully built the App Shell Architecture (Deliverable 4). The Android Compose navigation (`PipitApp.kt`) and iOS UIKit `RootViewController` perfectly bind to Agent 4's `BleState`, swapping between the Home and Settings views while managing the Disconnect Overlay exactly as specified. The gesture recognizers correctly trigger the `bleService` commands.
+*   **Shortfall:** Agent 6 completely missed Deliverable 1. They built a 2D placeholder (`FobPlaceholderView`) using standard UI components instead of implementing the actual 3D rendering engines (`RealityKit` on iOS and `SceneView` on Android) to render the `.glb`/`.usdz` model. 
+*   **Action Required:** Agent 6 must be re-spun to implement the actual 3D engines. They need to import `io.github.sceneview:arsceneview` (or standard `sceneview`) on Android and `RealityKit` on iOS, load the `uguisu_placeholder.glb` (and convert it to `.usdz` for iOS), and map the tap/hold gestures to the 3D model's tactile button geometry to perform the ~1-2mm physical depression animation as specified in Section 2.2.
