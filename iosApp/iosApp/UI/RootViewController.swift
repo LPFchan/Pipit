@@ -1,6 +1,9 @@
 import UIKit
 import Combine
+
+#if canImport(shared)
 import shared
+#endif
 
 /// Root container: shows Home or Settings, and the disconnect overlay when BLE is not connected.
 final class RootViewController: UIViewController {

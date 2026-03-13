@@ -50,6 +50,12 @@ class MainActivity : ComponentActivity() {
             serviceConnection,
             Context.BIND_AUTO_CREATE
         )
+        // If running a debug build, provide a mocked connected BLE state so the UI can be previewed
+        if (BuildConfig.DEBUG) {
+            _bleStateFallback.value = com.immogen.pipit.ble.BleState(
+                connectionState = com.immogen.pipit.ble.ConnectionState.CONNECTED_UNLOCKED
+            )
+        }
         setContent {
             PipitTheme {
                 val stateFlow = bleService?.state ?: bleStateFallback

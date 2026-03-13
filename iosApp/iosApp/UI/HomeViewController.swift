@@ -10,7 +10,7 @@ final class HomeViewController: UIViewController {
 
     private let stackView = UIStackView()
     private let gearButton = UIButton(type: .system)
-    private let fobPlaceholderView: FobPlaceholderView
+    private var fobView: UIView!
     private let tapHintLabel = UILabel()
 
     init(
@@ -25,19 +25,22 @@ final class HomeViewController: UIViewController {
         self.onFobLongPress = onFobLongPress
         self.showTapHint = showTapHint
         self.onHintDismissed = onHintDismissed
-        self.fobPlaceholderView = FobPlaceholderView(
+        let hintDismissed = onHintDismissed
+        super.init(nibName: nil, bundle: nil)
+
+        // Initialize `fobView` after `super.init` so closures may capture `self` safely.
+        self.fobView = FobRealityView(
             onTap: { [weak self] in
-                self?.onHintDismissed()
+                hintDismissed()
                 self?.tapHintLabel.isHidden = true
                 onFobTap()
             },
             onLongPress: { [weak self] in
-                self?.onHintDismissed()
+                hintDismissed()
                 self?.tapHintLabel.isHidden = true
                 onFobLongPress()
             }
         )
-        super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -65,11 +68,11 @@ final class HomeViewController: UIViewController {
             stackView.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
 
-        stackView.addArrangedSubview(fobPlaceholderView)
-        fobPlaceholderView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.addArrangedSubview(fobView)
+        fobView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            fobPlaceholderView.widthAnchor.constraint(equalToConstant: 200),
-            fobPlaceholderView.heightAnchor.constraint(equalToConstant: 140)
+            fobView.widthAnchor.constraint(equalToConstant: 200),
+            fobView.heightAnchor.constraint(equalToConstant: 140)
         ])
 
         tapHintLabel.text = "Tap · Hold to lock"

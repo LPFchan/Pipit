@@ -9,12 +9,13 @@
 - App entry is **UIKit**: `@main` in `AppDelegate.swift`; no storyboard (window created in code).
 - Link the KMP `shared` framework and **Combine** so `IosBleProximityService`, `ConnectionState`, and `RootViewController` observation work.
 
-## Placeholder 3D
+## 3D fob (RealityKit)
 
-The home screen uses a 2D placeholder (rounded rect) for the Uguisu fob. To use the real 3D asset:
+The home screen uses **FobRealityView**, which loads `uguisu_placeholder.usdz` from the app bundle when present (RealityKit), with tap/long-press and button-depression animation. If the USDZ is not in the bundle, it falls back to **FobPlaceholderView** (2D).
 
-1. Convert `Pipit/assets/uguisu_placeholder.glb` to `.usdz` (e.g. Reality Converter or `xcrun usdzconvert`).
-2. Add the `.usdz` to the app bundle and load it in a `RealityKit` `Entity` or `ModelEntity` in place of `FobPlaceholderView`.
+1. Convert `Pipit/assets/uguisu_placeholder.glb` to `.usdz` (Reality Converter or `xcrun usdzconvert`).
+2. Add `uguisu_placeholder.usdz` to the iOS target’s **Copy Bundle Resources**.
+3. The app will load it via `Entity.loadModel(contentsOf:)` and animate the `button` entity for depression.
 
 ## BLE
 

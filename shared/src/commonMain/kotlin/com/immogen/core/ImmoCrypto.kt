@@ -72,7 +72,7 @@ object ImmoCrypto {
 
         val b0 = ByteArray(16)
         b0[0] = flagsB0
-        System.arraycopy(nonce, 0, b0, 1, NONCE_LEN)
+        nonce.copyInto(b0, destinationOffset = 1, startIndex = 0, endIndex = NONCE_LEN)
         b0[14] = ((payloadLen shr 8) and 0xFF).toByte()
         b0[15] = (payloadLen and 0xFF).toByte()
 
@@ -90,7 +90,7 @@ object ImmoCrypto {
             var blockIdx = 2
             while (aadIdx < aadLen) {
                 val n = min(16 - blockIdx, aadLen - aadIdx)
-                System.arraycopy(msg, aadIdx, block, blockIdx, n)
+                msg.copyInto(block, destinationOffset = blockIdx, startIndex = aadIdx, endIndex = aadIdx + n)
                 aadIdx += n
                 blockIdx += n
 
@@ -107,7 +107,7 @@ object ImmoCrypto {
         while (payloadIdx < payloadLen) {
             val block = ByteArray(16)
             val n = min(16, payloadLen - payloadIdx)
-            System.arraycopy(msg, aadLen + payloadIdx, block, 0, n)
+            msg.copyInto(block, destinationOffset = 0, startIndex = aadLen + payloadIdx, endIndex = aadLen + payloadIdx + n)
             xorBlock(tmp, x, block)
             Aes128.encryptBlock(key, tmp, x)
             payloadIdx += n
@@ -115,7 +115,7 @@ object ImmoCrypto {
 
         val a0 = ByteArray(16)
         a0[0] = (L - 1).toByte()
-        System.arraycopy(nonce, 0, a0, 1, NONCE_LEN)
+        nonce.copyInto(a0, destinationOffset = 1, startIndex = 0, endIndex = NONCE_LEN)
 
         val s0 = ByteArray(16)
         Aes128.encryptBlock(key, a0, s0)
@@ -123,14 +123,14 @@ object ImmoCrypto {
             outMic[i] = (x[i].toInt() xor s0[i].toInt()).toByte()
         }
 
-        System.arraycopy(msg, 0, outCt, 0, aadLen)
+        msg.copyInto(outCt, destinationOffset = 0, startIndex = 0, endIndex = aadLen)
 
         var offsetEnc = 0
         var ctrI = 1
         while (offsetEnc < payloadLen) {
             val ai = ByteArray(16)
             ai[0] = (L - 1).toByte()
-            System.arraycopy(nonce, 0, ai, 1, NONCE_LEN)
+            nonce.copyInto(ai, destinationOffset = 1, startIndex = 0, endIndex = NONCE_LEN)
             ai[14] = ((ctrI shr 8) and 0xFF).toByte()
             ai[15] = (ctrI and 0xFF).toByte()
 

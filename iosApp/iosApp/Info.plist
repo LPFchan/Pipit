@@ -2,18 +2,28 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>bluetooth-central</string>
-		<string>location</string>
-	</array>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Pipit uses your location to automatically detect your vehicle in the background and unlock it as you approach.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Pipit uses your location to automatically detect your vehicle in the background and unlock it as you approach.</string>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Pipit uses Bluetooth to securely connect to and communicate with your vehicle.</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Pipit uses Bluetooth to securely connect to and communicate with your vehicle.</string>
+        <key>CFBundleIdentifier</key>
+        <string>com.immogen.pipit</string>
+        <key>CFBundleName</key>
+        <string>Pipit</string>
+        <key>CFBundleExecutable</key>
+        <string>Pipit</string>
+        <key>NSBluetoothAlwaysUsageDescription</key>
+        <string>Pipit uses Bluetooth to securely connect to and communicate with your vehicle.</string>
+        <key>NSBluetoothPeripheralUsageDescription</key>
+        <string>Pipit uses Bluetooth to securely connect to and communicate with your vehicle.</string>
+        <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+        <string>Pipit uses your location to automatically detect your vehicle in the background and unlock it as you approach.</string>
+        <key>NSLocationWhenInUseUsageDescription</key>
+        <string>Pipit uses your location to automatically detect your vehicle in the background and unlock it as you approach.</string>
+        <key>UIBackgroundModes</key>
+        <array>
+                <string>bluetooth-central</string>
+                <string>location</string>
+        </array>
+        <key>UISupportedInterfaceOrientations</key>
+        <array>
+                <string>UIInterfaceOrientationPortrait</string>
+        </array>
 </dict>
 </plist>

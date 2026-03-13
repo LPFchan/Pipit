@@ -103,7 +103,7 @@ private fun HomeScreen(
             )
         }
         Spacer(modifier = Modifier.weight(1f))
-        FobPlaceholderView(
+        Fob3DView(
             onTap = onTapFob,
             onLongPress = onLongPressFob,
             modifier = Modifier

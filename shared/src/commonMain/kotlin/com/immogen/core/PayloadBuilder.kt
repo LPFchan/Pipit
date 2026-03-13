@@ -47,8 +47,8 @@ class PayloadBuilder {
         check(success) { "Failed to encrypt payload" }
         
         val payload = ByteArray(ImmoCrypto.PAYLOAD_LEN)
-        System.arraycopy(ct, 0, payload, 0, ImmoCrypto.MSG_LEN)
-        System.arraycopy(mic, 0, payload, ImmoCrypto.MSG_LEN, ImmoCrypto.MIC_LEN)
+        ct.copyInto(payload, destinationOffset = 0, startIndex = 0, endIndex = ImmoCrypto.MSG_LEN)
+        mic.copyInto(payload, destinationOffset = ImmoCrypto.MSG_LEN, startIndex = 0, endIndex = ImmoCrypto.MIC_LEN)
         
         return payload
     }
