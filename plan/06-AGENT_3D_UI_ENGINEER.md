@@ -208,3 +208,44 @@ To actually trigger the lock/unlock events when the user interacts with the 3D m
 - **Automate framework creation in Xcode build path:** The pre-build script prevents stale/missing framework states and makes simulator/device builds reproducible for iterative development.  
 - **Validate by build/run, not only static edits:** Repeated Gradle/Xcode verification ensured that changes were functional in toolchains, not just syntactically correct in files.  
 - **Checkpoint after stabilization:** A commit at this point provides a recoverable baseline before optional warning cleanup or further 3D asset pipeline work.
+
+---
+
+## 7. Session Continuation Log (2026-03-13, Kotlin/Gradle compatibility pass)
+
+### Date: 2026-03-13
+
+**What was done throughout this session**
+
+1. **Kotlin/Gradle compatibility target was selected and the root toolchain was upgraded**  
+   Confirmed a stable target of AGP `8.13.2` with Gradle `8.13`, keeping Java 17 as the Gradle runtime baseline. Updated the root Gradle plugin declarations and wrapper version accordingly.
+
+2. **Android Compose configuration was migrated to the Kotlin 2.x plugin path**  
+   Applied the Kotlin Compose plugin to `androidApp` and removed the legacy `composeOptions.kotlinCompilerExtensionVersion` configuration so the Kotlin 2.x Compose compiler warning disappeared.
+
+3. **Shared KMP Android support was migrated off the legacy bridge**  
+   Replaced the temporary `com.android.library` plus reflective `androidTarget()` compatibility path in `shared` with `com.android.kotlin.multiplatform.library`, moving Android configuration into the Kotlin DSL and preserving the iOS framework target set.
+
+4. **Android build configuration fallout from the uplift was corrected**  
+   Added project `gradle.properties` settings required by the newer toolchain, including `android.useAndroidX=true` and stronger Gradle heap settings. Raised Android `compileSdk` to `35` while leaving `targetSdk` at `34`, and aligned Java/Kotlin compilation to JVM 17 where needed.
+
+5. **Android app source-level build breaks were repaired**  
+   Fixed app-side issues that only became visible once the toolchain was healthy enough to compile deeper into the project: BuildConfig generation, Android manifest namespace cleanup, BLE payload builder usage, service binder import, SceneView 3D view compatibility, gesture-handler cleanup, and USB broadcast receiver typing.
+
+6. **Android deprecation warnings were cleaned up in a focused pass**  
+   Replaced deprecated Android platform calls in BLE, theme, and USB code with version-aware compatibility helpers so the upgraded app build output became materially cleaner without changing user-facing behavior.
+
+7. **Cross-platform validation was rerun after each major step**  
+   Repeatedly validated `:shared:compileIosMainKotlinMetadata`, `:shared:assemble`, and `:androidApp:assembleDebug`, using the local Android SDK path and Java 17. Verified that `shared.framework` artifacts still existed for `iosX64`, `iosArm64`, and `iosSimulatorArm64` after the migration.
+
+8. **The resulting work was split into focused commits**  
+   Created a baseline migration commit for the Gradle/AGP uplift and shared KMP plugin migration, then created a second Android app follow-up commit for build restoration and warning cleanup.
+
+**Reasoning behind these actions**
+
+- **Upgrade the toolchain before changing the shared Android plugin path:** Moving to the Android KMP library plugin without first reaching a supported AGP level would have made failures ambiguous and harder to unwind.  
+- **Preserve the iOS framework contract throughout the migration:** Xcode integration was already working, so the migration was structured to keep `shared.framework` generation stable while Android-side compatibility was improved.  
+- **Fix configuration blockers before treating compile errors as code problems:** Missing AndroidX flags, insufficient Gradle heap, and outdated compileSdk values were root-cause build issues that needed to be removed before judging app source failures.  
+- **Repair the minimum Android source surface needed to validate the migration:** Once the toolchain upgrade exposed real compile errors, they had to be corrected so the acceptance criteria could be proven on an actual Android assemble, not inferred from partial configuration success.  
+- **Clean warnings only after the build was stable:** Deprecation cleanup was intentionally treated as a follow-up pass so it did not obscure the more important toolchain and plugin migration decisions.  
+- **Split commits by engineering intent:** Separating the baseline compatibility migration from the Android app cleanup makes the history easier to review, bisect, and revert if any future regression appears.
