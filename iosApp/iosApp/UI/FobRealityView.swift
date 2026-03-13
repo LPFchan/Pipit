@@ -1,7 +1,6 @@
 import UIKit
 import RealityKit
 import SceneKit
-import ModelIO
 
 /// 3D fob view using RealityKit. Loads uguisu_placeholder.usdz from the app bundle when present,
 /// maps tap = unlock and 700ms long-press = lock, and animates button depression (~1–2mm).
@@ -59,38 +58,33 @@ final class FobRealityView: UIView {
     private func addFallback() {
         // Try to load a GLB via ModelIO/SceneKit as a better 3D fallback before using 2D placeholder
         if let glbUrl = Bundle.main.url(forResource: "uguisu_placeholder", withExtension: "glb") {
-            do {
-                // Prefer SceneKit's SCNSceneSource to load GLB; fall back to 2D placeholder if unsupported.
-                if let sceneSource = SCNSceneSource(url: glbUrl, options: nil), let scene = sceneSource.scene(options: nil) {
-                    let scnView = SCNView(frame: bounds)
-                    scnView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-                    scnView.backgroundColor = .clear
-                    scnView.scene = scene
-                    scnView.allowsCameraControl = false
-                    scnView.autoenablesDefaultLighting = true
-                    addSubview(scnView)
+            // Prefer SceneKit's SCNSceneSource to load GLB; fall back to 2D placeholder if unsupported.
+            if let sceneSource = SCNSceneSource(url: glbUrl, options: nil), let scene = sceneSource.scene(options: nil) {
+                let scnView = SCNView(frame: bounds)
+                scnView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                scnView.backgroundColor = .clear
+                scnView.scene = scene
+                scnView.allowsCameraControl = false
+                scnView.autoenablesDefaultLighting = true
+                addSubview(scnView)
 
-                    // Try to find the button node by name
-                    if let buttonNode = scene.rootNode.childNode(withName: "button", recursively: true) {
-                        buttonRestPosition = SIMD3<Float>(Float(buttonNode.position.x), Float(buttonNode.position.y), Float(buttonNode.position.z))
-                        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
-                        let long = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
-                        long.minimumPressDuration = 0.7
-                        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-                        pan.minimumNumberOfTouches = 1
-                        pan.maximumNumberOfTouches = 1
-                        scnView.addGestureRecognizer(tap)
-                        scnView.addGestureRecognizer(long)
-                        scnView.addGestureRecognizer(pan)
-                        tap.require(toFail: long)
+                // Try to find the button node by name
+                if let buttonNode = scene.rootNode.childNode(withName: "button", recursively: true) {
+                    buttonRestPosition = SIMD3<Float>(Float(buttonNode.position.x), Float(buttonNode.position.y), Float(buttonNode.position.z))
+                    let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+                    let long = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+                    long.minimumPressDuration = 0.7
+                    let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+                    pan.minimumNumberOfTouches = 1
+                    pan.maximumNumberOfTouches = 1
+                    scnView.addGestureRecognizer(tap)
+                    scnView.addGestureRecognizer(long)
+                    scnView.addGestureRecognizer(pan)
+                    tap.require(toFail: long)
 
-                        scnView.accessibilityElements = [buttonNode]
-                    }
-                    return
+                    scnView.accessibilityElements = [buttonNode]
                 }
-                // successfully loaded via SCNSceneSource and returned
-            } catch {
-                // fall through to 2D placeholder
+                return
             }
         }
 

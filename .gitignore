@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Gradle
+.gradle/
+**/build/
+
+# Xcode user data
+*.xcuserstate
+Pipit.xcodeproj/project.xcworkspace/xcuserdata/
+Pipit.xcodeproj/xcuserdata/

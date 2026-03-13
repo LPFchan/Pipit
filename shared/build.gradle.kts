@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
+
 plugins {
     kotlin("multiplatform") version "2.3.0"
     // Gradle's Kotlin/Multiplatform may expect publication support; add maven-publish
@@ -44,4 +46,8 @@ kotlin {
             }
         }
     }
+}
+
+tasks.withType<KotlinCompilationTask<*>>().configureEach {
+    compilerOptions.freeCompilerArgs.add("-Xexpect-actual-classes")
 }
