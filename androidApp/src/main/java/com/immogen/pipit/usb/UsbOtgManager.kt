@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,11 +44,13 @@ class UsbOtgManager(private val context: Context) {
     }
 
     private val usbReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: String) {
-            when (intent) {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action ?: return
+
+            when (action) {
                 ACTION_USB_PERMISSION -> {
                     synchronized(this) {
-                        val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                        val device = intent.parcelableExtraCompat<UsbDevice>(UsbManager.EXTRA_DEVICE)
                         if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
                             device?.let { connectDevice(it) }
                         } else {
@@ -56,11 +59,11 @@ class UsbOtgManager(private val context: Context) {
                     }
                 }
                 UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
-                    val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                    val device = intent.parcelableExtraCompat<UsbDevice>(UsbManager.EXTRA_DEVICE)
                     device?.let { requestPermission(it) }
                 }
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
-                    val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                    val device = intent.parcelableExtraCompat<UsbDevice>(UsbManager.EXTRA_DEVICE)
                     // Disconnect logic
                     _usbState.value = UsbState.Disconnected
                 }
@@ -80,6 +83,15 @@ class UsbOtgManager(private val context: Context) {
     fun cleanup() {
         context.unregisterReceiver(usbReceiver)
         // Close serial ports, unmount mass storage, etc.
+    }
+
+    private inline fun <reified T : android.os.Parcelable> Intent.parcelableExtraCompat(name: String): T? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(name, T::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            getParcelableExtra(name)
+        }
     }
 
     private fun scanForDevices() {

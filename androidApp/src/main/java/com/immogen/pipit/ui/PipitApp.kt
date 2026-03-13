@@ -154,7 +154,6 @@ private fun FobPlaceholderView(
                         pressed = true
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onLongPress()
-                        tryAwaitRelease()
                         pressed = false
                     }
                 )

@@ -1,6 +1,7 @@
 package com.immogen.pipit.ui.theme
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -33,7 +34,7 @@ fun PipitTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.surface.toArgb()
+            setStatusBarColorCompat(window, colorScheme.surface.toArgb())
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
@@ -41,4 +42,13 @@ fun PipitTheme(
         colorScheme = colorScheme,
         content = content
     )
+}
+
+private fun setStatusBarColorCompat(window: android.view.Window, color: Int) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+        @Suppress("DEPRECATION")
+        run {
+            window.statusBarColor = color
+        }
+    }
 }

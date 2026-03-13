@@ -20,7 +20,6 @@ import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
-import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberNode
 
@@ -40,7 +39,6 @@ fun Fob3DView(
         targetValue = if (pressed) 1f else 0f,
         animationSpec = tween(80), label = "depress"
     )
-    val modelNodeRef = remember { mutableStateOf<ModelNode?>(null) }
 
     Box(
         modifier = modifier
@@ -64,8 +62,18 @@ fun Fob3DView(
     ) {
         val engine = rememberEngine()
         val modelLoader = rememberModelLoader(engine)
-        val environmentLoader = rememberEnvironmentLoader(engine)
         val centerNode = rememberNode(engine)
+        val modelNode = remember(modelLoader) {
+            runCatching {
+                val instance = modelLoader.createModelInstance(
+                    assetFileLocation = "uguisu_placeholder.glb"
+                )
+                ModelNode(
+                    modelInstance = instance,
+                    scaleToUnits = 0.08f
+                )
+            }.getOrNull()
+        }
 
         val cameraNode = rememberCameraNode(engine) {
             position = Position(y = -0.02f, z = 0.12f)
@@ -85,33 +93,11 @@ fun Fob3DView(
             ),
             childNodes = listOf(
                 centerNode,
-                rememberNode {
-                    try {
-                        val instance = modelLoader.createModelInstance(
-                            assetFileLocation = "uguisu_placeholder.glb"
-                        )
-                        ModelNode(
-                            modelInstance = instance,
-                            scaleToUnits = 0.08f
-                        ).also { modelNodeRef.value = it }
-                    } catch (e: Exception) {
-                        modelNodeRef.value = null
-                        fallbackNode
-                    }
-                }
+                modelNode ?: fallbackNode
             ),
-            environment = try {
-                environmentLoader.createEnvironment(
-                    skybox = io.github.sceneview.loaders.Skybox.Builder()
-                        .color(0.75f, 0.75f, 0.8f, 1f)
-                        .build(engine)
-                )
-            } catch (e: Exception) {
-                null
-            },
             onFrame = {
                 val zOffset = -0.002f * depressTarget
-                modelNodeRef.value?.position = Position(z = zOffset)
+                modelNode?.position = Position(z = zOffset)
             }
         )
     }

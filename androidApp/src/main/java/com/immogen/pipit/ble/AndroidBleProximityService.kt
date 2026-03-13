@@ -10,6 +10,7 @@ import android.bluetooth.le.*
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Binder
 import android.os.IBinder
 import android.os.ParcelUuid
 import android.util.Log
@@ -73,7 +74,7 @@ class AndroidBleProximityService : Service() {
             }
             ACTION_STOP_FOREGROUND -> {
                 stopScanning()
-                stopForeground(true)
+                stopForegroundCompat()
                 stopSelf()
             }
             ACTION_START_WINDOW_SCAN -> {
@@ -230,19 +231,17 @@ class AndroidBleProximityService : Service() {
                 try {
                     // TODO: Replace with actual KeyStore retrieval
                     val dummyKey = ByteArray(16) { 0 }
-                    val dummyCounter = 1L
-                    val dummySlotId = 1.toByte()
+                    val dummyCounter = 1u
+                    val dummySlotId = 1
                     
-                    val payload = PayloadBuilder.buildPayload(
+                    val payload = PayloadBuilder().buildPayload(
                         slotId = dummySlotId,
                         counter = dummyCounter,
-                        command = if (isUnlock) PayloadBuilder.CMD_UNLOCK else PayloadBuilder.CMD_LOCK,
+                        command = if (isUnlock) ImmoCrypto.Command.Unlock else ImmoCrypto.Command.Lock,
                         key = dummyKey
                     )
                     
-                    char.value = payload
-                    char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                    val success = gatt.writeCharacteristic(char)
+                    val success = writeCharacteristicCompat(gatt, char, payload)
                     Log.d(TAG, "Payload sent: $success")
                     
                     // Fire and forget, disconnect immediately
@@ -280,6 +279,37 @@ class AndroidBleProximityService : Service() {
             // .setSmallIcon(R.drawable.ic_notification) // Needs actual icon
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+    }
+
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+    }
+
+    private fun writeCharacteristicCompat(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        payload: ByteArray
+    ): Boolean {
+        characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gatt.writeCharacteristic(
+                characteristic,
+                payload,
+                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+            ) == BluetoothStatusCodes.SUCCESS
+        } else {
+            @Suppress("DEPRECATION")
+            run {
+                characteristic.value = payload
+                gatt.writeCharacteristic(characteristic)
+            }
+        }
     }
 
     inner class LocalBinder : Binder() {
