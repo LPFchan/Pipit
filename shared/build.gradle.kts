@@ -1,3 +1,6 @@
+import com.android.build.gradle.LibraryExtension
+import org.gradle.api.JavaVersion
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 
 plugins {
@@ -7,12 +10,46 @@ plugins {
     id("maven-publish")
 }
 
+val hasConfiguredAndroidSdk =
+    rootProject.file("local.properties").isFile ||
+        providers.environmentVariable("ANDROID_HOME").isPresent ||
+        providers.environmentVariable("ANDROID_SDK_ROOT").isPresent
+
+// Keep the legacy Android target behind an SDK-aware gate until the repo can
+// move to the Android KMP library plugin, which requires a newer AGP baseline.
+val enableLegacyAndroidTarget = hasConfiguredAndroidSdk
+
+if (enableLegacyAndroidTarget) {
+    apply(plugin = "com.android.library")
+
+    extensions.configure<LibraryExtension> {
+        namespace = "com.immogen.pipit.shared"
+        compileSdk = 34
+
+        defaultConfig {
+            minSdk = 26
+        }
+
+        compileOptions {
+            sourceCompatibility = JavaVersion.VERSION_17
+            targetCompatibility = JavaVersion.VERSION_17
+        }
+    }
+}
+
+private fun KotlinMultiplatformExtension.configureLegacyAndroidTargetCompat() {
+    val androidTargetMethod = javaClass.methods.firstOrNull {
+        it.name == "androidTarget" && it.parameterCount == 0
+    } ?: error(
+        "Legacy androidTarget() support is unavailable. Continue with the Android KMP library plugin migration plan."
+    )
+
+    androidTargetMethod.invoke(this)
+}
+
 kotlin {
-    // Make the Android target optional so we can build iOS frameworks on machines
-    // that don't have the Android Gradle plugin applied (CI / mac previews).
-    val hasAndroidPlugin = project.plugins.findPlugin("com.android.library") != null || project.plugins.findPlugin("com.android.application") != null
-    if (hasAndroidPlugin) {
-        androidTarget()
+    if (enableLegacyAndroidTarget) {
+        configureLegacyAndroidTargetCompat()
     }
 
     val iosX64Target = iosX64()
@@ -38,7 +75,7 @@ kotlin {
                 implementation(kotlin("test"))
             }
         }
-        if (hasAndroidPlugin) {
+        if (enableLegacyAndroidTarget) {
             val androidMain by getting {
                 dependencies {
                     implementation("androidx.security:security-crypto:1.1.0-alpha06")
