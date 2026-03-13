@@ -89,6 +89,27 @@ class IosBleProximityService: NSObject, ObservableObject {
         }
     }
     
+    /// Called from UI when user taps the fob (unlock). Connects if needed and sends unlock payload.
+    func sendUnlockCommand() async {
+        guard centralManager.state == .poweredOn else { return }
+        if let p = peripheral {
+            // Already have a peripheral; connect and send if not connected
+            if p.state != .connected {
+                centralManager.connect(p, options: nil)
+            }
+            // Payload sent on didDiscoverCharacteristics when connected
+        }
+        startGattScan()
+        // TODO: when first peripheral discovered, connect and send unlock (same as evaluateRssiForAction path)
+    }
+    
+    /// Called from UI when user long-presses the fob (lock). Connects if needed and sends lock payload.
+    func sendLockCommand() async {
+        guard centralManager.state == .poweredOn else { return }
+        startGattScan()
+        // TODO: when first peripheral discovered, connect and send lock
+    }
+    
     private func startGattScan() {
         guard centralManager.state == .poweredOn else { return }
         connectionState = .scanning

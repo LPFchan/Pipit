@@ -282,7 +282,10 @@ class AndroidBleProximityService : Service() {
             .build()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    inner class LocalBinder : Binder() {
+        fun getBleService(): BleService = bleStateService
+    }
+    override fun onBind(intent: Intent?): IBinder? = LocalBinder()
     
     override fun onDestroy() {
         super.onDestroy()

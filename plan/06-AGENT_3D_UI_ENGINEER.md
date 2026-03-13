@@ -106,3 +106,36 @@ To actually trigger the lock/unlock events when the user interacts with the 3D m
 *   Observe the `BleState` Flow from `BleService.kt` to drive the visibility of the Disconnect Overlay.
 *   When a short press (tap) is detected, call `bleService.sendUnlockCommand()`.
 *   When a long press (700ms) is detected, call `bleService.sendLockCommand()`.
+
+---
+
+## 3. Implementation Log
+
+**Date:** 2026-03-13
+
+**What was done**
+
+1. **Placeholder 3D model**  
+   Added a script (`scripts/generate_uguisu_placeholder_glb_minimal.py`, Python stdlib only) that generates `assets/uguisu_placeholder.glb` with three named meshes: `body`, `button`, `led_rgb`, so the rendering and LED/button-depression contract can be implemented before the final Uguisu enclosure CAD exists. Documented conversion to `.usdz` for iOS in `assets/README.md`.
+
+2. **Android app shell**  
+   Introduced root Gradle setup (`settings.gradle.kts`, `build.gradle.kts`), `androidApp/build.gradle.kts` (Compose, Material3), `MainActivity` (binds to `AndroidBleProximityService`, gets `BleService`, observes `BleState`), and Compose UI: home screen with gear, centered fob placeholder (tap = unlock, long-press = lock), “Tap · Hold to lock” hint (dismissible), button-depression animation, disconnect overlay driven by BLE state, `AnimatedContent` transition to Settings, and placeholder views for Onboarding and Settings. Made the BLE service bindable (`LocalBinder` / `getBleService()`) so the activity can call `sendUnlockCommand()` / `sendLockCommand()`. Added resources (themes, strings, launcher drawable) and manifest entry/activity.
+
+3. **iOS app shell (UIKit)**  
+   Implemented the iOS shell in **UIKit** (not SwiftUI) to match *PIPIT_MASTER_ARCHITECTURE*, which specifies “Native UI: **UIKit** (iOS) and **Jetpack Compose** (Android).”  
+   - **AppDelegate.swift:** `@main`, creates `UIWindow`, sets `rootViewController` to `RootViewController(bleService:)`.  
+   - **RootViewController:** Container that shows `HomeViewController` or `SettingsPlaceholderViewController`, observes `bleService.$connectionState` (Combine) and shows/hides `DisconnectOverlayView` when not connected, and keeps “Tap · Hold to lock” hint state across Home/Settings.  
+   - **HomeViewController:** Gear button, `FobPlaceholderView`, tap-hint label; forwards fob tap/long-press and hint dismissal.  
+   - **FobPlaceholderView** (UIView): 200×140 rounded card placeholder, `UILongPressGestureRecognizer` (0.7s) for lock, `UITapGestureRecognizer` (require long-press to fail) for tap = unlock, `UIPanGestureRecognizer` for press state; light/heavy haptics and visual “depression” (offset + shadow).  
+   - **DisconnectOverlayView** (UIView): Semi-transparent overlay, “○ Disconnected”; top 56pt excluded from hit-test so the gear stays tappable.  
+   - **SettingsPlaceholderViewController** and **OnboardingPlaceholderViewController:** Placeholder view controllers for Agents 8 and 7.  
+   Removed the earlier SwiftUI app and views (`PipitApp.swift`, `RootView.swift`, `HomeView.swift`, `SettingsPlaceholderView.swift`, `OnboardingPlaceholderView.swift`). Updated `iosApp/README.md` for UIKit entry and setup.
+
+4. **BLE integration**  
+   Android: Activity binds to the service and uses `BleService.state` for the overlay and for `sendUnlockCommand()` / `sendLockCommand()` on fob actions. iOS: `IosBleProximityService` already had `connectionState`; added async `sendUnlockCommand()` / `sendLockCommand()` stubs for the UI to call (actual connect-and-send path left as TODO).
+
+**Reasoning**
+
+- **Placeholder 3D:** The brief assumes a real Uguisu 3D asset; the user stated the 3D model was not ready. A programmatic GLB with the required mesh names (`led_rgb`, depressible “button”) lets the app shell, gestures, and BLE wiring be built and tested without blocking on CAD; the final asset can replace the placeholder with minimal code change.
+- **UIKit for iOS:** The master architecture explicitly requires UIKit for iOS. An initial implementation used SwiftUI; that was reverted so the codebase stays aligned with the spec and with the stated rationale (reliable BLE/camera/keystore integration and native 3D). All iOS UI is therefore implemented with `UIViewController`, `UIView`, and UIKit gesture recognizers.
+- **No Gradle wrapper / no Xcode project in repo:** The Pipit folder did not include a Gradle wrapper or an Xcode project file. The implementation adds the app code and build configuration (Gradle for Android, file layout and README for iOS) so that when the wrapper is added or the project is opened from a parent KMP setup, the shell builds and runs as described.
