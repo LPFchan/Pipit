@@ -171,3 +171,40 @@ To actually trigger the lock/unlock events when the user interacts with the 3D m
    - **assets/README.md** and **iosApp/README.md** updated: Android uses the GLB from assets; iOS requires converting the GLB to `.usdz` (Reality Converter or `xcrun usdzconvert`) and adding `uguisu_placeholder.usdz` to the target’s Copy Bundle Resources.
 
 **Status:** Revision addressed. Deliverable 1 is satisfied by using SceneView (Android) and RealityKit (iOS) to render the placeholder 3D model, with tap/hold mapped to unlock/lock and button depression applied to the 3D geometry (whole-model translation on Android; named `button` entity on iOS when USDZ is present).
+
+---
+
+## 6. Session Continuation Log (2026-03-13)
+
+### Date: 2026-03-13
+
+**What was done across this session (continuation)**
+
+1. **Kotlin/iOS secure storage implementation was repaired and compiled**  
+   Updated the iOS `KeyStoreManager` implementation in shared KMP to use CoreFoundation-compatible dictionary/data values with Security `SecItem*` APIs. The previous interop shape caused Kotlin/Native type incompatibilities. The revised implementation completed compile/assemble successfully for shared targets.
+
+2. **KMP iOS framework generation was enabled at the build level**  
+   Added `binaries.framework` configuration for `iosX64`, `iosArm64`, and `iosSimulatorArm64` in shared Gradle configuration so framework link tasks produce actual `.framework` artifacts. Before this change, assemble could pass while no consumable iOS framework was emitted.
+
+3. **iOS app wiring was switched from stubs to shared payload generation path**  
+   Updated iOS BLE service integration to call KMP-exported payload/key logic for lock/unlock command construction when the shared module is available. This replaced placeholder-only behavior with an integration path that exercises the shared crypto/payload contract.
+
+4. **Xcode project was wired to build and link the KMP framework**  
+   Added a build phase that invokes the relevant Gradle framework-link task by platform/config, and set linker/framework search settings so iOS app build resolves and links `shared` framework correctly.
+
+5. **End-to-end validation was run**  
+   - Shared KMP compile/assemble tasks succeeded with OpenJDK 17.  
+   - Simulator Xcode build succeeded.  
+   - Simulator install/launch was validated earlier in-session for the Pipit bundle.
+
+6. **Workspace hygiene and checkpointing were performed**  
+   Removed generated build output when asked to clean artifacts, revalidated, then created a checkpoint commit (`1098d66`) capturing the current integration state.
+
+**Reasoning behind these actions**
+
+- **Fix interop first:** The iOS Keychain implementation was a hard blocker for Kotlin/Native compilation, so compile correctness had to be restored before any runtime integration work.  
+- **Generate real frameworks, not just metadata:** iOS app linkage depends on concrete framework artifacts; successful metadata/assemble alone is not sufficient for Xcode consumption.  
+- **Exercise shared logic from iOS app:** Wiring lock/unlock through shared payload code validates the intended architecture and reduces divergence between app-side behavior and firmware protocol logic.  
+- **Automate framework creation in Xcode build path:** The pre-build script prevents stale/missing framework states and makes simulator/device builds reproducible for iterative development.  
+- **Validate by build/run, not only static edits:** Repeated Gradle/Xcode verification ensured that changes were functional in toolchains, not just syntactically correct in files.  
+- **Checkpoint after stabilization:** A commit at this point provides a recoverable baseline before optional warning cleanup or further 3D asset pipeline work.
