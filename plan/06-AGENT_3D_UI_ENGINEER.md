@@ -249,3 +249,41 @@ To actually trigger the lock/unlock events when the user interacts with the 3D m
 - **Repair the minimum Android source surface needed to validate the migration:** Once the toolchain upgrade exposed real compile errors, they had to be corrected so the acceptance criteria could be proven on an actual Android assemble, not inferred from partial configuration success.  
 - **Clean warnings only after the build was stable:** Deprecation cleanup was intentionally treated as a follow-up pass so it did not obscure the more important toolchain and plugin migration decisions.  
 - **Split commits by engineering intent:** Separating the baseline compatibility migration from the Android app cleanup makes the history easier to review, bisect, and revert if any future regression appears.
+
+## 8. Pipit KMP Compatibility Upgrade Status
+
+### Completed on 2026-03-13
+
+- Upgraded the Gradle wrapper to `8.13`.
+- Upgraded Android Gradle Plugin usage to `8.13.2`.
+- Migrated `androidApp` to the Kotlin 2.x Compose compiler plugin path.
+- Replaced the shared module legacy `com.android.library` + `androidTarget()` bridge with `com.android.kotlin.multiplatform.library`.
+- Preserved iOS framework generation for `iosX64`, `iosArm64`, and `iosSimulatorArm64`.
+- Restored successful validation for both `:shared:assemble` and `:androidApp:assembleDebug`.
+
+### Final validation state
+
+- `:shared:compileIosMainKotlinMetadata` passes with Java 17.
+- `:shared:assemble` succeeds and still emits `shared.framework` outputs for all current iOS targets.
+- `:androidApp:assembleDebug` succeeds on a machine with Android SDK platform 35 available.
+- The previous Compose compiler plugin warning is resolved.
+- The previous shared `androidTarget()` compatibility warning is resolved.
+
+### Resulting build baseline
+
+- Java runtime for Gradle: `17`
+- Gradle wrapper: `8.13`
+- AGP: `8.13.2`
+- Shared Android plugin: `com.android.kotlin.multiplatform.library`
+- Android compileSdk: `35`
+- Android targetSdk: `34`
+
+### Remaining non-blocking warnings
+
+- Android source code still has a small set of platform API deprecation warnings in BLE, theme, and USB code.
+- Native libraries from SceneView / Filament are packaged without symbol stripping during debug builds.
+
+### Notes
+
+- The temporary SDK-gated legacy Android target bridge has been removed from `shared/build.gradle.kts`.
+- README build requirements were updated to match the new post-migration toolchain.
