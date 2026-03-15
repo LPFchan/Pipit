@@ -37,6 +37,7 @@ kotlin {
             dependencies {
                 // Add common dependencies here
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+                implementation("com.ionspin.kotlin:multiplatform-crypto-libsodium-bindings:0.9.5")
             }
         }
         val commonTest by getting {

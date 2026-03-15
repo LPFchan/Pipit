@@ -1,5 +1,10 @@
 package com.immogen.core
 
+import com.ionspin.kotlin.crypto.LibsodiumInitializer
+import com.ionspin.kotlin.crypto.pwhash.PasswordHash
+import com.ionspin.kotlin.crypto.pwhash.crypto_pwhash_ALG_DEFAULT
+import com.ionspin.kotlin.crypto.pwhash.crypto_pwhash_argon2i_ALG_ARGON2I13
+import com.ionspin.kotlin.crypto.pwhash.crypto_pwhash_argon2id_ALG_ARGON2ID13
 import kotlin.math.min
 
 /**
@@ -11,6 +16,32 @@ object ImmoCrypto {
     const val MSG_LEN = 6      // prefix(1) + counter(4) + command(1)
     const val PAYLOAD_LEN = 14 // msg(6) + mic(8)
     const val NONCE_LEN = 13   // le32(counter) + zeros(9)
+    const val QR_SALT_LEN = 16
+    const val QR_KEY_LEN = 16
+    const val QR_ENCRYPTED_KEY_LEN = QR_KEY_LEN + MIC_LEN
+
+    enum class ArgonVariant {
+        Argon2d,
+        Argon2i,
+        Argon2id,
+    }
+
+    data class Argon2Params(
+        val parallelism: Int = 1,
+        val outputLength: UInt = QR_KEY_LEN.toUInt(),
+        val requestedMemoryKiB: UInt = 262144u,
+        val iterations: Int = 3,
+        val key: ByteArray = ByteArray(0),
+        val associatedData: ByteArray = ByteArray(0),
+        val variant: ArgonVariant = ArgonVariant.Argon2id,
+    )
+
+    open class ProvisioningCryptoException(message: String) : Exception(message)
+
+    class InvalidProvisioningDataException(message: String) : ProvisioningCryptoException(message)
+
+    class InvalidProvisioningPinException :
+        ProvisioningCryptoException("Invalid PIN or corrupted provisioning payload")
 
     enum class Command(val value: Byte) {
         Unlock(0x01),
@@ -44,6 +75,94 @@ object ImmoCrypto {
         msg[0] = prefix
         le32Write(msg, 1, counter)
         msg[5] = command.value
+    }
+
+    suspend fun initialize() {
+        if (!LibsodiumInitializer.isInitialized()) {
+            LibsodiumInitializer.initialize()
+        }
+    }
+
+    fun isInitialized(): Boolean = LibsodiumInitializer.isInitialized()
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    fun deriveKey(
+        pin: String,
+        salt: ByteArray,
+        params: Argon2Params = Argon2Params(),
+    ): ByteArray {
+        validateSalt(salt)
+        require(pin.isNotEmpty()) { "PIN must not be empty" }
+        check(LibsodiumInitializer.isInitialized()) { "Libsodium must be initialized before deriving keys" }
+
+        val memLimitBytesLong = params.requestedMemoryKiB.toLong() * 1024L
+        require(memLimitBytesLong <= Int.MAX_VALUE.toLong()) { "Requested memory exceeds Int range" }
+
+        return PasswordHash.pwhash(
+            outputLength = params.outputLength.toInt(),
+            password = pin,
+            salt = salt.toUByteArray(),
+            opsLimit = params.iterations.toULong(),
+            memLimit = memLimitBytesLong.toInt(),
+            algorithm = params.variant.toPasswordHashAlgorithm(),
+        ).toByteArray()
+    }
+
+    fun decryptProvisionedKey(
+        pin: String,
+        salt: ByteArray,
+        encryptedKey: ByteArray,
+        params: Argon2Params = Argon2Params(),
+    ): ByteArray {
+        val derivedKey = deriveKey(pin, salt, params)
+        return decryptProvisionedKey(derivedKey, salt, encryptedKey)
+    }
+
+    fun decryptProvisionedKey(
+        derivedKey: ByteArray,
+        salt: ByteArray,
+        encryptedKey: ByteArray,
+    ): ByteArray {
+        validateSalt(salt)
+        validateKeyLength(derivedKey, "Derived key")
+        validateEncryptedKey(encryptedKey)
+
+        val nonce = salt.copyOf(NONCE_LEN)
+        val ciphertext = encryptedKey.copyOfRange(0, QR_KEY_LEN)
+        val mic = encryptedKey.copyOfRange(QR_KEY_LEN, QR_ENCRYPTED_KEY_LEN)
+        val plaintext = ByteArray(QR_KEY_LEN)
+
+        if (!ccmAuthDecrypt(derivedKey, nonce, ciphertext, ciphertext.size, 0, mic, plaintext)) {
+            throw InvalidProvisioningPinException()
+        }
+
+        return plaintext
+    }
+
+    fun encryptProvisionedKey(
+        derivedKey: ByteArray,
+        salt: ByteArray,
+        slotKey: ByteArray,
+    ): ByteArray {
+        validateSalt(salt)
+        validateKeyLength(derivedKey, "Derived key")
+        validateKeyLength(slotKey, "Slot key")
+
+        val nonce = salt.copyOf(NONCE_LEN)
+        val ciphertext = ByteArray(slotKey.size)
+        val mic = ByteArray(MIC_LEN)
+        val success = ccmAuthEncrypt(
+            key = derivedKey,
+            nonce = nonce,
+            msg = slotKey,
+            msgLen = slotKey.size,
+            aadLen = 0,
+            outCt = ciphertext,
+            outMic = mic,
+        )
+
+        check(success) { "Failed to encrypt provisioning payload" }
+        return ciphertext + mic
     }
 
     private fun xorBlock(dst: ByteArray, a: ByteArray, b: ByteArray, offsetA: Int = 0, offsetB: Int = 0) {
@@ -148,11 +267,93 @@ object ImmoCrypto {
         return true
     }
 
+    fun ccmAuthDecrypt(
+        key: ByteArray,
+        nonce: ByteArray,
+        ct: ByteArray,
+        payloadLen: Int,
+        aadLen: Int,
+        mic: ByteArray,
+        outMsg: ByteArray,
+    ): Boolean {
+        if (payloadLen > ct.size || aadLen > payloadLen || mic.size < MIC_LEN || outMsg.size < payloadLen) {
+            return false
+        }
+
+        ct.copyInto(outMsg, destinationOffset = 0, startIndex = 0, endIndex = aadLen)
+
+        val encryptedPayloadLen = payloadLen - aadLen
+        val l = 2
+        var offsetEnc = 0
+        var ctrI = 1
+
+        while (offsetEnc < encryptedPayloadLen) {
+            val ai = ByteArray(16)
+            ai[0] = (l - 1).toByte()
+            nonce.copyInto(ai, destinationOffset = 1, startIndex = 0, endIndex = NONCE_LEN)
+            ai[14] = ((ctrI shr 8) and 0xFF).toByte()
+            ai[15] = (ctrI and 0xFF).toByte()
+
+            val si = ByteArray(16)
+            Aes128.encryptBlock(key, ai, si)
+
+            val n = min(16, encryptedPayloadLen - offsetEnc)
+            for (j in 0 until n) {
+                outMsg[aadLen + offsetEnc + j] = (ct[aadLen + offsetEnc + j].toInt() xor si[j].toInt()).toByte()
+            }
+            offsetEnc += n
+            ctrI++
+        }
+
+        val expectedCt = ByteArray(payloadLen)
+        val expectedMic = ByteArray(MIC_LEN)
+        val success = ccmAuthEncrypt(
+            key = key,
+            nonce = nonce,
+            msg = outMsg,
+            msgLen = payloadLen,
+            aadLen = aadLen,
+            outCt = expectedCt,
+            outMic = expectedMic,
+        )
+
+        if (!success || !constantTimeEq(expectedMic, mic, MIC_LEN)) {
+            outMsg.fill(0)
+            return false
+        }
+
+        return true
+    }
+
     fun constantTimeEq(a: ByteArray, b: ByteArray, n: Int): Boolean {
         var diff = 0
         for (i in 0 until n) {
             diff = diff or (a[i].toInt() xor b[i].toInt())
         }
         return diff == 0
+    }
+
+    private fun validateSalt(salt: ByteArray) {
+        if (salt.size != QR_SALT_LEN) {
+            throw InvalidProvisioningDataException("Salt must be exactly 16 bytes")
+        }
+    }
+
+    private fun validateKeyLength(key: ByteArray, label: String) {
+        if (key.size != QR_KEY_LEN) {
+            throw InvalidProvisioningDataException("$label must be exactly 16 bytes")
+        }
+    }
+
+    private fun validateEncryptedKey(encryptedKey: ByteArray) {
+        if (encryptedKey.size != QR_ENCRYPTED_KEY_LEN) {
+            throw InvalidProvisioningDataException("Encrypted key must be exactly 24 bytes")
+        }
+    }
+
+    private fun ArgonVariant.toPasswordHashAlgorithm(): Int = when (this) {
+        ArgonVariant.Argon2d -> crypto_pwhash_ALG_DEFAULT
+        ArgonVariant.Argon2i -> crypto_pwhash_argon2i_ALG_ARGON2I13
+        ArgonVariant.Argon2id -> crypto_pwhash_argon2id_ALG_ARGON2ID13
     }
 }

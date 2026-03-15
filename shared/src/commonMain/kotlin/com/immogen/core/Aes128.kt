@@ -33,7 +33,7 @@ internal object Aes128 {
         require(input.size == 16) { "Input must be 16 bytes" }
         require(output.size >= 16) { "Output must be at least 16 bytes" }
 
-        val roundKeys = IntArray(44)
+        val roundKeys = IntArray(176)
         keyExpansion(key, roundKeys)
 
         val state = IntArray(16)
@@ -56,6 +56,8 @@ internal object Aes128 {
     }
 
     private fun keyExpansion(key: ByteArray, roundKeys: IntArray) {
+        require(roundKeys.size >= 176) { "Round key buffer must be at least 176 bytes" }
+
         for (i in 0 until 4) {
             roundKeys[i * 4] = key[i * 4].toInt() and 0xFF
             roundKeys[i * 4 + 1] = key[i * 4 + 1].toInt() and 0xFF
@@ -63,7 +65,7 @@ internal object Aes128 {
             roundKeys[i * 4 + 3] = key[i * 4 + 3].toInt() and 0xFF
         }
 
-        for (i in 4 until 44 step 4) {
+        for (i in 16 until 176 step 4) {
             var k0 = roundKeys[i - 4]
             var k1 = roundKeys[i - 3]
             var k2 = roundKeys[i - 2]

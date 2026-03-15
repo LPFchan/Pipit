@@ -30,6 +30,7 @@ Your goal is to build the immediate "Camera-First" onboarding flow triggered whe
 *   **Integration Contract:** 
     *   **App Shell:** You will build your UI inside the `OnboardingView` placeholder provided by Agent 6.
     *   **Crypto:** Do not implement Argon2id yourself. Call the KMP wrapper provided by Agent 2 (e.g., `ImmoCrypto.deriveKey(pin, salt)`).
+    *   **Crypto Initialization:** The shared Argon2id implementation is libsodium-backed. Ensure `ImmoCrypto.initialize()` has completed before the first `deriveKey(...)` call. Treat this as a required startup/onboarding precondition, not as optional defensive code.
     *   **BLE Scanning:** For the "Recover Key" flow, do not write raw BLE scanning logic. Subscribe to the foreground scanning hook/Flow provided by Agent 4.
 
 ## 2. Technical Context
@@ -80,7 +81,8 @@ Your goal is to build the immediate "Camera-First" onboarding flow triggered whe
 └─────────────────────────────┘
 ```
 *   **UI:** "Enter your 6-digit PIN. This is the PIN you set during Guillemot setup." with a 6-box input field.
-*   **Logic:** Use Argon2id (parameters from QR salt) to derive the AES-128 key and decrypt the `ekey`. The UI must handle incorrect PINs with an inline error message.
+*   **Logic:** Use the shared KMP API from Agent 2 to derive the AES-128 key and decrypt the `ekey`. For owner/migration QR payloads, call `ImmoCrypto.initialize()` first if startup has not already done so, then call `ImmoCrypto.decryptProvisionedKey(pin, salt, ekey)` or the equivalent shared flow rather than re-implementing AES-CCM or Argon2id in UI code. The UI must handle `InvalidProvisioningPinException` with an inline incorrect-PIN message.
+*   **QR crypto contract:** Owner/migration payloads use Whimbrel-compatible values: 16-byte salt, 16-byte encrypted slot key plus 8-byte MIC, and a 13-byte AES-CCM nonce derived from the first 13 bytes of the salt. Parse `salt` and `ekey` as hex before handing them to the shared crypto layer.
 
 ### 2.3 Step 3: QR Decryption Animation
 On successful PIN entry (or immediately for Guest scans), play a ~1 second animation:
