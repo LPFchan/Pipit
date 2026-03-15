@@ -9,3 +9,6 @@
 *.xcuserstate
 Pipit.xcodeproj/project.xcworkspace/xcuserdata/
 Pipit.xcodeproj/xcuserdata/
+
+# Generated iOS local builds
+iosApp/.build/
