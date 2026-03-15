@@ -2,6 +2,8 @@
 
 *Date: 2026-03-11*
 
+*Sequencing Updated: 2026-03-16*
+
 **Status:** Active Brief
 **Scope:** Camera Viewfinder, QR Parsing, and Key Setup Flow
 **Working Directory:** `Pipit/` (You must execute all work within this specific directory)
@@ -28,10 +30,37 @@ Your goal is to build the immediate "Camera-First" onboarding flow triggered whe
 *   **Deliverable 2:** QR Payload parser (`immogen://prov?...`) that routes to encrypted or plaintext flows.
 *   **Deliverable 3:** The PIN Entry UI and the visual "QR Decryption Particle Animation."
 *   **Integration Contract:** 
-    *   **App Shell:** You will build your UI inside the `OnboardingView` placeholder provided by Agent 6.
+    *   **App Shell:** You now own replacing the existing onboarding placeholders and wiring real onboarding presentation into the app shell. On Android this means the onboarding route in `androidApp/src/main/java/com/immogen/pipit/ui/PipitApp.kt`. On iOS this means replacing `iosApp/iosApp/UI/OnboardingPlaceholderViewController.swift` and wiring it through `iosApp/iosApp/UI/RootViewController.swift`.
     *   **Crypto:** Do not implement Argon2id yourself. Call the KMP wrapper provided by Agent 2 (e.g., `ImmoCrypto.deriveKey(pin, salt)`).
     *   **Crypto Initialization:** The shared Argon2id implementation is libsodium-backed. Ensure `ImmoCrypto.initialize()` has completed before the first `deriveKey(...)` call. Treat this as a required startup/onboarding precondition, not as optional defensive code.
     *   **BLE Scanning:** For the "Recover Key" flow, do not write raw BLE scanning logic. Subscribe to the foreground scanning hook/Flow provided by Agent 4.
+    *   **BLE Management:** Agent 4 has now delivered the low-level BLE management transport. Use that transport for `SLOTS?`, recovery-mode connection, and later `RECOVER`. Do not create a second management transport layer inside onboarding UI code.
+
+### 1.1 Required Work Before Feature Deliverables
+Before implementing the camera, QR parsing, or animation deliverables, Agent 7 should complete the following platform integration work in this order:
+
+1.  **Replace the onboarding placeholders with real onboarding containers.**
+    *   Android: take ownership of `OnboardingPlaceholderView` routing in `androidApp/src/main/java/com/immogen/pipit/ui/PipitApp.kt`.
+    *   iOS: replace `iosApp/iosApp/UI/OnboardingPlaceholderViewController.swift` and wire presentation from `iosApp/iosApp/UI/RootViewController.swift`.
+2.  **Add a real startup onboarding gate based on secure key presence.**
+    *   Use `KeyStoreManager` to decide whether Pipit should launch into onboarding or the normal shell.
+    *   The rule is: if no local slot key exists, show onboarding immediately; otherwise, skip onboarding.
+3.  **Implement the smallest recovery milestone before the full QR flow.**
+    *   The first working recovery slice is not full `RECOVER` yet.
+    *   It is: tap "recover key from lost phone >" -> start Window Open scan -> detect Window Open -> connect with Agent 4's recovery-mode transport -> send `SLOTS?` -> render a slot picker.
+    *   Do not block on owner-PIN proof or final key replacement before this read-only recovery path is working.
+4.  **Only after the above, build the camera-first QR flow and PIN/decryption UI.**
+
+### 1.2 Recommended Delivery Order
+Implement the work in this sequence:
+
+1.  App-shell onboarding routing and placeholder replacement.
+2.  Key-presence gate using `KeyStoreManager`.
+3.  Recovery read path: Window Open detection plus `SLOTS?` slot picker.
+4.  Camera viewfinder UI and QR parsing.
+5.  Owner PIN entry and shared-crypto decryption.
+6.  QR success animation and completion screens.
+7.  Final lost-phone recovery write path using `RECOVER`.
 
 ## 2. Technical Context
 
@@ -56,7 +85,7 @@ Your goal is to build the immediate "Camera-First" onboarding flow triggered whe
 │                             │
 └─────────────────────────────┘
 ```
-*   The app launches directly into the camera. No welcome screens.
+*   The app launches directly into the camera only after the startup onboarding gate determines that no local key is present. No welcome screens.
 *   **UI:** Darkened overlay (~70% black) with a transparent rounded-rectangle viewfinder in the center. Text: "Scan from Whimbrel" below it. A subtle link "recover key from lost phone >" at the bottom.
 *   **Parsing:** Scan for QR codes starting with `immogen://prov?`. Silently ignore non-matching codes.
 *   **Routing:**
@@ -144,4 +173,5 @@ On successful PIN entry (or immediately for Guest scans), play a ~1 second anima
 *   The "recover key from lost phone >" link at the bottom of the camera screen launches a separate, reactive UI flow.
 *   **UI Prompt:** Instructs the user to "Press the button three times on your Uguisu fob." and displays a "Scanning..." state. No manual "Connect" button.
 *   **Logic:** Pipit's BLE scanner actively listens for the Guillemot peripheral to change its Service UUID to the "Window Open" state.
-*   **Action:** When detected, Pipit vibrates, automatically initiates a GATT connection to Guillemot, fetches the `SLOTS?` list, and prompts the user to select their lost slot. If the Owner slot is selected, it prompts for the 6-digit PIN (either via OS-level SMP or an app-level input sending `SETPIN`) to prove ownership. Pipit then generates a new key, sends the `RECOVER` command, and jumps to Step 5 (Done).
+*   **First implementation milestone:** When detected, Pipit vibrates, automatically initiates a recovery-mode GATT connection through Agent 4's management transport, fetches the `SLOTS?` list, and prompts the user to select their lost slot.
+*   **Follow-up implementation:** After the slot-picker flow is working, add owner proof and the final `RECOVER` mutation. If the Owner slot is selected, prompt for the 6-digit PIN or other approved ownership proof, then generate a new key, send the `RECOVER` command, and jump to Step 5 (Done).

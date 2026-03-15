@@ -21,6 +21,7 @@ data class BleState(
 
 interface BleService {
     val state: StateFlow<BleState>
+    val managementTransport: BleManagementTransport?
     
     fun startScanning()
     fun stopScanning()
@@ -54,6 +55,7 @@ object ImmogenBleConfig {
 abstract class BaseBleService : BleService {
     protected val _state = MutableStateFlow(BleState())
     override val state: StateFlow<BleState> = _state.asStateFlow()
+    override val managementTransport: BleManagementTransport? = null
     
     protected fun updateState(update: (BleState) -> BleState) {
         _state.value = update(_state.value)

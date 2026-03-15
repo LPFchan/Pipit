@@ -2,6 +2,8 @@
 
 *Date: 2026-03-11*
 
+*Sequencing Updated: 2026-03-16*
+
 **Status:** Active Brief
 **Scope:** Inline Slot Management, Proximity Controls, and Key Workflows
 **Working Directory:** `Pipit/` (You must execute all work within this specific directory)
@@ -29,9 +31,36 @@ Your goal is to build the Settings view (which the 3D screen flips into) and all
 *   **Deliverable 3:** The "Replace Flow" (Revocation + Provisioning).
 *   **Deliverable 4:** The "Migration Flow" (Transfer to new phone).
 *   **Integration Contract:**
-    *   **App Shell:** You will build your UI inside the `SettingsView` placeholder provided by Agent 6.
+    *   **App Shell:** You now own replacing the existing settings placeholders and wiring real Settings presentation into the app shell. On Android this means replacing `SettingsPlaceholderView` in `androidApp/src/main/java/com/immogen/pipit/ui/PipitApp.kt`. On iOS this means replacing `iosApp/iosApp/UI/SettingsPlaceholderViewController.swift` and keeping it wired through `iosApp/iosApp/UI/RootViewController.swift`.
     *   **Proximity Preferences:** You must save slider/toggle values using the exact keys: `pref_proximity_enabled` (Bool), `pref_unlock_rssi` (Int), `pref_lock_rssi` (Int). Agent 4 will read these.
     *   **USB Flashing (Android):** Hook up your UI to the `StateFlow<UsbState>` or ViewModels provided by Agent 5. Do not write raw USB logic.
+    *   **BLE Management:** Agent 4 has now delivered the mobile BLE management transport. Use that transport directly for `SLOTS?`, `IDENTIFY`, `PROV`, `RENAME`, `REVOKE`, and `RECOVER`. Do not add a second BLE admin transport in UI code.
+
+### 1.1 Required Work Before Administrative Flows
+Before implementing QR generation, replacement, or migration workflows, Agent 8 should complete the following platform integration work in this order:
+
+1.  **Replace the settings placeholders with real settings containers.**
+    *   Android: take ownership of the settings route in `androidApp/src/main/java/com/immogen/pipit/ui/PipitApp.kt`.
+    *   iOS: replace `iosApp/iosApp/UI/SettingsPlaceholderViewController.swift` while preserving the existing root navigation pattern in `iosApp/iosApp/UI/RootViewController.swift`.
+2.  **Implement a read-only BLE-backed slot list first.**
+    *   The first working settings milestone is not provisioning or deletion.
+    *   It is: open Settings -> connect through Agent 4's standard management transport -> send `SLOTS?` -> render the four-slot list -> show loading, error, and retry states -> disconnect cleanly when Settings is dismissed.
+3.  **Wire proximity controls to real persisted settings.**
+    *   The toggle and sliders must read and write the exact keys consumed by Agent 4.
+    *   Enforce the 10 dBm hysteresis rule in the UI.
+4.  **Only after the read-only slot list and proximity controls are stable, add mutating key-management workflows.**
+
+### 1.2 Recommended Delivery Order
+Implement the work in this sequence:
+
+1.  App-shell settings routing and placeholder replacement.
+2.  Read-only slot listing via `SLOTS?`.
+3.  Real proximity preference controls with hysteresis enforcement.
+4.  Slot actions: `RENAME` and `IDENTIFY`.
+5.  Guest provisioning flow using `PROV` plus QR generation.
+6.  Replace flow using `REVOKE` plus `PROV`.
+7.  Migration flow and local key deletion after confirmation.
+8.  Android-only USB actions after the core BLE settings experience is working.
 
 ## 2. Technical Context
 
@@ -125,6 +154,7 @@ Settings is presented as a scrollable sheet containing sections: PROXIMITY, KEYS
 
 ### 2.3 Inline Key Management (KEYS Section)
 This section queries `SLOTS?` via BLE Management Command to populate the UI.
+*   **Implementation note:** Treat this `SLOTS?` read path as the first required milestone for Agent 8. The slot list must be working before any rename, replace, delete, or QR flow is attempted.
 *   **Owner View:** Shows all 4 slots. 
     *   Slot 0 (Uguisu): iOS is non-interactive. Android has a 3-dot menu with "Replace".
     *   Slot 1 (Self): No 3-dot menu.
@@ -133,6 +163,9 @@ This section queries `SLOTS?` via BLE Management Command to populate the UI.
 *   **Guest View:** Only shows a "YOUR KEY" section with their own slot name and a "Transfer to New Phone" button. They see no other slots.
 
 ### 2.4 Workflows (Driven by KMP and BLE Headless Services)
+
+**Precondition for all workflows**
+Before any workflow below is enabled in the UI, the Settings screen must already have a working management session lifecycle and a successful `SLOTS?` read implementation.
 
 **1. Provision Guest Phone**
 Triggered via ⊕ on an empty guest slot. Generates new AES key, sends `PROV:<slot>:<key>:0:Guest X` via BLE. Displays a **plaintext QR code** for the guest to scan.
@@ -174,6 +207,7 @@ Triggered via ⊕ on an empty guest slot. Generates new AES key, sends `PROV:<sl
 
 **2. Replace Flow (Break-Glass)**
 Triggered via 3-dot menu -> Replace. Sends `REVOKE:<slot>`, generates new key, sends `PROV:<slot>:<key>:0:<name>`. Generates the appropriate QR (plaintext for guest slots, Argon2id encrypted for Owner slot).
+*   **Sequencing note:** Do not implement this before the simpler `RENAME` and `IDENTIFY` actions are already working through the same BLE management session.
 ```
 ┌─────────────────────────────┐
 │                             │
@@ -193,6 +227,7 @@ Triggered via 3-dot menu -> Replace. Sends `REVOKE:<slot>`, generates new key, s
 
 **3. Transfer to New Phone (Migration)**
 Generates a QR containing the existing key AND the current counter value. Guest keys generate plaintext QR; Owner keys generate Argon2id PIN-encrypted QR. On confirmation of scan, the key is permanently deleted from the local secure keystore.
+*   **Sequencing note:** This is not the first QR flow to build. Implement it after slot listing, preference controls, and guest provisioning are already stable.
 ```
 ┌─────────────────────────────┐
 │                             │
