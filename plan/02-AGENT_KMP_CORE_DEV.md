@@ -2,7 +2,7 @@
 
 *Date: 2026-03-11*
 
-**Status:** Active Brief
+**Status:** Completed
 **Scope:** `ImmoCommon` Struct Update & Kotlin Multiplatform (KMP) Port
 **Working Directory:** `Pipit/shared/` and `Immogen/lib/` (You must execute all work within these specific directories)
 **Role:** You are the Core Logic Developer responsible for maintaining the cryptographic core of the Immogen ecosystem.
@@ -75,11 +75,12 @@ The 1-byte Prefix carries the Slot ID to route payloads to the correct AES key.
 *   **Grade: A+**
 *   **Evaluation:** Agent 2 successfully bridged the gap between the C++ firmware and the mobile apps, ensuring perfect cryptographic parity. They correctly refactored the C++ `immo_storage.cpp` and `immo_provisioning.cpp` to natively handle the array of 4 Key Slots instead of the legacy single-slot approach, including URL-decoding for device names. Crucially, they built an excellent `expect/actual` KMP wrapper (`KeyStoreManager.kt`) that securely interfaces with the iOS Keychain (`SecItemAdd`) and Android `EncryptedSharedPreferences` (`AES256_GCM`). The pure Kotlin port of `ccmAuthEncrypt` (`ImmoCrypto.kt`) ensures both mobile platforms can generate valid packets natively without JNI/C-interop overhead.
 
-### 2026-03-16: Outstanding Delivery Clarification
-*   **Remaining deliverable:** Agent 2 still needs to provide the shared Argon2id KMP wrapper or API referenced by Agent 7 for onboarding QR decryption.
-*   **Expected integration surface:** Agent 7 expects to call a shared API equivalent to `ImmoCrypto.deriveKey(pin, salt)` rather than implementing Argon2id inside Android or iOS UI code.
-*   **Compatibility requirement:** The implementation must interoperate with Whimbrel's QR encryption flow and its established parameters so encrypted `immogen://prov?...` payloads can be decrypted correctly during onboarding and migration.
-*   **Scope boundary:** This deliverable belongs in the shared KMP cryptographic layer and must be consumable from both Android and iOS app code.
+### 2026-03-16: Outstanding Delivery Clarification (Historical, Resolved)
+*   **Status:** This checkpoint was resolved by the 2026-03-16 04:17:13 KST entry immediately below.
+*   **What was requested at the time:** Agent 2 needed to provide the shared Argon2id KMP wrapper or API referenced by Agent 7 for onboarding QR decryption.
+*   **Expected integration surface:** Agent 7 expected to call a shared API equivalent to `ImmoCrypto.deriveKey(pin, salt)` rather than implementing Argon2id inside Android or iOS UI code.
+*   **Compatibility requirement:** The implementation needed to interoperate with Whimbrel's QR encryption flow and its established parameters so encrypted `immogen://prov?...` payloads could be decrypted correctly during onboarding and migration.
+*   **Scope boundary:** This note is retained as historical context only and should not be interpreted as current unfinished work.
 
 ### 2026-03-16 04:17:13 KST: Shared Argon2id Delivery Completed
 *   **What was implemented:** Added a shared Argon2id-backed provisioning API in `shared/src/commonMain/kotlin/com/immogen/core/ImmoCrypto.kt` using `com.ionspin.kotlin:multiplatform-crypto-libsodium-bindings:0.9.5`. The shared API now exposes `suspend fun initialize()`, `fun isInitialized()`, `fun deriveKey(pin, salt, params)`, `fun encryptProvisionedKey(...)`, and `fun decryptProvisionedKey(...)`, allowing Agent 7 to derive the QR transport key and decrypt encrypted owner/migration payloads entirely from shared KMP code.

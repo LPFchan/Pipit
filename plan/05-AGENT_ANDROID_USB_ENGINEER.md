@@ -2,7 +2,7 @@
 
 *Date: 2026-03-11*
 
-**Status:** Active Brief
+**Status:** Completed
 **Scope:** Android-Specific USB Mass Storage and Serial Operations
 **Working Directory:** `Pipit/androidApp/src/main/java/com/immogen/pipit/usb/` (You must execute all work within this specific directory)
 **Role:** You are the Android Systems Engineer. Your task is to implement the low-level USB OTG functionality required for physical management of the immobilizer devices.
@@ -55,12 +55,13 @@ The goal was to build an isolated, headless module that abstracts away the low-l
 *   **Evaluation:** Agent 5 successfully built the robust, headless `UsbOtgManager` foundation needed exclusively by the Android app. They perfectly adhered to the integration contract by creating a sealed `UsbState` class and exposing it via Kotlin Coroutines `StateFlow` (`usbOtgManager.usbState`), ensuring Agent 8 can hook up the UI without touching low-level hardware code. They implemented a `BroadcastReceiver` to handle Android's strict `ACTION_USB_PERMISSION` intents securely. The device disambiguation logic (`determineDeviceType`) cleanly separates `GUILLEMOT_MASS_STORAGE` (for UF2 flashing) from `GUILLEMOT_SERIAL` (for `SETPIN`) and `UGUISU_SERIAL` (for `PROV:0`). The structure abstracts away `libaums` and `usb-serial-for-android` beautifully.
 
 ### Date: 2026-03-16 13:48:44 KST
-*   **What needs to be done:**
+*   **Status:** This was a pre-Agent-8 completion checkpoint and is now resolved by the 2026-03-16 14:00:06 KST entry below.
+*   **What was requested at the time:**
     *   Replace the current UF2 flashing pseudo-code with a real `libaums` mass-storage implementation, including mount/init, file creation, byte copy, completion, and error handling.
     *   Replace the current serial placeholders with a real `usb-serial-for-android` connection flow, including port discovery, open/configure, write, optional response readback, and cleanup.
     *   Verify that `provisionUguisuKey()` and `changeGuillemotPin()` only report success after the device-side command exchange actually completes successfully.
     *   Preserve the existing `StateFlow<UsbState>` contract, but back it with real progress, success, and failure transitions so Agent 8 can safely consume it.
-*   **Why:** Agent 8 was only meant to attach UI to a finished Android USB backend. The current `UsbOtgManager` is still scaffold-level, with pseudo-code for UF2 flashing and commented-out serial writes. If this work is deferred into Agent 8's scope, the Settings milestone becomes blocked by unfinished low-level USB implementation instead of remaining a UI integration task.
+*   **Why it was raised then:** Agent 8 was only meant to attach UI to a finished Android USB backend. This note remains as historical context and should not be treated as current unfinished work.
 
 ### Date: 2026-03-16 14:00:06 KST
 *   **What was done in this session:**

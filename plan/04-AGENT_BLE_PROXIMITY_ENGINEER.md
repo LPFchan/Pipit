@@ -92,14 +92,15 @@ Agent 8 (Settings UI) provides sliders to adjust proximity thresholds. To ensure
 *   **Shared protocol:** `BleManagementTransport.kt` defines the reusable transport interface, request builders, response parser, and transport/session models consumed by higher-level recovery and settings flows.
 *   **Validation note:** Source diagnostics are clean on the touched files. Full Android build validation still depends on local SDK configuration, and generic iOS simulator linking still depends on matching shared framework slices.
 
-### 2026-03-16 13:48:44 KST: Pre-Agent-8 Command Path Completion
-*   **What needs to be done:**
+### 2026-03-16 13:48:44 KST: Pre-Agent-8 Command Path Completion Request (Historical, Resolved)
+*   **Status:** This checkpoint was raised before Agent 8 started and was resolved by the later 15:15:04 and 15:24:54 entries in this log.
+*   **What was requested at the time:**
     *   Replace the Android placeholder payload path with real `KeyStoreManager` slot, key, and counter lookup for proximity-triggered commands.
     *   Implement Android foreground `sendUnlockCommand()` and `sendLockCommand()` so the manual key-fob UI uses the same real payload source as the background engine.
     *   Remove the iOS Slot 0 demo-key fallback and source manual/proximity command payloads from the provisioned phone slot stored in secure local storage.
     *   Implement the actual iOS CoreLocation iBeacon region-monitoring wake path and handoff to CoreBluetooth, rather than stopping at permission handling.
     *   Validate end-to-end that manual unlock, manual lock, and proximity actions on both platforms all transmit payloads built from real provisioned key material.
-*   **Why:** Agent 8 depends on a correct, production-intent BLE command layer, not placeholders. The current Android service still contains dummy payload material and empty manual command hooks, while the current iOS command path still falls back to Slot 0 demo key material and does not yet demonstrate the architecture's intended iBeacon wake flow. If this remains unresolved, Agent 8 can build Settings UI on top of a misleadingly incomplete transport layer.
+*   **Why it was raised then:** Agent 8 depended on a correct, production-intent BLE command layer rather than placeholders. This note is retained as history only and should not be interpreted as current outstanding work.
 
 ### 2026-03-16 15:15:04 KST: Command Path Completion Implemented
 *   **Android:** Replaced the dummy proximity payload branch with real slot/key/counter lookup from `KeyStoreManager`, incrementing the stored counter after payload construction. Foreground `sendUnlockCommand()` and `sendLockCommand()` now discover or reuse a nearby standard advertisement and route through the same real payload path as the background engine.
