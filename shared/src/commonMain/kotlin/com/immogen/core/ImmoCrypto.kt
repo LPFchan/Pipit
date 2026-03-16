@@ -118,6 +118,18 @@ object ImmoCrypto {
         return decryptProvisionedKey(derivedKey, salt, encryptedKey)
     }
 
+    suspend fun decryptProvisionedKeyAsync(
+        pin: String,
+        salt: ByteArray,
+        encryptedKey: ByteArray,
+        params: Argon2Params = Argon2Params(),
+    ): ByteArray {
+        if (!isInitialized()) {
+            initialize()
+        }
+        return decryptProvisionedKey(pin, salt, encryptedKey, params)
+    }
+
     fun decryptProvisionedKey(
         derivedKey: ByteArray,
         salt: ByteArray,
