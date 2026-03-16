@@ -144,7 +144,11 @@ fun PipitApp(
                 }
 
                 RootScreen.SETTINGS -> {
-                    SettingsPlaceholderView(onClose = { currentScreen = RootScreen.HOME })
+                    SettingsScreen(
+                        bleService = bleService,
+                        onClose = { currentScreen = RootScreen.HOME },
+                        onLocalKeyDeleted = { currentScreen = RootScreen.ONBOARDING }
+                    )
                 }
 
                 RootScreen.HOME -> {
@@ -306,34 +310,6 @@ private fun DisconnectOverlay(
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
-        }
-    }
-}
-
-@Composable
-fun SettingsPlaceholderView(
-    onClose: () -> Unit
-) {
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            Text(
-                text = "Settings",
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Placeholder — Agent 8 will populate.",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-            IconButton(onClick = onClose) {
-                Text("✕ Close")
-            }
         }
     }
 }

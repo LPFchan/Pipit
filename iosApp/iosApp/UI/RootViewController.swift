@@ -137,15 +137,21 @@ final class RootViewController: UIViewController {
         clearCurrentChild()
         currentScreen = .settings
 
-        let settings = SettingsPlaceholderViewController(onClose: { [weak self] in
-            self?.showHome()
-        })
+        let settings = SettingsPlaceholderViewController(
+            bleService: bleService,
+            onLocalKeyDeleted: { [weak self] in
+                self?.showOnboarding()
+            },
+            onClose: { [weak self] in
+                self?.showHome()
+            }
+        )
         settingsVC = settings
         install(settings)
     }
 
     private func updateOverlay(connectionState: ConnectionState) {
-        guard currentScreen != .onboarding else {
+        guard currentScreen != .onboarding, currentScreen != .settings else {
             overlayView.isHidden = true
             return
         }

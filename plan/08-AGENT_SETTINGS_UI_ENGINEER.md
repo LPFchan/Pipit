@@ -220,3 +220,21 @@ While working:
 *   Prefer small, working milestones over a large one-shot rewrite.
 
 That is the assignment. Start with real settings containers, then the read-only slot list, then proximity controls, and only then move into mutating admin flows.
+
+---
+
+## 9. Session Update
+
+**Updated:** 2026-03-16 15:57:03 KST
+
+What I did in this session:
+*   Replaced the Android Settings placeholder with a real Compose settings screen wired into the existing app shell route from `PipitApp.kt`.
+*   Added Android Settings support for opening a fresh BLE management session, requesting `SLOTS?`, rendering all four slots, showing loading and retry states, and disconnecting the management session when Settings closes.
+*   Added Android proximity controls backed by the existing shared settings keys `pref_proximity_enabled`, `pref_unlock_rssi`, and `pref_lock_rssi`, including enforcement of the 10 dBm hysteresis rule.
+*   Replaced the iOS Settings placeholder with a real UIKit settings controller that connects through the existing Swift BLE management APIs, requests `SLOTS?`, renders owner and guest sections, and disconnects cleanly on dismissal.
+*   Updated the iOS root presentation path so the global disconnect overlay is hidden while Settings is active, allowing the settings screen to own its own BLE management loading and error states.
+*   Validated the work with `./gradlew :androidApp:compileDebugKotlin` and `xcodebuild -project Pipit.xcodeproj -scheme Pipit -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build`.
+
+Why I did it:
+*   This session was focused on Milestone 1 through Milestone 3 from this agent brief: replacing placeholder settings screens, delivering the first real read-only slot list through the existing BLE management transport, and wiring real persisted proximity controls through the existing shared settings layer.
+*   The goal was to establish a stable, build-validated Settings foundation on both platforms before moving on to lower-risk mutations like `IDENTIFY` and `RENAME`, and before attempting guest provisioning, replace flows, migration, or Android USB UI work.
