@@ -367,7 +367,10 @@ class AndroidBleProximityService : Service() {
     inner class AndroidBleServiceImpl : BaseBleService() {
         override val managementTransport: BleManagementTransport = bleManagementTransport
 
-        override fun startScanning() = this@AndroidBleProximityService.startScanning(false)
+        override fun startScanning() {
+            updateWindowOpen(false)
+            this@AndroidBleProximityService.startScanning(false)
+        }
         override fun stopScanning() = this@AndroidBleProximityService.stopScanning()
         
         override suspend fun sendUnlockCommand() {
@@ -378,8 +381,12 @@ class AndroidBleProximityService : Service() {
              // For manual foreground trigger
         }
         
-        override fun startWindowOpenScan() = this@AndroidBleProximityService.startScanning(true)
+        override fun startWindowOpenScan() {
+            updateWindowOpen(false)
+            this@AndroidBleProximityService.startScanning(true)
+        }
         override fun stopWindowOpenScan() {
+            updateWindowOpen(false)
             this@AndroidBleProximityService.stopScanning()
             if (appSettings.isProximityEnabled) startScanning(false)
         }
