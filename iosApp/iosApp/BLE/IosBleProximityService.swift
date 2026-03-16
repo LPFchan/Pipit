@@ -169,6 +169,10 @@ public enum IosBleProximityServiceError: LocalizedError {
 
     private let locationManager = CLLocationManager()
     private var centralManager: CBCentralManager?
+    private var currentRssiHistory: [Int] = []
+    private var isProximityCommandPending = false
+    private var isVehicleBeaconMonitoringActive = false
+    private var isInsideVehicleBeaconRegion = false
 
     private var passiveScanMode: PassiveScanMode = .none
     private var activeDiscoveryRequest: DiscoveryRequest?
@@ -195,6 +199,9 @@ public enum IosBleProximityServiceError: LocalizedError {
     private static let connectTimeout: TimeInterval = 15
     private static let requestTimeout: TimeInterval = 7.5
     private static let scanTimeout: TimeInterval = 8
+    private static let rssiHistorySize = 5
+    private static let vehicleBeaconRegionIdentifier = "ImmogenVehicle"
+    private static let vehicleBeaconUUID = UUID(uuidString: "66962B67-9C59-4D83-9101-AC0C9CCA2B12")!
 
     private static let serviceLocked = CBUUID(string: "C5380EF2-C3FC-4F2A-B3CC-D51A08EF5FA9")
     private static let serviceUnlocked = CBUUID(string: "A1AA4F79-B490-44D2-A7E1-8A03422243A1")
@@ -207,8 +214,15 @@ public enum IosBleProximityServiceError: LocalizedError {
 #if canImport(shared)
     private let keyStore = KeyStoreManager()
     private let payloadBuilder = PayloadBuilder()
-    private let commandSlotId: Int32 = 0
+    private let appSettings = AppSettings(manager: IosSettingsManager(userDefaults: UserDefaults.standard))
 #endif
+    private lazy var vehicleBeaconRegion: CLBeaconRegion = {
+        let region = CLBeaconRegion(uuid: Self.vehicleBeaconUUID, identifier: Self.vehicleBeaconRegionIdentifier)
+        region.notifyOnEntry = true
+        region.notifyOnExit = true
+        region.notifyEntryStateOnDisplay = true
+        return region
+    }()
 
     override public init() {
         super.init()
@@ -225,6 +239,7 @@ public enum IosBleProximityServiceError: LocalizedError {
         ensureCentralManager()
         passiveScanMode = .standard
         connectionState = .scanning
+        updateBeaconMonitoring()
         refreshScanning()
     }
 
@@ -232,6 +247,8 @@ public enum IosBleProximityServiceError: LocalizedError {
         if passiveScanMode == .standard {
             passiveScanMode = .none
         }
+        currentRssiHistory.removeAll()
+        updateBeaconMonitoring()
         if activeDiscoveryRequest == nil {
             refreshScanning()
         }
@@ -245,6 +262,8 @@ public enum IosBleProximityServiceError: LocalizedError {
         ensureCentralManager()
         passiveScanMode = .windowOpen
         connectionState = .scanning
+        currentRssiHistory.removeAll()
+        updateBeaconMonitoring()
         refreshScanning()
     }
 
@@ -252,6 +271,7 @@ public enum IosBleProximityServiceError: LocalizedError {
         if passiveScanMode == .windowOpen {
             passiveScanMode = .none
         }
+        updateBeaconMonitoring()
         if activeDiscoveryRequest == nil {
             refreshScanning()
         }
@@ -365,11 +385,11 @@ public enum IosBleProximityServiceError: LocalizedError {
     }
 
     @MainActor public func sendUnlockCommand() async {
-        await sendSharedProximityCommand(command: .unlock, targetState: .connectedUnlocked)
+        await performSharedProximityCommand(command: .unlock, targetState: .connectedUnlocked)
     }
 
     @MainActor public func sendLockCommand() async {
-        await sendSharedProximityCommand(command: .lock, targetState: .connectedLocked)
+        await performSharedProximityCommand(command: .lock, targetState: .connectedLocked)
     }
 
     public func requestAlwaysLocationAuthorization() {
@@ -389,6 +409,40 @@ public enum IosBleProximityServiceError: LocalizedError {
 
     private func currentLocationAuthorizationStatus() -> CLAuthorizationStatus {
         locationManager.authorizationStatus
+    }
+
+    private func updateBeaconMonitoring() {
+        guard CLLocationManager.isMonitoringAvailable(for: CLBeaconRegion.self) else {
+            isVehicleBeaconMonitoringActive = false
+            isInsideVehicleBeaconRegion = false
+            return
+        }
+
+        let shouldMonitor = passiveScanMode == .standard && hasAlwaysLocationAuthorization
+        if shouldMonitor {
+            if !isVehicleBeaconMonitoringActive {
+                locationManager.startMonitoring(for: vehicleBeaconRegion)
+                isVehicleBeaconMonitoringActive = true
+            }
+            locationManager.requestState(for: vehicleBeaconRegion)
+        } else if isVehicleBeaconMonitoringActive {
+            locationManager.stopMonitoring(for: vehicleBeaconRegion)
+            isVehicleBeaconMonitoringActive = false
+            isInsideVehicleBeaconRegion = false
+        }
+    }
+
+    private func updateBeaconRegionPresence(isInside: Bool) {
+        isInsideVehicleBeaconRegion = isInside
+        if !isInside {
+            currentRssiHistory.removeAll()
+        }
+
+        if passiveScanMode == .standard {
+            connectionState = .scanning
+            ensureCentralManager()
+            refreshScanning()
+        }
     }
 
     private func ensureCentralManager() {
@@ -439,6 +493,10 @@ public enum IosBleProximityServiceError: LocalizedError {
         case .none:
             centralManager.stopScan()
         case .standard:
+            if isVehicleBeaconMonitoringActive && !isInsideVehicleBeaconRegion {
+                centralManager.stopScan()
+                return
+            }
             centralManager.stopScan()
             centralManager.scanForPeripherals(
                 withServices: [Self.serviceLocked, Self.serviceUnlocked],
@@ -451,6 +509,46 @@ public enum IosBleProximityServiceError: LocalizedError {
                 options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
             )
         }
+    }
+
+    private func evaluateAutomaticProximityCommand(peripheral: CBPeripheral, advertisedUUIDs: Set<CBUUID>, rssi: Int) {
+#if canImport(shared)
+        guard passiveScanMode == .standard else { return }
+        guard appSettings.isProximityEnabled else { return }
+        guard !isProximityCommandPending else { return }
+        guard activeOperation == nil else { return }
+        guard pendingConnectionReadyContinuation == nil else { return }
+        guard pendingWriteContinuation == nil else { return }
+        guard managementState.connectionState == .disconnected else { return }
+
+        currentRssiHistory.append(rssi)
+        if currentRssiHistory.count > Self.rssiHistorySize {
+            currentRssiHistory.removeFirst(currentRssiHistory.count - Self.rssiHistorySize)
+        }
+        let averageRssi = currentRssiHistory.reduce(0, +) / currentRssiHistory.count
+
+        if advertisedUUIDs.contains(Self.serviceLocked) && averageRssi >= Int(appSettings.unlockRssi) {
+            isProximityCommandPending = true
+            Task { @MainActor [weak self] in
+                await self?.performSharedProximityCommand(
+                    command: .unlock,
+                    targetState: .connectedUnlocked,
+                    preferredPeripheral: peripheral,
+                    pendingAlreadySet: true
+                )
+            }
+        } else if advertisedUUIDs.contains(Self.serviceUnlocked) && averageRssi <= Int(appSettings.lockRssi) {
+            isProximityCommandPending = true
+            Task { @MainActor [weak self] in
+                await self?.performSharedProximityCommand(
+                    command: .lock,
+                    targetState: .connectedLocked,
+                    preferredPeripheral: peripheral,
+                    pendingAlreadySet: true
+                )
+            }
+        }
+#endif
     }
 
     private func resolvePeripheral(for mode: BleManagementConnectMode) async throws -> CBPeripheral {
@@ -845,13 +943,13 @@ public enum IosBleProximityServiceError: LocalizedError {
     }
 
 #if canImport(shared)
-    private func ensureDemoKeyMaterialInitializedIfNeeded() {
-        guard keyStore.loadKey(slotId: commandSlotId) == nil else { return }
-
-        let keyBytes = (1...16).map { UInt8($0) }
-        let kotlinKey = kotlinByteArray(from: keyBytes)
-        keyStore.saveKey(slotId: commandSlotId, key: kotlinKey)
-        keyStore.saveCounter(slotId: commandSlotId, counter: 1)
+    private func resolveProvisionedPhoneSlotId() -> Int32? {
+        for slotId in 1...3 {
+            if keyStore.loadKey(slotId: Int32(slotId)) != nil {
+                return Int32(slotId)
+            }
+        }
+        return nil
     }
 
     private func buildIdentifyPayload(slotId: Int) throws -> Data {
@@ -877,21 +975,25 @@ public enum IosBleProximityServiceError: LocalizedError {
         return data(from: payload)
     }
 
-    private func buildSharedPayload(command: ImmoCrypto.Command) -> Data? {
-        ensureDemoKeyMaterialInitializedIfNeeded()
-
-        guard let key = keyStore.loadKey(slotId: commandSlotId) else {
-            return nil
+    private func buildSharedPayload(command: ImmoCrypto.Command) throws -> Data {
+        guard let slotId = resolveProvisionedPhoneSlotId() else {
+            throw IosBleProximityServiceError.system("No provisioned phone key stored locally")
+        }
+        guard let key = keyStore.loadKey(slotId: slotId) else {
+            throw IosBleProximityServiceError.system("No key stored for slot \(slotId)")
         }
 
-        let counter = keyStore.loadCounter(slotId: commandSlotId)
+        let counter = keyStore.loadCounter(slotId: slotId)
+        guard counter != UInt32.max else {
+            throw IosBleProximityServiceError.counterOverflow(Int(slotId))
+        }
         let payload = payloadBuilder.buildPayload(
-            slotId: commandSlotId,
+            slotId: slotId,
             command: command,
             key: key,
             counter: counter
         )
-        keyStore.saveCounter(slotId: commandSlotId, counter: counter &+ 1)
+        keyStore.saveCounter(slotId: slotId, counter: counter &+ 1)
         return data(from: payload)
     }
 
@@ -913,16 +1015,24 @@ public enum IosBleProximityServiceError: LocalizedError {
 #endif
 
     @MainActor
-    private func sendSharedProximityCommand(command: ImmoCrypto.Command, targetState: ConnectionState) async {
+    private func performSharedProximityCommand(
+        command: ImmoCrypto.Command,
+        targetState: ConnectionState,
+        preferredPeripheral: CBPeripheral? = nil,
+        pendingAlreadySet: Bool = false
+    ) async {
 #if canImport(shared)
-        guard let payload = buildSharedPayload(command: command) else {
-            connectionState = targetState
-            return
+        if !pendingAlreadySet {
+            guard !isProximityCommandPending else { return }
+            isProximityCommandPending = true
         }
-
-        lastCommandPayloadHex = payload.hexEncodedString()
+        defer { isProximityCommandPending = false }
 
         do {
+            let payload = try buildSharedPayload(command: command)
+
+            lastCommandPayloadHex = payload.hexEncodedString()
+
             try await awaitPoweredOnCentral()
             if let unlockCharacteristic = unlockLockCharacteristic,
                let connectedPeripheral,
@@ -932,13 +1042,14 @@ public enum IosBleProximityServiceError: LocalizedError {
                 return
             }
 
-            guard let peripheral = lastStandardPeripheral ?? lastWindowOpenPeripheral else {
-                connectionState = targetState
-                return
+            let peripheral: CBPeripheral
+            if let preferredPeripheral {
+                peripheral = preferredPeripheral
+            } else {
+                peripheral = try await resolvePeripheral(for: .standard)
             }
 
             if pendingConnectionReadyContinuation != nil {
-                connectionState = targetState
                 return
             }
 
@@ -972,10 +1083,10 @@ public enum IosBleProximityServiceError: LocalizedError {
             connectionState = targetState
             disconnectCurrentPeripheral(expectReconnect: false)
         } catch {
-            connectionState = targetState
+            connectionState = passiveScanMode == .none ? .disconnected : .scanning
         }
 #else
-        connectionState = targetState
+        connectionState = passiveScanMode == .none ? .disconnected : .scanning
 #endif
     }
 
@@ -1020,10 +1131,41 @@ public enum IosBleProximityServiceError: LocalizedError {
 extension IosBleProximityService: CLLocationManagerDelegate {
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         locationAuthorizationStatus = currentLocationAuthorizationStatus()
+        updateBeaconMonitoring()
+        refreshScanning()
     }
 
     public func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         locationAuthorizationStatus = status
+        updateBeaconMonitoring()
+        refreshScanning()
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didStartMonitoringFor region: CLRegion) {
+        guard region.identifier == Self.vehicleBeaconRegionIdentifier else { return }
+        manager.requestState(for: region)
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        guard region.identifier == Self.vehicleBeaconRegionIdentifier else { return }
+        updateBeaconRegionPresence(isInside: true)
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+        guard region.identifier == Self.vehicleBeaconRegionIdentifier else { return }
+        updateBeaconRegionPresence(isInside: false)
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {
+        guard region.identifier == Self.vehicleBeaconRegionIdentifier else { return }
+        switch state {
+        case .inside:
+            updateBeaconRegionPresence(isInside: true)
+        case .outside, .unknown:
+            updateBeaconRegionPresence(isInside: false)
+        @unknown default:
+            updateBeaconRegionPresence(isInside: false)
+        }
     }
 }
 
@@ -1080,6 +1222,8 @@ extension IosBleProximityService: CBCentralManagerDelegate {
                 isWindowOpen = false
             }
         }
+
+        evaluateAutomaticProximityCommand(peripheral: peripheral, advertisedUUIDs: uuidSet, rssi: RSSI.intValue)
 
         guard let activeDiscoveryRequest else { return }
         if uuidSet.isEmpty || !uuidSet.isDisjoint(with: activeDiscoveryRequest.serviceUUIDs) {

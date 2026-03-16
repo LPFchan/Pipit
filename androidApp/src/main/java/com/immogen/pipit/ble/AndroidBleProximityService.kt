@@ -35,6 +35,7 @@ class AndroidBleProximityService : Service() {
         private const val TAG = "BleProximity"
         private const val NOTIFICATION_CHANNEL_ID = "immogen_proximity_channel"
         private const val NOTIFICATION_ID = 1
+        private const val COMMAND_SCAN_TIMEOUT_MS = 8_000L
         private const val MANAGEMENT_TARGET_MTU = 247
         private const val MANAGEMENT_CONNECT_TIMEOUT_MS = 15_000L
         private const val MANAGEMENT_REQUEST_TIMEOUT_MS = 7_500L
@@ -249,20 +250,10 @@ class AndroidBleProximityService : Service() {
         val char = service?.getCharacteristic(UUID.fromString(ImmogenBleConfig.CHAR_UNLOCK_LOCK_CMD))
         
         if (char != null) {
-            // In a real app, we'd fetch the actual slot and key from KeyStore here
-            // For now, this is the architectural placeholder
             serviceScope.launch {
                 try {
-                    // TODO: Replace with actual KeyStore retrieval
-                    val dummyKey = ByteArray(16) { 0 }
-                    val dummyCounter = 1u
-                    val dummySlotId = 1
-                    
-                    val payload = payloadBuilder.buildPayload(
-                        slotId = dummySlotId,
-                        counter = dummyCounter,
-                        command = if (isUnlock) ImmoCrypto.Command.Unlock else ImmoCrypto.Command.Lock,
-                        key = dummyKey
+                    val payload = buildSharedCommandPayload(
+                        command = if (isUnlock) ImmoCrypto.Command.Unlock else ImmoCrypto.Command.Lock
                     )
                     
                     val success = writeCharacteristicCompat(gatt, char, payload)
@@ -279,6 +270,95 @@ class AndroidBleProximityService : Service() {
         } else {
             Log.e(TAG, "Characteristic not found")
             gatt.disconnect()
+        }
+    }
+
+    private fun buildSharedCommandPayload(command: ImmoCrypto.Command): ByteArray {
+        val slotId = resolveProvisionedPhoneSlotId()
+            ?: throw BleManagementException("No provisioned phone key stored locally")
+        val key = keyStoreManager.loadKey(slotId)
+            ?: throw BleManagementException("No key stored for slot $slotId")
+        val counter = keyStoreManager.loadCounter(slotId)
+        require(counter != UInt.MAX_VALUE) { "Counter overflow for slot $slotId" }
+
+        val payload = payloadBuilder.buildPayload(
+            slotId = slotId,
+            counter = counter,
+            command = command,
+            key = key
+        )
+        keyStoreManager.saveCounter(slotId, counter + 1u)
+        return payload
+    }
+
+    private fun resolveProvisionedPhoneSlotId(): Int? {
+        for (slotId in 1..3) {
+            if (keyStoreManager.loadKey(slotId) != null) {
+                return slotId
+            }
+        }
+        return null
+    }
+
+    private suspend fun resolveForegroundCommandDevice(): BluetoothDevice {
+        lastStandardDevice?.let { return it }
+
+        val scanner = bluetoothLeScanner
+            ?: throw BleManagementException("Bluetooth LE scanner is unavailable")
+        val deferred = CompletableDeferred<BluetoothDevice>()
+        val filters = listOf(
+            ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid(UUID.fromString(ImmogenBleConfig.SERVICE_PROXIMITY_LOCKED)))
+                .build(),
+            ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid(UUID.fromString(ImmogenBleConfig.SERVICE_PROXIMITY_UNLOCKED)))
+                .build()
+        )
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                super.onScanResult(callbackType, result)
+                lastStandardDevice = result.device
+                if (!deferred.isCompleted) {
+                    deferred.complete(result.device)
+                }
+            }
+
+            override fun onScanFailed(errorCode: Int) {
+                if (!deferred.isCompleted) {
+                    deferred.completeExceptionally(
+                        BleManagementException("Foreground scan failed (error=$errorCode)")
+                    )
+                }
+            }
+        }
+
+        scanner.startScan(filters, settings, callback)
+        return try {
+            withTimeout(COMMAND_SCAN_TIMEOUT_MS) { deferred.await() }
+        } finally {
+            scanner.stopScan(callback)
+        }
+    }
+
+    private suspend fun sendForegroundCommand(isUnlock: Boolean) {
+        if (bleManagementTransport.isActive()) {
+            Log.d(TAG, "Skipping foreground command while management session is active")
+            return
+        }
+        if (isGattConnecting) {
+            Log.d(TAG, "Skipping foreground command while a proximity connection is already in progress")
+            return
+        }
+
+        try {
+            val device = resolveForegroundCommandDevice()
+            connectGatt(device, isUnlock)
+        } catch (error: Throwable) {
+            Log.e(TAG, "Failed to start foreground BLE command", error)
         }
     }
 
@@ -374,11 +454,11 @@ class AndroidBleProximityService : Service() {
         override fun stopScanning() = this@AndroidBleProximityService.stopScanning()
         
         override suspend fun sendUnlockCommand() {
-            // For manual foreground trigger - would need active connection
+            sendForegroundCommand(isUnlock = true)
         }
         
         override suspend fun sendLockCommand() {
-             // For manual foreground trigger
+            sendForegroundCommand(isUnlock = false)
         }
         
         override fun startWindowOpenScan() {

@@ -91,3 +91,19 @@ Agent 8 (Settings UI) provides sliders to adjust proximity thresholds. To ensure
 *   **iOS:** `IosBleProximityService.swift` now exposes async management APIs for connect, disconnect, slot listing, identify, provision, rename, revoke, and recover using native CoreBluetooth scan/connect/discover/notify/write flow.
 *   **Shared protocol:** `BleManagementTransport.kt` defines the reusable transport interface, request builders, response parser, and transport/session models consumed by higher-level recovery and settings flows.
 *   **Validation note:** Source diagnostics are clean on the touched files. Full Android build validation still depends on local SDK configuration, and generic iOS simulator linking still depends on matching shared framework slices.
+
+### 2026-03-16 13:48:44 KST: Pre-Agent-8 Command Path Completion
+*   **What needs to be done:**
+    *   Replace the Android placeholder payload path with real `KeyStoreManager` slot, key, and counter lookup for proximity-triggered commands.
+    *   Implement Android foreground `sendUnlockCommand()` and `sendLockCommand()` so the manual key-fob UI uses the same real payload source as the background engine.
+    *   Remove the iOS Slot 0 demo-key fallback and source manual/proximity command payloads from the provisioned phone slot stored in secure local storage.
+    *   Implement the actual iOS CoreLocation iBeacon region-monitoring wake path and handoff to CoreBluetooth, rather than stopping at permission handling.
+    *   Validate end-to-end that manual unlock, manual lock, and proximity actions on both platforms all transmit payloads built from real provisioned key material.
+*   **Why:** Agent 8 depends on a correct, production-intent BLE command layer, not placeholders. The current Android service still contains dummy payload material and empty manual command hooks, while the current iOS command path still falls back to Slot 0 demo key material and does not yet demonstrate the architecture's intended iBeacon wake flow. If this remains unresolved, Agent 8 can build Settings UI on top of a misleadingly incomplete transport layer.
+
+### 2026-03-16 15:15:04 KST: Command Path Completion Implemented
+*   **Android:** Replaced the dummy proximity payload branch with real slot/key/counter lookup from `KeyStoreManager`, incrementing the stored counter after payload construction. Foreground `sendUnlockCommand()` and `sendLockCommand()` now discover or reuse a nearby standard advertisement and route through the same real payload path as the background engine.
+*   **iOS:** Removed the Slot 0 demo-key fallback, resolved command payloads from the provisioned phone slot stored locally in secure storage, and incremented counters from that slot for both manual and automatic proximity commands.
+*   **iBeacon wake handoff:** Added actual `CLBeaconRegion` monitoring for the architecture's fixed iBeacon UUID, requesting region state on start/authorization changes and using region enter/state callbacks to hand control back to `CoreBluetooth` scanning.
+*   **iOS proximity actions:** Added RSSI-history-based automatic lock/unlock evaluation on standard advertisements using the shared proximity settings keys (`pref_proximity_enabled`, `pref_unlock_rssi`, `pref_lock_rssi`) so the Swift service now routes proximity-triggered commands through the same real command builder as manual actions.
+*   **Validation:** Kotlin source diagnostics are clean and `./gradlew :shared:compileKotlinMetadata :androidApp:compileDebugKotlin` succeeds. The Xcode simulator build compiles the touched Swift sources, but the overall generic simulator link still fails on this machine because the checked-in `shared.framework` only provides the arm64 simulator slice while Xcode also attempts an x86_64 link.
