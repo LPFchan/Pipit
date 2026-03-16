@@ -46,7 +46,7 @@ private enum ProvisioningQrParseError: LocalizedError {
 /// Temporary onboarding container with camera scan, PIN entry, recovery read path, and success handoff.
 final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
 
-    private enum OnboardingState {
+    enum OnboardingState {
         case camera
         case pin
         case importing
@@ -55,7 +55,7 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         case success
     }
 
-    private enum RecoveryState {
+    enum RecoveryState {
         case waitingForWindowOpen
         case connecting
         case loadingSlots
@@ -74,7 +74,7 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private let cameraQueue = DispatchQueue(label: "com.immogen.pipit.onboarding.camera")
 
-    private var onboardingState: OnboardingState = .camera {
+    private var onboardingState: OnboardingState {
         didSet { updateUiForState() }
     }
     private var recoveryState: RecoveryState = .waitingForWindowOpen {
@@ -116,6 +116,13 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
 
     private let scrollView = UIScrollView()
     private let contentStack = UIStackView()
+    private let cameraModeView = UIView()
+    private let cameraTintView = UIView()
+    private let cameraInfoStack = UIStackView()
+    private let cameraBodyLabel = UILabel()
+    private let cameraStatusLabel = UILabel()
+    private let cameraPrimaryButton = UIButton(type: .system)
+
     private let titleLabel = UILabel()
     private let successAnimationView = UIView()
     private let successSymbolLabel = UILabel()
@@ -132,13 +139,17 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
     private let slotsStack = UIStackView()
     private let primaryButton = UIButton(type: .system)
     private let secondaryButton = UIButton(type: .system)
+    private var contentMinHeightConstraint: NSLayoutConstraint?
+    private var cameraPreferredHeightConstraint: NSLayoutConstraint?
+    private var cameraMinimumHeightConstraint: NSLayoutConstraint?
 
 #if canImport(shared)
     private let keyStore = KeyStoreManager()
 #endif
 
-    init(bleService: IosBleProximityService, onProvisioned: @escaping () -> Void) {
+    init(bleService: IosBleProximityService, initialState: OnboardingState = .camera, onProvisioned: @escaping () -> Void) {
         self.bleService = bleService
+        self.onboardingState = initialState
         self.onProvisioned = onProvisioned
         super.init(nibName: nil, bundle: nil)
     }
@@ -156,10 +167,24 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+        
+        if onboardingState == .recovery {
+            title = "Recover Key"
+            navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Cancel", style: .plain, target: self, action: #selector(cancelRecoveryModal))
+        }
 
         configureLayout()
         bindBleState()
         updateUiForState()
+        
+        if onboardingState == .recovery {
+            startRecoveryFlow()
+        }
+    }
+    
+    @objc private func cancelRecoveryModal() {
+        resetRecoveryFlow()
+        dismiss(animated: true)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -181,6 +206,99 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
     }
 
     private func configureLayout() {
+        cameraModeView.translatesAutoresizingMaskIntoConstraints = false
+        cameraModeView.backgroundColor = .black
+        view.addSubview(cameraModeView)
+        NSLayoutConstraint.activate([
+            cameraModeView.topAnchor.constraint(equalTo: view.topAnchor),
+            cameraModeView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            cameraModeView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            cameraModeView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        cameraPlaceholderView.translatesAutoresizingMaskIntoConstraints = false
+        cameraPlaceholderView.backgroundColor = UIColor.secondarySystemFill.withAlphaComponent(0.18)
+        cameraModeView.addSubview(cameraPlaceholderView)
+        NSLayoutConstraint.activate([
+            cameraPlaceholderView.topAnchor.constraint(equalTo: cameraModeView.topAnchor),
+            cameraPlaceholderView.leadingAnchor.constraint(equalTo: cameraModeView.leadingAnchor),
+            cameraPlaceholderView.trailingAnchor.constraint(equalTo: cameraModeView.trailingAnchor),
+            cameraPlaceholderView.bottomAnchor.constraint(equalTo: cameraModeView.bottomAnchor)
+        ])
+
+        cameraTintView.translatesAutoresizingMaskIntoConstraints = false
+        cameraTintView.backgroundColor = UIColor.black.withAlphaComponent(0.34)
+        cameraModeView.addSubview(cameraTintView)
+        NSLayoutConstraint.activate([
+            cameraTintView.topAnchor.constraint(equalTo: cameraModeView.topAnchor),
+            cameraTintView.leadingAnchor.constraint(equalTo: cameraModeView.leadingAnchor),
+            cameraTintView.trailingAnchor.constraint(equalTo: cameraModeView.trailingAnchor),
+            cameraTintView.bottomAnchor.constraint(equalTo: cameraModeView.bottomAnchor)
+        ])
+
+        viewfinderFrame.translatesAutoresizingMaskIntoConstraints = false
+        viewfinderFrame.backgroundColor = UIColor.white.withAlphaComponent(0.06)
+        viewfinderFrame.layer.cornerRadius = 28
+        viewfinderFrame.layer.borderWidth = 2
+        viewfinderFrame.layer.borderColor = UIColor.white.withAlphaComponent(0.88).cgColor
+        cameraModeView.addSubview(viewfinderFrame)
+        NSLayoutConstraint.activate([
+            viewfinderFrame.widthAnchor.constraint(equalTo: cameraModeView.widthAnchor, multiplier: 0.60),
+            viewfinderFrame.widthAnchor.constraint(equalTo: viewfinderFrame.heightAnchor),
+            viewfinderFrame.centerXAnchor.constraint(equalTo: cameraModeView.centerXAnchor),
+            viewfinderFrame.centerYAnchor.constraint(equalTo: cameraModeView.centerYAnchor, constant: -40)
+        ])
+
+        viewfinderHintLabel.translatesAutoresizingMaskIntoConstraints = false
+        viewfinderHintLabel.text = "Align the provisioning QR"
+        viewfinderHintLabel.font = .preferredFont(forTextStyle: .headline)
+        viewfinderHintLabel.textColor = .white
+        viewfinderHintLabel.textAlignment = .center
+        viewfinderHintLabel.numberOfLines = 2
+        cameraModeView.addSubview(viewfinderHintLabel)
+        NSLayoutConstraint.activate([
+            viewfinderHintLabel.centerXAnchor.constraint(equalTo: cameraModeView.centerXAnchor),
+            viewfinderHintLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            viewfinderHintLabel.leadingAnchor.constraint(greaterThanOrEqualTo: cameraModeView.leadingAnchor, constant: 24),
+            viewfinderHintLabel.trailingAnchor.constraint(lessThanOrEqualTo: cameraModeView.trailingAnchor, constant: -24)
+        ])
+
+        cameraInfoStack.axis = .vertical
+        cameraInfoStack.alignment = .fill
+        cameraInfoStack.spacing = 10
+        cameraInfoStack.translatesAutoresizingMaskIntoConstraints = false
+        cameraModeView.addSubview(cameraInfoStack)
+        NSLayoutConstraint.activate([
+            cameraInfoStack.leadingAnchor.constraint(equalTo: cameraModeView.leadingAnchor, constant: 24),
+            cameraInfoStack.trailingAnchor.constraint(equalTo: cameraModeView.trailingAnchor, constant: -24)
+        ])
+
+        cameraBodyLabel.font = .preferredFont(forTextStyle: .body)
+        cameraBodyLabel.textColor = .white
+        cameraBodyLabel.numberOfLines = 0
+        cameraBodyLabel.textAlignment = .center
+        cameraInfoStack.addArrangedSubview(cameraBodyLabel)
+
+        cameraStatusLabel.font = .preferredFont(forTextStyle: .subheadline)
+        cameraStatusLabel.textColor = UIColor.white.withAlphaComponent(0.82)
+        cameraStatusLabel.numberOfLines = 0
+        cameraStatusLabel.textAlignment = .center
+        cameraInfoStack.addArrangedSubview(cameraStatusLabel)
+
+        cameraPrimaryButton.configuration = .plain()
+        cameraPrimaryButton.configuration?.buttonSize = .large
+        cameraPrimaryButton.configuration?.cornerStyle = .large
+        cameraPrimaryButton.addTarget(self, action: #selector(primaryActionTapped), for: .touchUpInside)
+        cameraPrimaryButton.translatesAutoresizingMaskIntoConstraints = false
+        cameraModeView.addSubview(cameraPrimaryButton)
+        NSLayoutConstraint.activate([
+            cameraPrimaryButton.leadingAnchor.constraint(equalTo: cameraModeView.leadingAnchor, constant: 24),
+            cameraPrimaryButton.trailingAnchor.constraint(equalTo: cameraModeView.trailingAnchor, constant: -24),
+            cameraPrimaryButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+            cameraInfoStack.bottomAnchor.constraint(equalTo: cameraPrimaryButton.topAnchor, constant: -16)
+        ])
+
+        scrollView.alwaysBounceVertical = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scrollView)
         NSLayoutConstraint.activate([
@@ -201,6 +319,13 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
             contentStack.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor, constant: -24),
             contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor, constant: -24)
         ])
+        let contentMinHeightConstraint = contentStack.heightAnchor.constraint(
+            greaterThanOrEqualTo: scrollView.frameLayoutGuide.heightAnchor,
+            constant: -48
+        )
+        contentMinHeightConstraint.priority = .defaultHigh
+        contentMinHeightConstraint.isActive = true
+        self.contentMinHeightConstraint = contentMinHeightConstraint
 
         titleLabel.font = .preferredFont(forTextStyle: .title1)
         titleLabel.textAlignment = .center
@@ -225,41 +350,20 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
             successSymbolLabel.centerYAnchor.constraint(equalTo: successAnimationView.centerYAnchor)
         ])
 
-        cameraPlaceholderView.translatesAutoresizingMaskIntoConstraints = false
-        cameraPlaceholderView.backgroundColor = UIColor.secondarySystemFill.withAlphaComponent(0.35)
-        cameraPlaceholderView.layer.cornerRadius = 28
-        cameraPlaceholderView.layer.borderWidth = 1
-        cameraPlaceholderView.layer.borderColor = UIColor.separator.cgColor
-        cameraPlaceholderView.layer.masksToBounds = true
+        let cameraPreferredHeightConstraint = cameraPlaceholderView.heightAnchor.constraint(
+            equalTo: scrollView.frameLayoutGuide.heightAnchor,
+            multiplier: 0.52
+        )
+        cameraPreferredHeightConstraint.priority = .defaultHigh
+        let cameraMinimumHeightConstraint = cameraPlaceholderView.heightAnchor.constraint(greaterThanOrEqualToConstant: 360)
         NSLayoutConstraint.activate([
-            cameraPlaceholderView.heightAnchor.constraint(equalToConstant: 360)
+            cameraPreferredHeightConstraint,
+            cameraMinimumHeightConstraint
         ])
-        contentStack.addArrangedSubview(cameraPlaceholderView)
-
-        viewfinderFrame.translatesAutoresizingMaskIntoConstraints = false
-        viewfinderFrame.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.12)
-        viewfinderFrame.layer.cornerRadius = 24
-        viewfinderFrame.layer.borderWidth = 2
-        viewfinderFrame.layer.borderColor = UIColor.white.cgColor
-        cameraPlaceholderView.addSubview(viewfinderFrame)
-        NSLayoutConstraint.activate([
-            viewfinderFrame.widthAnchor.constraint(equalToConstant: 220),
-            viewfinderFrame.heightAnchor.constraint(equalToConstant: 220),
-            viewfinderFrame.centerXAnchor.constraint(equalTo: cameraPlaceholderView.centerXAnchor),
-            viewfinderFrame.centerYAnchor.constraint(equalTo: cameraPlaceholderView.centerYAnchor)
-        ])
-
-        viewfinderHintLabel.translatesAutoresizingMaskIntoConstraints = false
-        viewfinderHintLabel.text = "Align the provisioning QR"
-        viewfinderHintLabel.font = .preferredFont(forTextStyle: .headline)
-        viewfinderHintLabel.textColor = .white
-        viewfinderHintLabel.textAlignment = .center
-        viewfinderHintLabel.numberOfLines = 2
-        cameraPlaceholderView.addSubview(viewfinderHintLabel)
-        NSLayoutConstraint.activate([
-            viewfinderHintLabel.centerXAnchor.constraint(equalTo: cameraPlaceholderView.centerXAnchor),
-            viewfinderHintLabel.bottomAnchor.constraint(equalTo: cameraPlaceholderView.bottomAnchor, constant: -24)
-        ])
+        self.cameraPreferredHeightConstraint = cameraPreferredHeightConstraint
+        self.cameraMinimumHeightConstraint = cameraMinimumHeightConstraint
+        cameraPreferredHeightConstraint.isActive = false
+        cameraMinimumHeightConstraint.isActive = false
 
         bodyLabel.font = .preferredFont(forTextStyle: .body)
         bodyLabel.numberOfLines = 0
@@ -323,10 +427,16 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         contentStack.addArrangedSubview(slotsStack)
 
         primaryButton.addTarget(self, action: #selector(primaryActionTapped), for: .touchUpInside)
+        primaryButton.configuration = .filled()
+        primaryButton.configuration?.cornerStyle = .large
+        primaryButton.configuration?.buttonSize = .large
         primaryButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
         contentStack.addArrangedSubview(primaryButton)
 
         secondaryButton.addTarget(self, action: #selector(secondaryActionTapped), for: .touchUpInside)
+        secondaryButton.configuration = .tinted()
+        secondaryButton.configuration?.cornerStyle = .large
+        secondaryButton.configuration?.buttonSize = .large
         secondaryButton.titleLabel?.font = .preferredFont(forTextStyle: .body)
         contentStack.addArrangedSubview(secondaryButton)
 
@@ -364,7 +474,19 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
     @objc private func primaryActionTapped() {
         switch onboardingState {
         case .camera:
-            startRecoveryFlow()
+            let recoveryVc = OnboardingPlaceholderViewController(bleService: bleService, initialState: .recovery) { [weak self] in
+                self?.dismiss(animated: true) {
+                    self?.onProvisioned()
+                }
+            }
+            let nav = UINavigationController(rootViewController: recoveryVc)
+            nav.modalPresentationStyle = .pageSheet
+            if let sheet = nav.sheetPresentationController {
+                sheet.detents = [.medium(), .large()]
+                sheet.prefersGrabberVisible = true
+                sheet.preferredCornerRadius = 32.0
+            }
+            present(nav, animated: true)
         case .pin:
             confirmPin()
         case .importing:
@@ -699,6 +821,10 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
     }
 
     private func updateUiForState() {
+        let isCameraState = onboardingState == .camera
+        cameraModeView.isHidden = !isCameraState
+        scrollView.isHidden = isCameraState
+
         titleLabel.text = "Onboarding"
         successAnimationView.isHidden = true
         pinBoxesStack.isHidden = true
@@ -710,20 +836,21 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
 
         switch onboardingState {
         case .camera:
-            cameraPlaceholderView.isHidden = false
             successAnimationView.isHidden = true
-            bodyLabel.text = "Scan from Whimbrel\n\nPoint the camera at an immogen://prov QR code. Guest payloads provision immediately; owner and migration payloads continue to PIN entry."
-            statusLabel.text = scanErrorMessage ?? "Scanning for provisioning QR codes..."
-            statusLabel.textColor = scanErrorMessage == nil ? .secondaryLabel : .systemRed
+            cameraBodyLabel.text = scanErrorMessage == nil
+                ? nil
+                : "Simulator preview mode is active. You can review onboarding here, but QR scanning requires a physical iPhone camera. If this phone is replacing a lost device, continue with recovery instead."
+            cameraStatusLabel.text = scanErrorMessage
+            cameraStatusLabel.textColor = scanErrorMessage == nil ? UIColor.white.withAlphaComponent(0.82) : UIColor.systemRed.withAlphaComponent(0.95)
+            viewfinderHintLabel.text = scanErrorMessage == nil ? "Align the provisioning QR" : "Camera preview unavailable"
+            viewfinderFrame.layer.borderColor = (scanErrorMessage == nil ? UIColor.white.withAlphaComponent(0.88) : UIColor.systemOrange.withAlphaComponent(0.95)).cgColor
             errorLabel.isHidden = true
             activityIndicator.stopAnimating()
-            primaryButton.isHidden = false
-            primaryButton.setTitle("recover key from lost phone >", for: .normal)
-            secondaryButton.isHidden = true
+            cameraPrimaryButton.isHidden = false
+            cameraPrimaryButton.setTitle("Recover Key from Lost Phone", for: .normal)
             updateCameraSessionForCurrentState()
 
         case .pin:
-            cameraPlaceholderView.isHidden = true
             successAnimationView.isHidden = true
             bodyLabel.text = "Enter your 6-digit PIN. This is the PIN you set during Guillemot setup."
             pinBoxesStack.isHidden = false
@@ -738,7 +865,6 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
             stopCameraSession()
 
         case .importing:
-            cameraPlaceholderView.isHidden = true
             successAnimationView.isHidden = false
             successSymbolLabel.text = "🔑"
             bodyLabel.text = pendingProvisioningMaterial?.statusText ?? "Securing your phone key on this device."
@@ -752,13 +878,12 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
             stopCameraSession()
 
         case .recovery:
-            cameraPlaceholderView.isHidden = true
             successAnimationView.isHidden = true
             bodyLabel.text = recoveryState == .slotPicker
                 ? "Pick the phone slot you want to replace on this device. Pipit will mint a fresh AES key and revoke the lost phone immediately."
                 : recoveryState == .ownerProof
                     ? "Recovering Slot 1 requires BLE owner proof. When you continue, iOS should show the system Bluetooth pairing prompt. Enter the 6-digit Guillemot PIN to authorize the recovery."
-                    : "Press the button three times on your Uguisu fob. Pipit will detect the Window Open beacon automatically."
+                    : "Press the button three times on your Uguisu fob."
             slotsStack.isHidden = recoveryState != .slotPicker
             statusLabel.textColor = recoveryState == .error ? .systemRed : .label
             errorLabel.isHidden = recoveryState != .ownerProof || recoveryErrorMessage == nil
@@ -770,12 +895,10 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
             }
             primaryButton.isHidden = !(recoveryState == .error || recoveryState == .slotPicker || recoveryState == .ownerProof)
             primaryButton.setTitle(recoveryState == .slotPicker ? "Recover this slot" : recoveryState == .ownerProof ? "Continue to pairing" : "Try again", for: .normal)
-            secondaryButton.isHidden = false
-            secondaryButton.setTitle("Back to scan", for: .normal)
+            secondaryButton.isHidden = true
             stopCameraSession()
 
         case .locationPermission:
-            cameraPlaceholderView.isHidden = true
             successAnimationView.isHidden = true
             bodyLabel.text = "Enable proximity unlock?\n\nPipit can automatically unlock your vehicle when you walk up to it. This requires Always Allow location access so the app can detect your vehicle in the background. Your location is never stored or transmitted."
             slotsStack.isHidden = true
@@ -792,7 +915,6 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         case .success:
             titleLabel.text = "You're all set."
             successAnimationView.isHidden = true
-            cameraPlaceholderView.isHidden = true
             bodyLabel.text = "The key has been stored in the secure keystore on this device."
             slotsStack.isHidden = false
             statusLabel.textColor = .label
@@ -853,11 +975,25 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
     }
 
     private func updateCameraSessionForCurrentState() {
-        if onboardingState == .camera {
-            requestCameraAccessIfNeededAndStart()
-        } else {
+        guard onboardingState == .camera else {
             stopCameraSession()
+            return
         }
+
+#if targetEnvironment(simulator)
+        if scanErrorMessage == nil {
+            scanErrorMessage = "Camera scanning is unavailable in the iOS simulator. Run Pipit on a physical iPhone to scan Whimbrel QR codes, or use recovery if you already have a paired device."
+        }
+        stopCameraSession()
+        return
+#endif
+
+        guard scanErrorMessage == nil else {
+            stopCameraSession()
+            return
+        }
+
+        requestCameraAccessIfNeededAndStart()
     }
 
     private func requestCameraAccessIfNeededAndStart() {

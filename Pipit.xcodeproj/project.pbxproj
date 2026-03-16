@@ -135,7 +135,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\ncd \"$SRCROOT\"\nif [ -z \"$JAVA_HOME\" ]; then\n  if JAVA_CANDIDATE=$(/usr/libexec/java_home -v 17 2>/dev/null); then\n    JAVA_HOME=\"$JAVA_CANDIDATE\"\n  elif [ -d \"/opt/homebrew/Cellar/openjdk@17/17.0.18/libexec/openjdk.jdk/Contents/Home\" ]; then\n    JAVA_HOME=\"/opt/homebrew/Cellar/openjdk@17/17.0.18/libexec/openjdk.jdk/Contents/Home\"\n  fi\n  export JAVA_HOME\nfi\nif [ \"$PLATFORM_NAME\" = \"iphonesimulator\" ]; then\n  if [ \"$CONFIGURATION\" = \"Debug\" ]; then\n    ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --quiet\n  else\n    ./gradlew :shared:linkReleaseFrameworkIosSimulatorArm64 --quiet\n  fi\nelse\n  if [ \"$CONFIGURATION\" = \"Debug\" ]; then\n    ./gradlew :shared:linkDebugFrameworkIosArm64 --quiet\n  else\n    ./gradlew :shared:linkReleaseFrameworkIosArm64 --quiet\n  fi\nfi\n";
+			shellScript = "set -e\ncd \"$SRCROOT\"\nif [ -z \"$JAVA_HOME\" ]; then\n  if JAVA_CANDIDATE=$(/usr/libexec/java_home -v 17 2>/dev/null); then\n    JAVA_HOME=\"$JAVA_CANDIDATE\"\n  elif [ -d \"/opt/homebrew/Cellar/openjdk@17/17.0.18/libexec/openjdk.jdk/Contents/Home\" ]; then\n    JAVA_HOME=\"/opt/homebrew/Cellar/openjdk@17/17.0.18/libexec/openjdk.jdk/Contents/Home\"\n  fi\n  export JAVA_HOME\nfi\nif [ \"$PLATFORM_NAME\" = \"iphonesimulator\" ]; then\n  if [ \"$CONFIGURATION\" = \"Debug\" ]; then\n    if echo \"$ARCHS\" | grep -qw arm64; then\n      ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --quiet\n    fi\n    if echo \"$ARCHS\" | grep -qw x86_64; then\n      ./gradlew :shared:linkDebugFrameworkIosX64 --quiet\n    fi\n  else\n    if echo \"$ARCHS\" | grep -qw arm64; then\n      ./gradlew :shared:linkReleaseFrameworkIosSimulatorArm64 --quiet\n    fi\n    if echo \"$ARCHS\" | grep -qw x86_64; then\n      ./gradlew :shared:linkReleaseFrameworkIosX64 --quiet\n    fi\n  fi\nelse\n  if [ \"$CONFIGURATION\" = \"Debug\" ]; then\n    ./gradlew :shared:linkDebugFrameworkIosArm64 --quiet\n  else\n    ./gradlew :shared:linkReleaseFrameworkIosArm64 --quiet\n  fi\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -199,9 +199,13 @@
 					"$(inherited)",
 					"$(SRCROOT)/shared/build/bin/iosArm64/debugFramework",
 				);
-				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = (
 					"$(inherited)",
 					"$(SRCROOT)/shared/build/bin/iosSimulatorArm64/debugFramework",
+				);
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = (
+					"$(inherited)",
+					"$(SRCROOT)/shared/build/bin/iosX64/debugFramework",
 				);
 				INFOPLIST_FILE = iosApp/iosApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Pipit;
@@ -241,9 +245,13 @@
 					"$(inherited)",
 					"$(SRCROOT)/shared/build/bin/iosArm64/releaseFramework",
 				);
-				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = (
 					"$(inherited)",
 					"$(SRCROOT)/shared/build/bin/iosSimulatorArm64/releaseFramework",
+				);
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = (
+					"$(inherited)",
+					"$(SRCROOT)/shared/build/bin/iosX64/releaseFramework",
 				);
 				INFOPLIST_FILE = iosApp/iosApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Pipit;
