@@ -165,6 +165,7 @@ public enum IosBleProximityServiceError: LocalizedError {
     @Published public private(set) var isWindowOpen: Bool = false
     @Published public private(set) var lastCommandPayloadHex: String?
     @Published public private(set) var managementState: BleManagementSessionState = .init()
+    @Published public private(set) var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
 
     private let locationManager = CLLocationManager()
     private var centralManager: CBCentralManager?
@@ -212,6 +213,11 @@ public enum IosBleProximityServiceError: LocalizedError {
     override public init() {
         super.init()
         locationManager.delegate = self
+        locationAuthorizationStatus = currentLocationAuthorizationStatus()
+    }
+
+    public var hasAlwaysLocationAuthorization: Bool {
+        locationAuthorizationStatus == .authorizedAlways
     }
 
     public func startProximity() {
@@ -366,14 +372,23 @@ public enum IosBleProximityServiceError: LocalizedError {
         await sendSharedProximityCommand(command: .lock, targetState: .connectedLocked)
     }
 
-    private func requestLocationAuthorizationIfNeeded() {
-        if #available(iOS 13.0, *) {
-            if locationManager.authorizationStatus == .notDetermined {
-                locationManager.requestAlwaysAuthorization()
-            }
-        } else if CLLocationManager.authorizationStatus() == .notDetermined {
+    public func requestAlwaysLocationAuthorization() {
+        requestLocationAuthorizationIfNeeded(force: true)
+    }
+
+    private func requestLocationAuthorizationIfNeeded(force: Bool = false) {
+        let status = currentLocationAuthorizationStatus()
+        if status == .authorizedAlways || status == .denied || status == .restricted {
+            return
+        }
+
+        if force || status == .notDetermined {
             locationManager.requestAlwaysAuthorization()
         }
+    }
+
+    private func currentLocationAuthorizationStatus() -> CLAuthorizationStatus {
+        locationManager.authorizationStatus
     }
 
     private func ensureCentralManager() {
@@ -1002,7 +1017,15 @@ public enum IosBleProximityServiceError: LocalizedError {
     }
 }
 
-extension IosBleProximityService: CLLocationManagerDelegate {}
+extension IosBleProximityService: CLLocationManagerDelegate {
+    public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        locationAuthorizationStatus = currentLocationAuthorizationStatus()
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        locationAuthorizationStatus = status
+    }
+}
 
 extension IosBleProximityService: CBCentralManagerDelegate {
     public func centralManagerDidUpdateState(_ central: CBCentralManager) {

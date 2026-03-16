@@ -12,6 +12,8 @@
         <string>Pipit uses Bluetooth to securely connect to and communicate with your vehicle.</string>
         <key>NSBluetoothPeripheralUsageDescription</key>
         <string>Pipit uses Bluetooth to securely connect to and communicate with your vehicle.</string>
+        <key>NSCameraUsageDescription</key>
+        <string>Pipit uses the camera to scan Whimbrel provisioning QR codes during onboarding.</string>
         <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
         <string>Pipit uses your location to automatically detect your vehicle in the background and unlock it as you approach.</string>
         <key>NSLocationWhenInUseUsageDescription</key>

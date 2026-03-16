@@ -8,6 +8,12 @@ import shared
 /// Root container: shows Home or Settings, and the disconnect overlay when BLE is not connected.
 final class RootViewController: UIViewController {
 
+    private enum RootScreen {
+        case onboarding
+        case home
+        case settings
+    }
+
     private let bleService: IosBleProximityService
     private var cancellables = Set<AnyCancellable>()
     private var tapHintDismissed = false
@@ -16,6 +22,12 @@ final class RootViewController: UIViewController {
     private let overlayView = DisconnectOverlayView()
     private var homeVC: HomeViewController?
     private var settingsVC: SettingsPlaceholderViewController?
+    private var onboardingVC: OnboardingPlaceholderViewController?
+    private var currentScreen: RootScreen = .onboarding
+
+    #if canImport(shared)
+    private let onboardingGate = OnboardingGate()
+    #endif
 
     init(bleService: IosBleProximityService) {
         self.bleService = bleService
@@ -35,7 +47,7 @@ final class RootViewController: UIViewController {
             containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-        showHome()
+        showInitialScreen()
         view.addSubview(overlayView)
         overlayView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -53,11 +65,58 @@ final class RootViewController: UIViewController {
         updateOverlay(connectionState: bleService.connectionState)
     }
 
-    private func showHome() {
-        settingsVC?.willMove(toParent: nil)
-        settingsVC?.view.removeFromSuperview()
-        settingsVC?.removeFromParent()
+    private func showInitialScreen() {
+        #if canImport(shared)
+        if onboardingGate.hasAnyProvisionedKey() {
+            showHome()
+        } else {
+            showOnboarding()
+        }
+        #else
+        showOnboarding()
+        #endif
+    }
+
+    private func clearCurrentChild() {
+        [homeVC, settingsVC, onboardingVC].forEach { child in
+            child?.willMove(toParent: nil)
+            child?.view.removeFromSuperview()
+            child?.removeFromParent()
+        }
+        homeVC = nil
         settingsVC = nil
+        onboardingVC = nil
+    }
+
+    private func install(_ child: UIViewController) {
+        addChild(child)
+        containerView.addSubview(child.view)
+        child.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            child.view.topAnchor.constraint(equalTo: containerView.topAnchor),
+            child.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            child.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            child.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+        ])
+        child.didMove(toParent: self)
+        updateOverlay(connectionState: bleService.connectionState)
+    }
+
+    private func showOnboarding() {
+        clearCurrentChild()
+        currentScreen = .onboarding
+
+        let onboarding = OnboardingPlaceholderViewController(
+            bleService: bleService,
+            onProvisioned: { [weak self] in self?.showHome() }
+        )
+        onboardingVC = onboarding
+        install(onboarding)
+    }
+
+    private func showHome() {
+        clearCurrentChild()
+        currentScreen = .home
 
         let home = HomeViewController(
             onGearTap: { [weak self] in self?.showSettings() },
@@ -71,41 +130,26 @@ final class RootViewController: UIViewController {
             onHintDismissed: { [weak self] in self?.tapHintDismissed = true }
         )
         homeVC = home
-        addChild(home)
-        containerView.addSubview(home.view)
-        home.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            home.view.topAnchor.constraint(equalTo: containerView.topAnchor),
-            home.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            home.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            home.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
-        ])
-        home.didMove(toParent: self)
+        install(home)
     }
 
     private func showSettings() {
-        homeVC?.willMove(toParent: nil)
-        homeVC?.view.removeFromSuperview()
-        homeVC?.removeFromParent()
-        homeVC = nil
+        clearCurrentChild()
+        currentScreen = .settings
 
         let settings = SettingsPlaceholderViewController(onClose: { [weak self] in
             self?.showHome()
         })
         settingsVC = settings
-        addChild(settings)
-        containerView.addSubview(settings.view)
-        settings.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            settings.view.topAnchor.constraint(equalTo: containerView.topAnchor),
-            settings.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            settings.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            settings.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
-        ])
-        settings.didMove(toParent: self)
+        install(settings)
     }
 
     private func updateOverlay(connectionState: ConnectionState) {
+        guard currentScreen != .onboarding else {
+            overlayView.isHidden = true
+            return
+        }
+
         let show: Bool
         switch connectionState {
         case .connectedLocked, .connectedUnlocked: show = false
