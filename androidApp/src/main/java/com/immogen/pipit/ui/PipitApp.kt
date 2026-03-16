@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.immogen.core.ImmoCrypto
 import com.immogen.core.KeyStoreManager
 import com.immogen.pipit.ble.BleManagementConnectMode
+import com.immogen.pipit.ble.BleManagementResponseException
 import com.immogen.pipit.ble.BleManagementSessionConnectionState
 import com.immogen.pipit.ble.BleManagementSessionState
 import com.immogen.pipit.ble.BleManagementSlot
@@ -83,6 +85,7 @@ private enum class RecoveryStage {
     WAITING_FOR_WINDOW_OPEN,
     CONNECTING,
     LOADING_SLOTS,
+    OWNER_PROOF,
     RECOVERING,
     SLOT_PICKER,
     ERROR
@@ -91,6 +94,7 @@ private enum class RecoveryStage {
 private enum class OnboardingStage {
     CAMERA,
     PIN,
+    IMPORTING,
     RECOVERY,
     SUCCESS
 }
@@ -99,6 +103,14 @@ private data class ProvisioningSuccess(
     val slotId: Int,
     val counter: UInt,
     val name: String,
+)
+
+private data class PendingProvisioningMaterial(
+    val slotId: Int,
+    val key: ByteArray,
+    val counter: UInt,
+    val name: String,
+    val statusText: String,
 )
 
 @Composable
@@ -347,6 +359,7 @@ fun OnboardingPlaceholderView(
     var encryptedPayload by remember { mutableStateOf<ProvisioningQrPayload.Encrypted?>(null) }
     var provisioningSuccess by remember { mutableStateOf<ProvisioningSuccess?>(null) }
     var successOverviewSlots by remember { mutableStateOf<List<BleManagementSlot>>(emptyList()) }
+    var pendingProvisioningMaterial by remember { mutableStateOf<PendingProvisioningMaterial?>(null) }
     var scanError by remember { mutableStateOf<String?>(null) }
     var pin by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
@@ -364,6 +377,7 @@ fun OnboardingPlaceholderView(
             knownSlots = recoverySlots,
         )
         encryptedPayload = null
+        pendingProvisioningMaterial = null
         pin = ""
         pinError = null
         scanError = null
@@ -371,11 +385,29 @@ fun OnboardingPlaceholderView(
         onboardingStage = OnboardingStage.SUCCESS
     }
 
+    fun beginProvisioningImport(
+        slotId: Int,
+        key: ByteArray,
+        counter: UInt,
+        name: String,
+        statusText: String,
+    ) {
+        pendingProvisioningMaterial = PendingProvisioningMaterial(
+            slotId = slotId,
+            key = key,
+            counter = counter,
+            name = name,
+            statusText = statusText,
+        )
+        onboardingStage = OnboardingStage.IMPORTING
+    }
+
     val returnToCamera: () -> Unit = {
         onboardingStage = OnboardingStage.CAMERA
         encryptedPayload = null
         provisioningSuccess = null
         successOverviewSlots = emptyList()
+        pendingProvisioningMaterial = null
         pin = ""
         pinError = null
         scanError = null
@@ -393,11 +425,27 @@ fun OnboardingPlaceholderView(
         selectedSlotId = null
         recoveryError = null
         successOverviewSlots = emptyList()
+        pendingProvisioningMaterial = null
         bleService?.stopWindowOpenScan()
         coroutineScope.launch {
             runCatching { bleService?.managementTransport?.disconnect() }
         }
         onboardingStage = OnboardingStage.CAMERA
+    }
+
+    LaunchedEffect(onboardingStage, pendingProvisioningMaterial) {
+        val pendingMaterial = pendingProvisioningMaterial
+        if (onboardingStage != OnboardingStage.IMPORTING || pendingMaterial == null) {
+            return@LaunchedEffect
+        }
+
+        delay(1000)
+        completeProvisioning(
+            slotId = pendingMaterial.slotId,
+            key = pendingMaterial.key,
+            counter = pendingMaterial.counter,
+            name = pendingMaterial.name,
+        )
     }
 
     val startRecovery: () -> Unit = {
@@ -474,6 +522,11 @@ fun OnboardingPlaceholderView(
         }
 
         recoveryError = null
+        if (targetSlot.id == 1 && recoveryStage != RecoveryStage.OWNER_PROOF) {
+            recoveryStage = RecoveryStage.OWNER_PROOF
+            return@executeRecovery
+        }
+
         recoveryStage = RecoveryStage.RECOVERING
         coroutineScope.launch {
             try {
@@ -500,6 +553,15 @@ fun OnboardingPlaceholderView(
                     name = finalName,
                 )
                 runCatching { transport.disconnect() }
+            } catch (error: BleManagementResponseException) {
+                if (targetSlot.id == 1 && error.isPairingRequiredRecoveryError()) {
+                    recoveryStage = RecoveryStage.OWNER_PROOF
+                    recoveryError = "Pairing failed. Check the 6-digit Guillemot PIN and try again. Android should show the system Bluetooth pairing sheet for Owner recovery."
+                } else {
+                    recoveryStage = RecoveryStage.ERROR
+                    recoveryError = error.message ?: "Unable to recover this slot."
+                    runCatching { transport.disconnect() }
+                }
             } catch (error: Throwable) {
                 recoveryStage = RecoveryStage.ERROR
                 recoveryError = error.message ?: "Unable to recover this slot."
@@ -530,11 +592,12 @@ fun OnboardingPlaceholderView(
         scanLocked = true
         when (payload) {
             is ProvisioningQrPayload.Guest -> {
-                completeProvisioning(
+                beginProvisioningImport(
                     slotId = payload.slotId,
                     key = payload.key,
                     counter = payload.counter,
                     name = payload.name,
+                    statusText = "Importing your phone key...",
                 )
             }
 
@@ -692,11 +755,12 @@ fun OnboardingPlaceholderView(
                                         salt = payload.salt,
                                         encryptedKey = payload.encryptedKey,
                                     )
-                                    completeProvisioning(
+                                    beginProvisioningImport(
                                         slotId = payload.slotId,
                                         key = decryptedKey,
                                         counter = payload.counter,
                                         name = payload.name,
+                                        statusText = "Decrypting and securing your phone key...",
                                     )
                                 } catch (_: ImmoCrypto.InvalidProvisioningPinException) {
                                     pinError = "Incorrect PIN."
@@ -717,10 +781,30 @@ fun OnboardingPlaceholderView(
                     }
                 }
 
+                OnboardingStage.IMPORTING -> {
+                    val importStatus = pendingProvisioningMaterial?.statusText ?: "Securing your phone key..."
+                    OnboardingImportAnimation()
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(
+                        text = importStatus,
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Pipit is finalizing secure key storage on this device.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                    )
+                }
+
                 OnboardingStage.RECOVERY -> {
                     Text(
                         text = if (recoveryStage == RecoveryStage.SLOT_PICKER) {
                             "Select your lost slot"
+                        } else if (recoveryStage == RecoveryStage.OWNER_PROOF) {
+                            "Owner proof required"
                         } else {
                             "Recover key from lost phone"
                         },
@@ -731,6 +815,8 @@ fun OnboardingPlaceholderView(
                     Text(
                         text = if (recoveryStage == RecoveryStage.SLOT_PICKER) {
                             "Pick the phone slot you want to replace on this device. Pipit will mint a fresh AES key and revoke the lost phone immediately."
+                        } else if (recoveryStage == RecoveryStage.OWNER_PROOF) {
+                            "Recovering Slot 1 requires BLE owner proof. When you continue, Android should show the system Bluetooth pairing prompt. Enter the 6-digit Guillemot PIN to authorize the recovery."
                         } else {
                             "Press the button three times on your Uguisu fob. Pipit will detect Window Open and fetch the slot list automatically."
                         },
@@ -740,7 +826,7 @@ fun OnboardingPlaceholderView(
                     )
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    if (recoveryStage != RecoveryStage.SLOT_PICKER) {
+                    if (recoveryStage != RecoveryStage.SLOT_PICKER && recoveryStage != RecoveryStage.OWNER_PROOF) {
                         CircularProgressIndicator()
                         Spacer(modifier = Modifier.height(16.dp))
                     }
@@ -750,6 +836,7 @@ fun OnboardingPlaceholderView(
                             RecoveryStage.WAITING_FOR_WINDOW_OPEN -> "Scanning for the Window Open beacon..."
                             RecoveryStage.CONNECTING -> recoverySessionStatus(sessionState)
                             RecoveryStage.LOADING_SLOTS -> "Management connected. Loading slot inventory..."
+                            RecoveryStage.OWNER_PROOF -> "The next step uses Android's Bluetooth pairing sheet for Owner recovery."
                             RecoveryStage.RECOVERING -> selectedSlotId?.let { "Recovering slot $it onto this phone..." }
                                 ?: "Recovering the selected slot..."
                             RecoveryStage.SLOT_PICKER -> selectedSlotId?.let { "Selected slot $it" }
@@ -765,6 +852,16 @@ fun OnboardingPlaceholderView(
                             MaterialTheme.colorScheme.onSurface
                         }
                     )
+
+                    if (recoveryStage == RecoveryStage.OWNER_PROOF && recoveryError != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = recoveryError ?: "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
 
                     if (recoveryStage == RecoveryStage.SLOT_PICKER) {
                         Spacer(modifier = Modifier.height(20.dp))
@@ -852,6 +949,14 @@ fun OnboardingPlaceholderView(
                         ) {
                             Text("Recover this slot")
                         }
+                    } else if (recoveryStage == RecoveryStage.OWNER_PROOF) {
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Button(
+                            onClick = executeRecovery,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Continue to pairing")
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))
@@ -872,8 +977,6 @@ fun OnboardingPlaceholderView(
                         counter = 0u,
                         name = "",
                     )
-                    OnboardingSuccessAnimation()
-                    Spacer(modifier = Modifier.height(20.dp))
                     Text(
                         text = "You're all set.",
                         style = MaterialTheme.typography.titleLarge,
@@ -1016,7 +1119,7 @@ private fun defaultRecoveredSlotName(slot: BleManagementSlot): String {
 }
 
 @Composable
-private fun OnboardingSuccessAnimation(modifier: Modifier = Modifier) {
+private fun OnboardingImportAnimation(modifier: Modifier = Modifier) {
     val haptic = LocalHapticFeedback.current
     var animationStarted by remember { mutableStateOf(false) }
     val progress by animateFloatAsState(
@@ -1068,16 +1171,24 @@ private fun OnboardingSuccessAnimation(modifier: Modifier = Modifier) {
             ) {}
         }
 
-        Text(
-            text = "✓",
-            style = MaterialTheme.typography.displayMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.graphicsLayer {
-                val reveal = ((progress - 0.72f) / 0.28f).coerceIn(0f, 1f)
-                alpha = reveal
-                scaleX = 0.7f + (0.3f * reveal)
-                scaleY = 0.7f + (0.3f * reveal)
-            }
+        Icon(
+            imageVector = Icons.Default.VpnKey,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier
+                .size(56.dp)
+                .graphicsLayer {
+                    val reveal = ((progress - 0.72f) / 0.28f).coerceIn(0f, 1f)
+                    alpha = reveal
+                    scaleX = 0.7f + (0.3f * reveal)
+                    scaleY = 0.7f + (0.3f * reveal)
+                }
         )
     }
+}
+
+private fun BleManagementResponseException.isPairingRequiredRecoveryError(): Boolean {
+    val code = response.code?.lowercase().orEmpty()
+    val message = response.message?.lowercase().orEmpty()
+    return code == "locked" || "pairing" in message || "authentication" in message
 }

@@ -13,6 +13,14 @@ private struct ProvisioningSuccess {
     let name: String
 }
 
+private struct PendingProvisioningMaterial {
+    let slotId: Int
+    let key: Data
+    let counter: UInt32
+    let name: String
+    let statusText: String
+}
+
 private enum ParsedProvisioningPayload {
     case guest(slotId: Int, key: Data, counter: UInt32, name: String)
     case encrypted(slotId: Int, salt: Data, encryptedKey: Data, counter: UInt32, name: String)
@@ -41,6 +49,7 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
     private enum OnboardingState {
         case camera
         case pin
+        case importing
         case recovery
         case locationPermission
         case success
@@ -50,6 +59,7 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         case waitingForWindowOpen
         case connecting
         case loadingSlots
+        case ownerProof
         case recovering
         case slotPicker
         case error
@@ -59,6 +69,7 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
     private let onProvisioned: () -> Void
     private var cancellables = Set<AnyCancellable>()
     private var recoveryTask: Task<Void, Never>?
+    private var importTask: Task<Void, Never>?
     private var captureSession: AVCaptureSession?
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private let cameraQueue = DispatchQueue(label: "com.immogen.pipit.onboarding.camera")
@@ -91,6 +102,7 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         didSet { errorLabel.text = pinErrorMessage }
     }
     private var pendingEncryptedPayload: ParsedProvisioningPayload?
+    private var pendingProvisioningMaterial: PendingProvisioningMaterial?
     private var provisioningSuccess: ProvisioningSuccess?
     private var hasPlayedSuccessAnimation = false
     private var successParticles: [UIView] = []
@@ -135,6 +147,7 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
 
     deinit {
         recoveryTask?.cancel()
+        importTask?.cancel()
         bleService.stopWindowOpenScan()
         bleService.disconnectManagement()
         stopCameraSession()
@@ -354,8 +367,10 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
             startRecoveryFlow()
         case .pin:
             confirmPin()
+        case .importing:
+            break
         case .recovery:
-            if recoveryState == .slotPicker {
+            if recoveryState == .slotPicker || recoveryState == .ownerProof {
                 beginSelectedSlotRecovery()
             } else if recoveryState == .error {
                 startRecoveryFlow()
@@ -373,6 +388,8 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
             break
         case .pin:
             returnToCamera()
+        case .importing:
+            break
         case .recovery:
             resetRecoveryFlow()
         case .locationPermission:
@@ -403,7 +420,9 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         pinErrorMessage = nil
         recoverySlots = []
         successOverviewSlots = []
+        pendingProvisioningMaterial = nil
         selectedSlotId = nil
+        importTask?.cancel()
         resetSuccessAnimation()
         onboardingState = .recovery
         recoveryState = .waitingForWindowOpen
@@ -418,7 +437,9 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         recoveryErrorMessage = nil
         recoverySlots = []
         successOverviewSlots = []
+        pendingProvisioningMaterial = nil
         selectedSlotId = nil
+        importTask?.cancel()
         bleService.stopWindowOpenScan()
         bleService.disconnectManagement()
         onboardingState = .camera
@@ -429,13 +450,46 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         pendingEncryptedPayload = nil
         provisioningSuccess = nil
         successOverviewSlots = []
+        pendingProvisioningMaterial = nil
         pinCode = ""
         pinErrorMessage = nil
         scanErrorMessage = nil
         isScanLocked = false
         isProvisioningInFlight = false
+        importTask?.cancel()
         resetSuccessAnimation()
         onboardingState = .camera
+    }
+
+    private func startImportTransition(slotId: Int, key: Data, counter: UInt32, name: String, statusText: String) {
+        pendingProvisioningMaterial = PendingProvisioningMaterial(
+            slotId: slotId,
+            key: key,
+            counter: counter,
+            name: name,
+            statusText: statusText
+        )
+        importTask?.cancel()
+        resetSuccessAnimation()
+        onboardingState = .importing
+        importTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard self.onboardingState == .importing,
+                      let pending = self.pendingProvisioningMaterial else {
+                    return
+                }
+                self.saveProvisionedMaterial(
+                    slotId: pending.slotId,
+                    key: pending.key,
+                    counter: pending.counter,
+                    name: pending.name
+                )
+            }
+        }
     }
 
     private func requestLocationPermission() {
@@ -500,7 +554,23 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         guard recoveryState == .slotPicker,
               let selectedSlotId,
               let slot = recoverySlots.first(where: { $0.id == selectedSlotId && $0.used }) else {
+            if recoveryState == .ownerProof,
+               let selectedSlotId,
+               let slot = recoverySlots.first(where: { $0.id == selectedSlotId && $0.used }) {
+                beginSelectedSlotRecoveryForSlot(slot)
+                return
+            }
             recoveryErrorMessage = "Select an occupied slot to recover onto this phone."
+            return
+        }
+
+        beginSelectedSlotRecoveryForSlot(slot)
+    }
+
+    private func beginSelectedSlotRecoveryForSlot(_ slot: BleManagementSlot) {
+        if slot.id == 1 && recoveryState != .ownerProof {
+            recoveryErrorMessage = nil
+            recoveryState = .ownerProof
             return
         }
 
@@ -544,10 +614,15 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
                     self.recoveryTask = nil
                 }
             } catch {
-                self.bleService.disconnectManagement()
                 await MainActor.run {
-                    self.recoveryErrorMessage = error.localizedDescription
-                    self.recoveryState = .error
+                    if slot.id == 1 && self.isOwnerRecoveryPairingError(error) {
+                        self.recoveryErrorMessage = "Pairing failed. Check the 6-digit Guillemot PIN and try again. iOS should show the system Bluetooth pairing prompt for Owner recovery."
+                        self.recoveryState = .ownerProof
+                    } else {
+                        self.bleService.disconnectManagement()
+                        self.recoveryErrorMessage = error.localizedDescription
+                        self.recoveryState = .error
+                    }
                     self.recoveryTask = nil
                 }
             }
@@ -614,8 +689,10 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         switch onboardingState {
         case .pin:
             primaryButton.isEnabled = pinCode.count == 6 && !isProvisioningInFlight
+        case .importing:
+            primaryButton.isEnabled = false
         case .recovery:
-            primaryButton.isEnabled = recoveryState == .error || (recoveryState == .slotPicker && selectedSlotId != nil)
+            primaryButton.isEnabled = recoveryState == .error || (recoveryState == .slotPicker && selectedSlotId != nil) || recoveryState == .ownerProof
         case .locationPermission, .camera, .success:
             primaryButton.isEnabled = true
         }
@@ -634,6 +711,7 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         switch onboardingState {
         case .camera:
             cameraPlaceholderView.isHidden = false
+            successAnimationView.isHidden = true
             bodyLabel.text = "Scan from Whimbrel\n\nPoint the camera at an immogen://prov QR code. Guest payloads provision immediately; owner and migration payloads continue to PIN entry."
             statusLabel.text = scanErrorMessage ?? "Scanning for provisioning QR codes..."
             statusLabel.textColor = scanErrorMessage == nil ? .secondaryLabel : .systemRed
@@ -646,6 +724,7 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
 
         case .pin:
             cameraPlaceholderView.isHidden = true
+            successAnimationView.isHidden = true
             bodyLabel.text = "Enter your 6-digit PIN. This is the PIN you set during Guillemot setup."
             pinBoxesStack.isHidden = false
             pinTextField.isHidden = false
@@ -658,28 +737,46 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
             secondaryButton.setTitle("Back to scan", for: .normal)
             stopCameraSession()
 
+        case .importing:
+            cameraPlaceholderView.isHidden = true
+            successAnimationView.isHidden = false
+            successSymbolLabel.text = "🔑"
+            bodyLabel.text = pendingProvisioningMaterial?.statusText ?? "Securing your phone key on this device."
+            slotsStack.isHidden = true
+            statusLabel.text = ""
+            errorLabel.isHidden = true
+            activityIndicator.stopAnimating()
+            primaryButton.isHidden = true
+            secondaryButton.isHidden = true
+            playSuccessAnimationIfNeeded()
+            stopCameraSession()
+
         case .recovery:
             cameraPlaceholderView.isHidden = true
+            successAnimationView.isHidden = true
             bodyLabel.text = recoveryState == .slotPicker
                 ? "Pick the phone slot you want to replace on this device. Pipit will mint a fresh AES key and revoke the lost phone immediately."
-                : "Press the button three times on your Uguisu fob. Pipit will detect the Window Open beacon automatically."
+                : recoveryState == .ownerProof
+                    ? "Recovering Slot 1 requires BLE owner proof. When you continue, iOS should show the system Bluetooth pairing prompt. Enter the 6-digit Guillemot PIN to authorize the recovery."
+                    : "Press the button three times on your Uguisu fob. Pipit will detect the Window Open beacon automatically."
             slotsStack.isHidden = recoveryState != .slotPicker
             statusLabel.textColor = recoveryState == .error ? .systemRed : .label
-            errorLabel.isHidden = true
+            errorLabel.isHidden = recoveryState != .ownerProof || recoveryErrorMessage == nil
             activityIndicator.isHidden = false
-            if recoveryState == .slotPicker {
+            if recoveryState == .slotPicker || recoveryState == .ownerProof {
                 activityIndicator.stopAnimating()
             } else {
                 activityIndicator.startAnimating()
             }
-            primaryButton.isHidden = !(recoveryState == .error || recoveryState == .slotPicker)
-            primaryButton.setTitle(recoveryState == .slotPicker ? "Recover this slot" : "Try again", for: .normal)
+            primaryButton.isHidden = !(recoveryState == .error || recoveryState == .slotPicker || recoveryState == .ownerProof)
+            primaryButton.setTitle(recoveryState == .slotPicker ? "Recover this slot" : recoveryState == .ownerProof ? "Continue to pairing" : "Try again", for: .normal)
             secondaryButton.isHidden = false
             secondaryButton.setTitle("Back to scan", for: .normal)
             stopCameraSession()
 
         case .locationPermission:
             cameraPlaceholderView.isHidden = true
+            successAnimationView.isHidden = true
             bodyLabel.text = "Enable proximity unlock?\n\nPipit can automatically unlock your vehicle when you walk up to it. This requires Always Allow location access so the app can detect your vehicle in the background. Your location is never stored or transmitted."
             slotsStack.isHidden = true
             statusLabel.text = locationPermissionStatusText()
@@ -694,7 +791,7 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
 
         case .success:
             titleLabel.text = "You're all set."
-            successAnimationView.isHidden = false
+            successAnimationView.isHidden = true
             cameraPlaceholderView.isHidden = true
             bodyLabel.text = "The key has been stored in the secure keystore on this device."
             slotsStack.isHidden = false
@@ -705,7 +802,6 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
             primaryButton.setTitle("Continue", for: .normal)
             secondaryButton.isHidden = true
             rebuildSlotsContent()
-            playSuccessAnimationIfNeeded()
             stopCameraSession()
         }
 
@@ -723,6 +819,10 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
             statusLabel.text = nil
             statusLabel.textColor = .label
 
+        case .importing:
+            statusLabel.text = nil
+            statusLabel.textColor = .label
+
         case .recovery:
             switch recoveryState {
             case .waitingForWindowOpen:
@@ -731,6 +831,8 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
                 statusLabel.text = managementStatusText()
             case .loadingSlots:
                 statusLabel.text = "Management session ready. Loading slots..."
+            case .ownerProof:
+                statusLabel.text = "The next step uses iOS's Bluetooth pairing prompt for Owner recovery."
             case .recovering:
                 statusLabel.text = selectedSlotId.map { "Recovering slot \($0) onto this phone..." } ?? "Recovering the selected slot..."
             case .slotPicker:
@@ -880,7 +982,13 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
 
         switch payload {
         case .guest(let slotId, let key, let counter, let name):
-            saveProvisionedMaterial(slotId: slotId, key: key, counter: counter, name: name)
+            startImportTransition(
+                slotId: slotId,
+                key: key,
+                counter: counter,
+                name: name,
+                statusText: "Importing your phone key..."
+            )
 
         case .encrypted:
             pendingEncryptedPayload = payload
@@ -915,11 +1023,12 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
                     encryptedKey: encryptedKey
                 )
                 await MainActor.run {
-                    self.saveProvisionedMaterial(
+                    self.startImportTransition(
                         slotId: slotId,
                         key: decryptedKey,
                         counter: counter,
-                        name: name
+                        name: name,
+                        statusText: "Decrypting and securing your phone key..."
                     )
                 }
 #else
@@ -942,6 +1051,8 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
 
     private func saveProvisionedMaterial(slotId: Int, key: Data, counter: UInt32, name: String) {
 #if canImport(shared)
+        pendingProvisioningMaterial = nil
+        importTask?.cancel()
         keyStore.saveKey(slotId: Int32(slotId), key: kotlinByteArray(from: Array(key)))
         keyStore.saveCounter(slotId: Int32(slotId), counter: counter)
         provisioningSuccess = ProvisioningSuccess(slotId: slotId, counter: counter, name: name)
@@ -1110,6 +1221,7 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         successParticles.removeAll()
         successSymbolLabel.layer.removeAllAnimations()
         successSymbolLabel.alpha = 0
+        successSymbolLabel.text = "🔑"
         successSymbolLabel.transform = CGAffineTransform(scaleX: 0.72, y: 0.72)
     }
 
@@ -1189,6 +1301,17 @@ final class OnboardingPlaceholderViewController: UIViewController, AVCaptureMeta
         successParticles.filter { $0.layer.animationKeys()?.isEmpty ?? true }.forEach { particle in
             particle.center = center
         }
+    }
+
+    private func isOwnerRecoveryPairingError(_ error: Error) -> Bool {
+        if let managementError = error as? BleManagementErrorResponse {
+            let code = managementError.code?.lowercased() ?? ""
+            let message = managementError.message?.lowercased() ?? ""
+            return code == "locked" || message.contains("pairing") || message.contains("authentication")
+        }
+
+        let message = error.localizedDescription.lowercased()
+        return message.contains("pairing") || message.contains("authentication") || message.contains("locked")
     }
 
     private func managementStatusText() -> String {
