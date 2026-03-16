@@ -53,3 +53,20 @@ The goal was to build an isolated, headless module that abstracts away the low-l
 ### Date: 2026-03-12
 *   **Grade: A**
 *   **Evaluation:** Agent 5 successfully built the robust, headless `UsbOtgManager` foundation needed exclusively by the Android app. They perfectly adhered to the integration contract by creating a sealed `UsbState` class and exposing it via Kotlin Coroutines `StateFlow` (`usbOtgManager.usbState`), ensuring Agent 8 can hook up the UI without touching low-level hardware code. They implemented a `BroadcastReceiver` to handle Android's strict `ACTION_USB_PERMISSION` intents securely. The device disambiguation logic (`determineDeviceType`) cleanly separates `GUILLEMOT_MASS_STORAGE` (for UF2 flashing) from `GUILLEMOT_SERIAL` (for `SETPIN`) and `UGUISU_SERIAL` (for `PROV:0`). The structure abstracts away `libaums` and `usb-serial-for-android` beautifully.
+
+### Date: 2026-03-16 13:48:44 KST
+*   **What needs to be done:**
+    *   Replace the current UF2 flashing pseudo-code with a real `libaums` mass-storage implementation, including mount/init, file creation, byte copy, completion, and error handling.
+    *   Replace the current serial placeholders with a real `usb-serial-for-android` connection flow, including port discovery, open/configure, write, optional response readback, and cleanup.
+    *   Verify that `provisionUguisuKey()` and `changeGuillemotPin()` only report success after the device-side command exchange actually completes successfully.
+    *   Preserve the existing `StateFlow<UsbState>` contract, but back it with real progress, success, and failure transitions so Agent 8 can safely consume it.
+*   **Why:** Agent 8 was only meant to attach UI to a finished Android USB backend. The current `UsbOtgManager` is still scaffold-level, with pseudo-code for UF2 flashing and commented-out serial writes. If this work is deferred into Agent 8's scope, the Settings milestone becomes blocked by unfinished low-level USB implementation instead of remaining a UI integration task.
+
+### Date: 2026-03-16 14:00:06 KST
+*   **What was done in this session:**
+    *   Replaced the scaffolded `UsbOtgManager` USB mass-storage path with a real `libaums` implementation that discovers the attached boot volume, initializes the filesystem, writes the UF2 payload as `FIRMWARE.UF2`, emits live `Flashing(progress)` updates, and reports failure on mount or copy errors.
+    *   Replaced the scaffolded CDC path with a real `usb-serial-for-android` implementation that probes the attached serial device, opens and configures the port at `115200 8N1`, writes commands, reads line-oriented responses, and cleans up connections on detach.
+    *   Tightened success criteria so `provisionUguisuKey()` only succeeds after `ACK:PROV_SUCCESS` plus the Uguisu boot banner, and `changeGuillemotPin()` only succeeds after a JSON `{"status":"ok"}` response from Guillemot.
+    *   Added the Android-side build and platform hooks required for the backend: JitPack repository, `usb-serial-for-android`, `libaums`, and the USB host manifest feature.
+    *   Validated the implementation by running `./gradlew :androidApp:compileDebugKotlin`, which completed successfully in this workspace.
+*   **Why:** The new deliverable required Agent 5 to finish the Android USB backend rather than leave pseudo-code for Agent 8 to absorb. This session closed that gap so the Settings UI can observe a working `StateFlow<UsbState>` contract backed by actual OTG storage and serial operations, with success states tied to verified device-side completion instead of optimistic local writes.
