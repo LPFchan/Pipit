@@ -252,11 +252,14 @@ class AndroidBleProximityService : Service() {
         if (char != null) {
             serviceScope.launch {
                 try {
-                    val payload = buildSharedCommandPayload(
+                    val preparedPayload = buildSharedCommandPayload(
                         command = if (isUnlock) ImmoCrypto.Command.Unlock else ImmoCrypto.Command.Lock
                     )
                     
-                    val success = writeCharacteristicCompat(gatt, char, payload)
+                    val success = writeCharacteristicCompat(gatt, char, preparedPayload.payload)
+                    if (success) {
+                        persistSharedCommandCounter(preparedPayload)
+                    }
                     Log.d(TAG, "Payload sent: $success")
                     
                     // Fire and forget, disconnect immediately
@@ -273,7 +276,7 @@ class AndroidBleProximityService : Service() {
         }
     }
 
-    private fun buildSharedCommandPayload(command: ImmoCrypto.Command): ByteArray {
+    private fun buildSharedCommandPayload(command: ImmoCrypto.Command): PreparedCommandPayload {
         val slotId = resolveProvisionedPhoneSlotId()
             ?: throw BleManagementException("No provisioned phone key stored locally")
         val key = keyStoreManager.loadKey(slotId)
@@ -287,8 +290,11 @@ class AndroidBleProximityService : Service() {
             command = command,
             key = key
         )
-        keyStoreManager.saveCounter(slotId, counter + 1u)
-        return payload
+        return PreparedCommandPayload(slotId = slotId, counter = counter, payload = payload)
+    }
+
+    private fun persistSharedCommandCounter(preparedPayload: PreparedCommandPayload) {
+        keyStoreManager.saveCounter(preparedPayload.slotId, preparedPayload.counter + 1u)
     }
 
     private fun resolveProvisionedPhoneSlotId(): Int? {
@@ -361,6 +367,12 @@ class AndroidBleProximityService : Service() {
             Log.e(TAG, "Failed to start foreground BLE command", error)
         }
     }
+
+    private data class PreparedCommandPayload(
+        val slotId: Int,
+        val counter: UInt,
+        val payload: ByteArray
+    )
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

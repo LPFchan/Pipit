@@ -975,7 +975,7 @@ public enum IosBleProximityServiceError: LocalizedError {
         return data(from: payload)
     }
 
-    private func buildSharedPayload(command: ImmoCrypto.Command) throws -> Data {
+    private func buildSharedPayload(command: ImmoCrypto.Command) throws -> PreparedSharedPayload {
         guard let slotId = resolveProvisionedPhoneSlotId() else {
             throw IosBleProximityServiceError.system("No provisioned phone key stored locally")
         }
@@ -993,8 +993,15 @@ public enum IosBleProximityServiceError: LocalizedError {
             key: key,
             counter: counter
         )
-        keyStore.saveCounter(slotId: slotId, counter: counter &+ 1)
-        return data(from: payload)
+        return PreparedSharedPayload(
+            slotId: slotId,
+            counter: counter,
+            payload: data(from: payload)
+        )
+    }
+
+    private func persistSharedPayloadCounter(_ preparedPayload: PreparedSharedPayload) {
+        keyStore.saveCounter(slotId: preparedPayload.slotId, counter: preparedPayload.counter &+ 1)
     }
 
     private func kotlinByteArray(from bytes: [UInt8]) -> KotlinByteArray {
@@ -1029,7 +1036,8 @@ public enum IosBleProximityServiceError: LocalizedError {
         defer { isProximityCommandPending = false }
 
         do {
-            let payload = try buildSharedPayload(command: command)
+            let preparedPayload = try buildSharedPayload(command: command)
+            let payload = preparedPayload.payload
 
             lastCommandPayloadHex = payload.hexEncodedString()
 
@@ -1038,6 +1046,7 @@ public enum IosBleProximityServiceError: LocalizedError {
                let connectedPeripheral,
                connectedPeripheral.state == .connected {
                 try await writeValue(payload, to: unlockCharacteristic, on: connectedPeripheral)
+                persistSharedPayloadCounter(preparedPayload)
                 connectionState = targetState
                 return
             }
@@ -1080,6 +1089,7 @@ public enum IosBleProximityServiceError: LocalizedError {
             }
 
             try await writeValue(payload, to: unlockLockCharacteristic, on: connectedPeripheral)
+            persistSharedPayloadCounter(preparedPayload)
             connectionState = targetState
             disconnectCurrentPeripheral(expectReconnect: false)
         } catch {
@@ -1120,6 +1130,12 @@ public enum IosBleProximityServiceError: LocalizedError {
         let serviceUUIDs: [CBUUID]
         let mode: BleManagementConnectMode
         let purposeDescription: String
+    }
+
+    private struct PreparedSharedPayload {
+        let slotId: Int32
+        let counter: UInt32
+        let payload: Data
     }
 
     private enum ActivePeripheralOperation {
