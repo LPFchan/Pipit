@@ -284,7 +284,7 @@ struct OnboardingView: View {
                 #if targetEnvironment(simulator)
                 if !viewModel.isScanLocked {
                     Button(action: {
-                        let mockQr = "immogen://prov?slot=2&ctr=0&key=00112233445566778899aabbccddeeff&name=Simulator%20Key"
+                        let mockQr = "immogen://prov?slot=1&ctr=0&salt=00112233445566778899aabbccddeeff&ekey=00112233445566778899aabbccddeeff0011223344556677&name=Simulator%20Owner"
                         DispatchQueue.main.async {
                             viewModel.handleScannedQr(mockQr)
                         }
