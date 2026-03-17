@@ -416,6 +416,32 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                 }
+
+                Button(action: {
+                    if let bundleID = Bundle.main.bundleIdentifier {
+                        UserDefaults.standard.removePersistentDomain(forName: bundleID)
+                    }
+                    viewModel.forceResetAllKeys()
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        exit(0)
+                    }
+                }) {
+                    HStack {
+                        Text("Hard Reset App & Permissions")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.black)
+                        Spacer()
+                        Image(systemName: "trash.fill")
+                            .foregroundStyle(Color.black)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .background(Color.yellow, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
             .padding(.vertical, 4)
         } header: {

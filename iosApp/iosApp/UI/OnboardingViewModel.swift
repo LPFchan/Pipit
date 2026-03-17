@@ -593,7 +593,7 @@ final class OnboardingViewModel: ObservableObject {
             return Data(repeating: 0x42, count: 16)
         }
         #endif
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
             ImmoCrypto.shared.decryptProvisionedKeyAsync(
                 pin: pin,
                 salt: self.kotlinByteArray(from: Array(salt)),

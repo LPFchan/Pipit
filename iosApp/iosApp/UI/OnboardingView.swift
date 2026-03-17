@@ -299,6 +299,33 @@ struct OnboardingView: View {
                     }
                     .padding(.bottom, 16)
                 }
+                
+                Button(action: {
+                    if let bundleID = Bundle.main.bundleIdentifier {
+                        UserDefaults.standard.removePersistentDomain(forName: bundleID)
+                    }
+                    #if canImport(shared)
+                    let keyStore = KeyStoreManager()
+                    for i in 1...6 {
+                        keyStore.deleteKey(slotId: Int32(i))
+                    }
+                    #endif
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        exit(0)
+                    }
+                }) {
+                    Text("DEV: Hard Reset App & Permissions")
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.yellow)
+                        .foregroundColor(.black)
+                        .clipShape(Capsule())
+                }
+                .padding(.bottom, 16)
                 #endif
 
                 Button(action: {

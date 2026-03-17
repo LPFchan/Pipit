@@ -313,6 +313,14 @@ final class SettingsViewModel: ObservableObject {
         onLocalKeyDeleted()
     }
 
+    func forceResetAllKeys() {
+#if canImport(shared)
+        for i in 1...6 {
+            keyStore.deleteKey(slotId: Int32(i))
+        }
+#endif
+    }
+
 
     // MARK: - Slot Management Helpers
     func shouldShowSlotControl(for slot: BleManagementSlot) -> Bool {
