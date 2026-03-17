@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import UIKit
 import Security
+import Observation
 
 #if canImport(shared)
 import shared
@@ -61,40 +62,42 @@ enum RecoveryState {
     case error
 }
 
+@Observable
 @MainActor
-final class OnboardingViewModel: ObservableObject {
-    private let bleService: IosBleProximityService
-    private let onProvisioned: () -> Void
-    private var cancellables = Set<AnyCancellable>()
-    private var recoveryTask: Task<Void, Never>?
-    private var importTask: Task<Void, Never>?
-    
-    @Published var onboardingState: OnboardingState
-    @Published var recoveryState: RecoveryState = .waitingForWindowOpen
-    @Published var recoverySlots: [BleManagementSlot] = []
-    @Published var successOverviewSlots: [BleManagementSlot] = []
-    @Published var selectedSlotId: Int?
-    
-    @Published var recoveryErrorMessage: String?
-    @Published var scanErrorMessage: String?
-    @Published var pinErrorMessage: String?
-    
-    @Published var pinCode: String = ""
-    @Published var isProvisioningInFlight = false
-    @Published var isScanLocked = false
-    
-    private var pendingEncryptedPayload: ParsedProvisioningPayload?
-    private var pendingProvisioningMaterial: PendingProvisioningMaterial?
-    @Published var provisioningSuccess: ProvisioningSuccess?
-    
+final class OnboardingViewModel {
+    @ObservationIgnored private let bleService: IosBleProximityService
+    @ObservationIgnored private let onProvisioned: () -> Void
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored private var recoveryTask: Task<Void, Never>?
+    @ObservationIgnored private var importTask: Task<Void, Never>?
+
+    var onboardingState: OnboardingState
+    var recoveryState: RecoveryState = .waitingForWindowOpen
+    var recoverySlots: [BleManagementSlot] = []
+    var successOverviewSlots: [BleManagementSlot] = []
+    var selectedSlotId: Int?
+
+    var recoveryErrorMessage: String?
+    var scanErrorMessage: String?
+    var pinErrorMessage: String?
+
+    var pinCode: String = ""
+    var isProvisioningInFlight = false
+    var isScanLocked = false
+    var lastScannedQrPayload: String?
+
+    @ObservationIgnored private var pendingEncryptedPayload: ParsedProvisioningPayload?
+    @ObservationIgnored private var pendingProvisioningMaterial: PendingProvisioningMaterial?
+    var provisioningSuccess: ProvisioningSuccess?
+
 #if canImport(shared)
-    private let keyStore = KeyStoreManager()
+    @ObservationIgnored private let keyStore = KeyStoreManager()
 #endif
 
     var statusText: String {
         guard onboardingState == .recovery else { return "" }
         switch recoveryState {
-        case .waitingForWindowOpen: return "Looking for Guillemot with window open..."
+        case .waitingForWindowOpen: return "To recover your Phone Key, Triple-press Uguisu to continue..."
         case .connecting: return "Connecting to scope over GATT..."
         case .loadingSlots: return "Loading available slots..."
         case .ownerProof: return "Please enter your PIN."
@@ -202,6 +205,7 @@ final class OnboardingViewModel: ObservableObject {
     func startRecoveryFlow() {
         scanErrorMessage = nil
         isScanLocked = true
+        lastScannedQrPayload = nil
         onboardingState = .recovery
         recoveryState = .waitingForWindowOpen
         recoveryErrorMessage = nil
@@ -215,6 +219,7 @@ final class OnboardingViewModel: ObservableObject {
         bleService.stopWindowOpenScan()
         bleService.disconnectManagement()
         isScanLocked = false
+        lastScannedQrPayload = nil
         scanErrorMessage = nil
         onboardingState = .camera
     }
@@ -431,6 +436,7 @@ final class OnboardingViewModel: ObservableObject {
     
     func returnToCamera() {
         isScanLocked = false
+        lastScannedQrPayload = nil
         scanErrorMessage = nil
         onboardingState = .camera
     }
@@ -453,6 +459,7 @@ final class OnboardingViewModel: ObservableObject {
 
         scanErrorMessage = nil
         isScanLocked = true
+        lastScannedQrPayload = rawValue
 
         switch payload {
         case .guest(let slotId, let key, let counter, let name):

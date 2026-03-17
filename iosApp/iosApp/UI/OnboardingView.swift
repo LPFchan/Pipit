@@ -1,10 +1,96 @@
 import SwiftUI
 import Combine
 import AVFoundation
+import CoreImage
+import CoreImage.CIFilterBuiltins
+import UIKit
 
 #if canImport(shared)
 import shared
 #endif
+
+private enum OnboardingMockup {
+    static let accentBlue = Color(red: 0.078, green: 0.592, blue: 0.965) // Estimated from the CTA fill in the mockup.
+    static let linkBlue = Color(red: 0.000, green: 0.573, blue: 0.988) // Estimated from the secondary link color in the mockup.
+    static let recoverySheetBackground = Color.white.opacity(0.10) // Estimated tint layered over the native material blur.
+    static let successCardBackground = Color(red: 0.168, green: 0.168, blue: 0.182) // Estimated from the slot summary card.
+    static let closeButtonFill = Color.white.opacity(0.14) // Estimated from the circular close affordance.
+    static let closeButtonSymbol = Color.white.opacity(0.58) // Estimated from the close symbol tint.
+    static let secondaryText = Color.white.opacity(0.92)
+    static let tertiaryText = Color(red: 0.690, green: 0.690, blue: 0.718) // Estimated from secondary copy in the mockup.
+    static let mutedText = Color.white.opacity(0.38)
+    static let divider = Color.white.opacity(0.12)
+    static let inactiveBadge = Color(red: 0.662, green: 0.662, blue: 0.690) // Estimated from the inactive guest badges.
+    static let scanButtonShadow = Color.black.opacity(0.28) // Estimated from the button depth in the mockup.
+
+    static let appTitleSize: CGFloat = 26 // Estimated from the top "Pipit" title.
+    static let scanLabelFontSize: CGFloat = 23 // Estimated from the larger "Scan from Whimbrel" text in the mockup.
+    static let recoveryTitleSize: CGFloat = 17 // Matches the compact sheet title sizing in the mockup.
+    static let recoveryBodySize: CGFloat = 17 // Estimated from the recovery instruction copy.
+    static let decodingLabelSize: CGFloat = 28 // Estimated from "Decoding...".
+    static let permissionTitleSize: CGFloat = 32 // Estimated from "Proximity Unlock".
+    static let permissionBodySize: CGFloat = 17 // Estimated from the three permission paragraphs.
+    static let successTitleSize: CGFloat = 31 // Estimated from "All set!".
+    static let successSlotLabelSize: CGFloat = 13 // Estimated from the left-side SLOT labels in the success card.
+    static let slotNameSize: CGFloat = 19 // Estimated from the slot row primary label.
+    static let slotMetaSize: CGFloat = 14 // Estimated from the SLOT label and tier pill typography.
+
+    static let primaryButtonCornerRadius: CGFloat = 19 // Estimated from the rounded CTA corners.
+    static let recoverySheetCornerRadius: CGFloat = 34 // Estimated from the recovery sheet rounding.
+    static let slotCardCornerRadius: CGFloat = 30 // Estimated from the success card rounding.
+    static let closeButtonDiameter: CGFloat = 40 // Estimated from the circular close control.
+    static let recoverySheetHeight: CGFloat = 518 // Estimated from the visible bottom sheet height in the reference.
+    static let recoveryStatusBottomPadding: CGFloat = 34 // Estimated from the tighter spinner-to-home-indicator spacing in the reference.
+    static let primaryButtonHeight: CGFloat = 58 // Estimated from the permission and success CTA height.
+    static let scannerCutoutSize: CGFloat = 246 // Estimated from the smaller scanning window width in the mockup.
+    static let scannerCutoutCornerRadius: CGFloat = 34 // Estimated from the more rounded scanning window corners in the mockup.
+    static let scanLabelTopGap: CGFloat = 20 // Estimated vertical gap from the cutout bottom to the scan label.
+    static let qrPreviewSize: CGFloat = 378 // Estimated from the decoding QR preview width.
+    static let successRowHeight: CGFloat = 96 // Estimated from the row block height in the reference success card.
+}
+
+private struct QrPayloadPreview: View {
+    let payload: String?
+
+    var body: some View {
+        Group {
+            if let payload, let image = makeImage(from: payload) {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "qrcode")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(28) // Estimated fallback padding for the empty state.
+                    .foregroundStyle(.black)
+                    .background(Color.white)
+            }
+        }
+        .background(Color.white)
+    }
+
+    private func makeImage(from payload: String) -> UIImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.setValue(Data(payload.utf8), forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+
+        guard let outputImage = filter.outputImage else { return nil }
+        let scaledImage = outputImage.transformed(by: CGAffineTransform(scaleX: 12, y: 12)) // Estimated scale to match the mockup QR density.
+        let context = CIContext()
+        guard let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+}
+
+private struct SuccessOverviewRow: Identifiable {
+    let id: Int
+    let title: String
+    let tier: String
+    let isActive: Bool
+    let isCurrentDevice: Bool
+}
 
 // MARK: - Scanner
 
@@ -94,60 +180,18 @@ struct QRScannerView: UIViewControllerRepresentable {
 struct ScannerCutoutOverlay: View {
     var body: some View {
         GeometryReader { geometry in
-            let size: CGFloat = 256
+            let size = OnboardingMockup.scannerCutoutSize
             let x = (geometry.size.width - size) / 2
             let y = (geometry.size.height - size) / 2
             let r = CGRect(x: x, y: y, width: size, height: size)
-            let cr: CGFloat = 22  // corner radius
-            let cl: CGFloat = 30  // corner arm length
-            let lw: CGFloat = 3   // line width
+            let cr = OnboardingMockup.scannerCutoutCornerRadius
 
             // Dimmed background with cutout
             Path { path in
                 path.addRect(CGRect(origin: .zero, size: geometry.size))
                 path.addRoundedRect(in: r, cornerSize: CGSize(width: cr, height: cr))
             }
-            .fill(Color.black.opacity(0.55), style: FillStyle(eoFill: true))
-
-            // Apple-style corner bracket markers
-            Path { path in
-                // Top-left
-                path.move(to: CGPoint(x: r.minX + lw / 2, y: r.minY + cr + cl))
-                path.addLine(to: CGPoint(x: r.minX + lw / 2, y: r.minY + cr))
-                path.addQuadCurve(
-                    to: CGPoint(x: r.minX + cr, y: r.minY + lw / 2),
-                    control: CGPoint(x: r.minX + lw / 2, y: r.minY + lw / 2)
-                )
-                path.addLine(to: CGPoint(x: r.minX + cr + cl, y: r.minY + lw / 2))
-
-                // Top-right
-                path.move(to: CGPoint(x: r.maxX - cr - cl, y: r.minY + lw / 2))
-                path.addLine(to: CGPoint(x: r.maxX - cr, y: r.minY + lw / 2))
-                path.addQuadCurve(
-                    to: CGPoint(x: r.maxX - lw / 2, y: r.minY + cr),
-                    control: CGPoint(x: r.maxX - lw / 2, y: r.minY + lw / 2)
-                )
-                path.addLine(to: CGPoint(x: r.maxX - lw / 2, y: r.minY + cr + cl))
-
-                // Bottom-right
-                path.move(to: CGPoint(x: r.maxX - lw / 2, y: r.maxY - cr - cl))
-                path.addLine(to: CGPoint(x: r.maxX - lw / 2, y: r.maxY - cr))
-                path.addQuadCurve(
-                    to: CGPoint(x: r.maxX - cr, y: r.maxY - lw / 2),
-                    control: CGPoint(x: r.maxX - lw / 2, y: r.maxY - lw / 2)
-                )
-                path.addLine(to: CGPoint(x: r.maxX - cr - cl, y: r.maxY - lw / 2))
-
-                // Bottom-left
-                path.move(to: CGPoint(x: r.minX + cr + cl, y: r.maxY - lw / 2))
-                path.addLine(to: CGPoint(x: r.minX + cr, y: r.maxY - lw / 2))
-                path.addQuadCurve(
-                    to: CGPoint(x: r.minX + lw / 2, y: r.maxY - cr),
-                    control: CGPoint(x: r.minX + lw / 2, y: r.maxY - lw / 2)
-                )
-                path.addLine(to: CGPoint(x: r.minX + lw / 2, y: r.maxY - cr - cl))
-            }
-            .stroke(Color.white, style: StrokeStyle(lineWidth: lw, lineCap: .round, lineJoin: .round))
+            .fill(Color.black.opacity(0.68), style: FillStyle(eoFill: true)) // Estimated from the darker surrounding mask in the mockup.
         }
         .ignoresSafeArea()
     }
@@ -197,16 +241,16 @@ struct QRDecryptionAnimationView: View {
 // MARK: - Onboarding View
 
 struct OnboardingView: View {
-    @StateObject private var viewModel: OnboardingViewModel
-    
+    @State private var viewModel: OnboardingViewModel
+
     init(bleService: IosBleProximityService, onProvisioned: @escaping () -> Void) {
-        _viewModel = StateObject(wrappedValue: OnboardingViewModel(bleService: bleService, onProvisioned: onProvisioned))
+        _viewModel = State(initialValue: OnboardingViewModel(bleService: bleService, onProvisioned: onProvisioned))
     }
-    
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            
+
             switch viewModel.onboardingState {
             case .camera, .recovery:
                 cameraView
@@ -220,127 +264,171 @@ struct OnboardingView: View {
                 successView
             }
         }
-        .sheet(isPresented: Binding(
+        .sheet(isPresented: recoverySheetBinding) {
+            recoveryView
+                .presentationDetents([.height(OnboardingMockup.recoverySheetHeight)])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(OnboardingMockup.recoverySheetCornerRadius)
+                .presentationBackground(.ultraThinMaterial)
+                .interactiveDismissDisabled(viewModel.recoveryState == .recovering)
+                .preferredColorScheme(.dark)
+        }
+        .animation(.easeInOut(duration: 0.24), value: viewModel.onboardingState)
+        .animation(.easeInOut(duration: 0.24), value: viewModel.recoveryState)
+        .onDisappear {
+            viewModel.onDisappear()
+        }
+    }
+
+    private var recoverySheetBinding: Binding<Bool> {
+        Binding(
             get: { viewModel.onboardingState == .recovery },
             set: { isPresented in
                 if !isPresented && viewModel.onboardingState == .recovery {
                     viewModel.cancelRecovery()
                 }
             }
-        )) {
-            NavigationView {
-                recoveryView
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            Button("Cancel") {
-                                viewModel.cancelRecovery()
-                            }
-                            .foregroundColor(.white)
-                        }
-                    }
-            }
-            .preferredColorScheme(.dark)
-            .presentationDetents([.fraction(0.85), .large])
-        }
-        .onDisappear {
-            viewModel.onDisappear()
-        }
+        )
     }
-    
+
+    private var pinCodeBinding: Binding<String> {
+        Binding(
+            get: { viewModel.pinCode },
+            set: { viewModel.pinCode = $0 }
+        )
+    }
+
     // MARK: Camera View
     private var cameraView: some View {
-        ZStack {
-            QRScannerView(onScan: { code in
-                DispatchQueue.main.async {
-                    viewModel.handleScannedQr(code)
+        GeometryReader { geometry in
+            let scanLabelTopInset = ((geometry.size.height - OnboardingMockup.scannerCutoutSize) / 2) + OnboardingMockup.scannerCutoutSize + OnboardingMockup.scanLabelTopGap
+
+            ZStack {
+                QRScannerView(onScan: { code in
+                    DispatchQueue.main.async {
+                        viewModel.handleScannedQr(code)
+                    }
+                }, isEnabled: !viewModel.isScanLocked)
+                .ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.68), Color.black.opacity(0.18), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 210) // Estimated from the top fade depth in the mockup.
+
+                    Spacer(minLength: 0)
+
+                    LinearGradient(
+                        colors: [.clear, Color.black.opacity(0.14), Color.black.opacity(0.82)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 320) // Estimated from the bottom readability fade in the mockup.
                 }
-            }, isEnabled: !viewModel.isScanLocked)
-            .ignoresSafeArea()
-            
-            ScannerCutoutOverlay()
-            
-            VStack {
-                Spacer()
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
 
-                VStack(spacing: 8) {
-                    Text("Scan from Whimbrel")
-                        .font(.subheadline.weight(.medium))
+                ScannerCutoutOverlay()
+
+                VStack(spacing: 0) {
+                    Text("Pipit")
+                        .font(.system(size: OnboardingMockup.appTitleSize, weight: .bold))
                         .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 18)
 
+                    Spacer()
+
+                    Button(action: {
+                        viewModel.startRecoveryFlow()
+                    }) {
+                        Text("Forgot your old phone?")
+                            .font(.system(size: 17, weight: .medium)) // Estimated from the link copy.
+                            .foregroundStyle(OnboardingMockup.linkBlue)
+                            .padding(.vertical, 12)
+                    }
+                    .padding(.bottom, 20)
+                }
+
+                VStack(spacing: 14) {
                     if let error = viewModel.scanErrorMessage {
                         Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red.opacity(0.9))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.red.opacity(0.92))
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                            .padding(.vertical, 6)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-                            .transition(.opacity)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 10)
+                            .background(Color.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(.horizontal, 24)
                     }
+
+                    Text("Scan from Whimbrel")
+                        .font(.system(size: OnboardingMockup.scanLabelFontSize, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
                 }
-                .padding(.bottom, 32)
+                .padding(.top, scanLabelTopInset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                 #if targetEnvironment(simulator)
-                if !viewModel.isScanLocked {
-                    Button(action: {
-                        let mockQr = "immogen://prov?slot=1&ctr=0&salt=00112233445566778899aabbccddeeff&ekey=00112233445566778899aabbccddeeff0011223344556677&name=Simulator%20Owner"
-                        DispatchQueue.main.async {
-                            viewModel.handleScannedQr(mockQr)
-                        }
-                    }) {
-                        Text("DEV: Simulate Scanned QR")
-                            .font(.caption.weight(.medium))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.yellow)
-                            .foregroundColor(.black)
-                            .clipShape(Capsule())
-                    }
-                    .padding(.bottom, 16)
-                }
-                
-                Button(action: {
-                    if let bundleID = Bundle.main.bundleIdentifier {
-                        UserDefaults.standard.removePersistentDomain(forName: bundleID)
-                    }
-                    #if canImport(shared)
-                    let keyStore = KeyStoreManager()
-                    for i in 1...6 {
-                        keyStore.deleteKey(slotId: Int32(i))
-                    }
-                    #endif
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        exit(0)
-                    }
-                }) {
-                    Text("DEV: Hard Reset App & Permissions")
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color.yellow)
-                        .foregroundColor(.black)
-                        .clipShape(Capsule())
-                }
-                .padding(.bottom, 16)
-                #endif
+                VStack {
+                    HStack {
+                        Spacer()
 
-                Button(action: {
-                    viewModel.startRecoveryFlow()
-                }) {
-                    Text("Forgot your old phone?")
-                        .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.55))
-                        .padding(.vertical, 8)
+                        Menu {
+                            Button("Simulate scanned QR") {
+                                viewModel.handleScannedQr(simulatorMockQr)
+                            }
+
+                            Button("Hard reset app and permissions", role: .destructive) {
+                                performSimulatorHardReset()
+                            }
+                        } label: {
+                            Image(systemName: "wrench.and.screwdriver.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 38, height: 38)
+                                .background(Color.black.opacity(0.46), in: Circle())
+                        }
+                        .padding(.top, 18)
+                        .padding(.trailing, 18)
+                    }
+
+                    Spacer()
                 }
-                .padding(.bottom, 36)
+                #endif
             }
         }
     }
-    
+
+    private var simulatorMockQr: String {
+        "immogen://prov?slot=2&ctr=0&salt=00112233445566778899aabbccddeeff&ekey=00112233445566778899aabbccddeeff0011223344556677&name=Chloe%27s%20iPhone"
+    }
+
+    private func performSimulatorHardReset() {
+        if let bundleID = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundleID)
+        }
+
+        #if canImport(shared)
+        let keyStore = KeyStoreManager()
+        for i in 1...6 {
+            keyStore.deleteKey(slotId: Int32(i))
+        }
+        #endif
+
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            exit(0)
+        }
+    }
+
     // MARK: PIN Input View
     private var pinInputView: some View {
         VStack(spacing: 0) {
@@ -366,18 +454,17 @@ struct OnboardingView: View {
             Spacer().frame(height: 52)
 
             ZStack {
-                // Hidden text field captures input
-                SecureField("", text: $viewModel.pinCode)
+                SecureField("", text: pinCodeBinding)
                     .keyboardType(.numberPad)
                     .foregroundColor(.clear)
                     .accentColor(.clear)
+                    .textContentType(.oneTimeCode)
                     .onChange(of: viewModel.pinCode) { newValue in
                         if newValue.count > 6 {
                             viewModel.pinCode = String(newValue.prefix(6))
                         }
                     }
 
-                // Visual digit boxes
                 HStack(spacing: 10) {
                     ForEach(0..<6, id: \.self) { index in
                         pinDigitBox(index: index)
@@ -393,27 +480,27 @@ struct OnboardingView: View {
                     .padding(.top, 14)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             } else {
-                Spacer().frame(height: 14 + 16) // match error text approx height
+                Spacer().frame(height: 30)
             }
 
             Spacer().frame(height: 32)
 
             if viewModel.isProvisioningInFlight {
                 ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .tint(.white)
                     .scaleEffect(1.2)
                     .padding(.vertical, 4)
             } else {
                 Button(action: { viewModel.confirmPin() }) {
                     Text("Continue")
-                        .font(.body.weight(.semibold))
+                        .font(.system(size: 20, weight: .bold)) // Estimated from the CTA typography.
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .frame(height: OnboardingMockup.primaryButtonHeight)
                         .background(
-                            viewModel.pinCode.count == 6 ? Color.white : Color.white.opacity(0.18),
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            viewModel.pinCode.count == 6 ? OnboardingMockup.accentBlue : Color.white.opacity(0.16),
+                            in: RoundedRectangle(cornerRadius: OnboardingMockup.primaryButtonCornerRadius, style: .continuous)
                         )
-                        .foregroundStyle(viewModel.pinCode.count == 6 ? Color.black : Color.white.opacity(0.45))
+                        .foregroundStyle(.white)
                 }
                 .padding(.horizontal, 32)
                 .disabled(viewModel.pinCode.count != 6)
@@ -450,286 +537,412 @@ struct OnboardingView: View {
         }
         .animation(.spring(response: 0.22, dampingFraction: 0.65), value: filled)
     }
-    
+
     // MARK: Recovery View
     private var recoveryView: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 24) {
-                Text("Recovery")
-                    .font(.largeTitle)
-                    .foregroundColor(.white)
-                    .padding(.top, 40)
-                
-                if viewModel.recoveryState == .slotPicker || viewModel.recoveryState == .ownerProof || viewModel.recoveryState == .recovering {
-                    recoverySlotPickerContent
-                } else {
-                    Text(viewModel.statusText)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding()
-                    
-                    if viewModel.recoveryState == .waitingForWindowOpen || viewModel.recoveryState == .connecting || viewModel.recoveryState == .loadingSlots {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    }
-                }
-                
-                if let error = viewModel.recoveryErrorMessage {
-                    Text(error)
-                        .foregroundColor(.red)
-                        .font(.footnote)
-                        .padding()
-                }
-                
-                Spacer()
-                
-                if viewModel.recoveryState == .error {
-                    Button("Retry") {
-                        viewModel.retryRecovery()
-                    }
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
+        VStack(spacing: 0) {
+            ZStack(alignment: .trailing) {
+                Text("Recover Phone Key")
+                    .font(.system(size: OnboardingMockup.recoveryTitleSize, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+
+                Button(action: {
+                    viewModel.cancelRecovery()
+                }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(OnboardingMockup.closeButtonSymbol)
+                        .frame(width: OnboardingMockup.closeButtonDiameter, height: OnboardingMockup.closeButtonDiameter)
+                        .background(OnboardingMockup.closeButtonFill, in: Circle())
                 }
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 18) // Estimated to match native sheet header spacing under the drag indicator.
+
+            recoveryBodyContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(OnboardingMockup.recoverySheetBackground)
+    }
+
+    private var waitingRecoveryMessage: String {
+        "To recover your Phone Key,\nTriple-press Uguisu to continue..."
+    }
+
+    @ViewBuilder
+    private func recoveryBottomStatus(message: String) -> some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            Text(message)
+                .font(.system(size: OnboardingMockup.recoveryBodySize, weight: .medium))
+                .foregroundStyle(OnboardingMockup.secondaryText)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .padding(.horizontal, 52)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer().frame(height: 68) // Estimated gap reserved for the future centered 3D model footprint.
+
+            ProgressView()
+                .tint(.white)
+                .scaleEffect(1.24)
+                .padding(.bottom, OnboardingMockup.recoveryStatusBottomPadding)
         }
     }
-    
+
     @ViewBuilder
-    private var recoverySlotPickerContent: some View {
-        if viewModel.recoveryState == .slotPicker {
-            Text("Select the slot to recover")
-                .foregroundColor(.white)
-            
-            ScrollView {
-                VStack(spacing: 12) {
-                    ForEach(viewModel.recoverySlots, id: \.id) { slot in
-                        Button(action: {
-                            viewModel.selectSlot(slot.id)
-                        }) {
-                            HStack {
-                                VStack(alignment: .leading) {
-                                        Text(slot.name.isEmpty ? "Key \(slot.id)" : slot.name)
-                                        .foregroundColor(viewModel.selectedSlotId == slot.id ? .blue : .white)
-                                    Text(viewModel.slotTierLabel(for: slot.id))
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
+    private var recoveryBodyContent: some View {
+        switch viewModel.recoveryState {
+        case .slotPicker:
+            VStack(spacing: 18) {
+                Text("Choose the phone key slot to recover.")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(OnboardingMockup.tertiaryText)
+                    .padding(.top, 30)
+
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 12) {
+                        ForEach(viewModel.recoverySlots, id: \.id) { slot in
+                            Button(action: {
+                                viewModel.selectSlot(slot.id)
+                            }) {
+                                HStack(spacing: 16) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("SLOT \(slot.id)")
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundStyle(OnboardingMockup.mutedText)
+
+                                        Text(slot.name.isEmpty ? "Recovered Key" : slot.name)
+                                            .font(.system(size: 19, weight: .semibold))
+                                            .foregroundStyle(.white)
+
+                                        Text(slot.id == 1 ? "OWNER" : "GUEST")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(slot.id == 1 ? OnboardingMockup.accentBlue : Color.white.opacity(0.10), in: Capsule())
+                                    }
+
+                                    Spacer()
+
+                                    if viewModel.selectedSlotId == slot.id {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 17, weight: .bold))
+                                            .foregroundStyle(OnboardingMockup.accentBlue)
+                                    }
                                 }
-                                Spacer()
-                                if viewModel.selectedSlotId == slot.id {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.blue)
-                                }
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 18)
+                                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 22, style: .continuous)) // Estimated from the row card radius.
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                        .stroke(viewModel.selectedSlotId == slot.id ? OnboardingMockup.accentBlue.opacity(0.72) : Color.white.opacity(0.06), lineWidth: 1)
+                                )
                             }
-                            .padding()
-                            .background(Color(.darkGray))
-                            .cornerRadius(8)
                         }
                     }
+                    .padding(.horizontal, 24)
                 }
+
+                Button(action: {
+                    viewModel.beginSelectedSlotRecovery()
+                }) {
+                    Text("Recover Selected Slot")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: OnboardingMockup.primaryButtonHeight)
+                        .background(viewModel.selectedSlotId == nil ? Color.white.opacity(0.14) : OnboardingMockup.accentBlue, in: RoundedRectangle(cornerRadius: OnboardingMockup.primaryButtonCornerRadius, style: .continuous))
+                }
+                .disabled(viewModel.selectedSlotId == nil)
                 .padding(.horizontal, 24)
+                .padding(.bottom, 32)
             }
-            
-            Button("Recover Selected Slot") {
-                viewModel.beginSelectedSlotRecovery()
-            }
-            .disabled(viewModel.selectedSlotId == nil)
-            .padding()
-            .background(viewModel.selectedSlotId == nil ? Color.gray : Color.blue)
-            .foregroundColor(.white)
-            .cornerRadius(8)
-        } else if viewModel.recoveryState == .ownerProof {
-            VStack {
-                Text("Enter Owner PIN")
-                    .foregroundColor(.white)
-                SecureField("PIN", text: $viewModel.pinCode)
-                    .keyboardType(.numberPad)
-                    .padding()
-                    .background(Color.white)
-                    .cornerRadius(8)
-                    .padding(.horizontal, 40)
-                
+
+        case .ownerProof:
+            VStack(spacing: 0) {
+                Text("Enter the existing owner PIN to continue.")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(OnboardingMockup.tertiaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 36)
+                    .padding(.top, 38)
+
+                Spacer().frame(height: 34)
+
+                ZStack {
+                    SecureField("", text: pinCodeBinding)
+                        .keyboardType(.numberPad)
+                        .foregroundColor(.clear)
+                        .accentColor(.clear)
+                        .textContentType(.oneTimeCode)
+                        .onChange(of: viewModel.pinCode) { newValue in
+                            if newValue.count > 6 {
+                                viewModel.pinCode = String(newValue.prefix(6))
+                            }
+                        }
+
+                    HStack(spacing: 10) {
+                        ForEach(0..<6, id: \.self) { index in
+                            pinDigitBox(index: index)
+                        }
+                    }
+                    .allowsHitTesting(false)
+                }
+                .padding(.horizontal, 28)
+
                 if let error = viewModel.pinErrorMessage {
                     Text(error)
-                        .foregroundColor(.red)
-                        .font(.footnote)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.red.opacity(0.92))
+                        .padding(.top, 18)
                 }
-                
-                Button("Confirm") {
+
+                Spacer()
+
+                Button(action: {
                     viewModel.confirmPin()
+                }) {
+                    Text("Confirm")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: OnboardingMockup.primaryButtonHeight)
+                        .background(viewModel.pinCode.count == 6 ? OnboardingMockup.accentBlue : Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: OnboardingMockup.primaryButtonCornerRadius, style: .continuous))
                 }
-                .padding()
-                .background(Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(8)
-                .padding(.top, 16)
+                .disabled(viewModel.pinCode.count != 6)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 32)
             }
-        } else if viewModel.recoveryState == .recovering {
-            ProgressView("Recovering...")
-                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                .foregroundColor(.white)
+
+        case .error:
+            VStack(spacing: 18) {
+                Spacer()
+
+                Text(viewModel.recoveryErrorMessage ?? "Recovery failed.")
+                    .font(.system(size: OnboardingMockup.recoveryBodySize, weight: .medium))
+                    .foregroundStyle(OnboardingMockup.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .padding(.horizontal, 40)
+
+                Button(action: {
+                    viewModel.retryRecovery()
+                }) {
+                    Text("Retry")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: OnboardingMockup.primaryButtonHeight)
+                        .background(OnboardingMockup.accentBlue, in: RoundedRectangle(cornerRadius: OnboardingMockup.primaryButtonCornerRadius, style: .continuous))
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 32)
+            }
+
+        case .recovering:
+            recoveryBottomStatus(message: viewModel.statusText)
+
+        case .waitingForWindowOpen, .connecting, .loadingSlots:
+            recoveryBottomStatus(message: viewModel.recoveryState == .waitingForWindowOpen ? waitingRecoveryMessage : viewModel.statusText)
         }
     }
-    
+
     // MARK: Importing View
     private var importingView: some View {
         VStack(spacing: 0) {
-            Spacer()
+            Spacer(minLength: 88)
 
-            Image(systemName: "qrcode")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 220, height: 220)
-                .foregroundStyle(.white)
+            QrPayloadPreview(payload: viewModel.lastScannedQrPayload)
+                .frame(width: OnboardingMockup.qrPreviewSize, height: OnboardingMockup.qrPreviewSize)
+                .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous)) // Estimated minimal corner easing from the mockup QR tile.
                 .padding(.bottom, 36)
 
             Text("Decoding...")
-                .font(.title3.weight(.medium))
-                .foregroundStyle(.white.opacity(0.7))
+                .font(.system(size: OnboardingMockup.decodingLabelSize, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.80))
 
             Spacer()
         }
     }
-    
+
     // MARK: Permission View
     private var permissionView: some View {
         VStack(spacing: 0) {
-            Spacer()
+            Spacer(minLength: 110)
 
             Image(systemName: "dot.radiowaves.left.and.right")
-                .font(.system(size: 56, weight: .light))
+                .font(.system(size: 74, weight: .regular)) // Estimated from the icon scale in the mockup.
                 .foregroundStyle(.white)
-                .padding(.bottom, 28)
+                .padding(.bottom, 34)
 
             Text("Proximity Unlock")
-                .font(.title.bold())
+                .font(.system(size: OnboardingMockup.permissionTitleSize, weight: .semibold))
                 .foregroundStyle(.white)
-                .padding(.bottom, 24)
+                .padding(.bottom, 40)
 
-            VStack(spacing: 12) {
+            VStack(spacing: 22) {
                 Text("Pipit can automatically unlock your vehicle when you walk up to it.")
                 Text("This requires \"Always Allow\" location access so the app can detect your vehicle in the background.")
                 Text("Your location is never stored or transmitted.")
             }
-            .font(.subheadline)
-            .foregroundStyle(.white.opacity(0.55))
+            .font(.system(size: OnboardingMockup.permissionBodySize, weight: .regular))
+            .foregroundStyle(OnboardingMockup.secondaryText)
             .multilineTextAlignment(.center)
-            .padding(.horizontal, 40)
+            .lineSpacing(3)
+            .padding(.horizontal, 44)
 
             Spacer()
 
-            VStack(spacing: 20) {
+            VStack(spacing: 18) {
                 Button(action: { viewModel.requestLocationPermission() }) {
                     Text("Enable Proximity")
-                        .font(.body.weight(.semibold))
+                        .font(.system(size: 20, weight: .bold))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.blue, in: Capsule())
+                        .frame(height: OnboardingMockup.primaryButtonHeight)
+                        .background(OnboardingMockup.accentBlue, in: RoundedRectangle(cornerRadius: OnboardingMockup.primaryButtonCornerRadius, style: .continuous))
                         .foregroundStyle(.white)
                 }
-                .padding(.horizontal, 32)
+                .padding(.horizontal, 24)
 
                 Button(action: { viewModel.skipLocationPermission() }) {
                     Text("Skip for Now")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.5))
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(OnboardingMockup.linkBlue)
                 }
             }
-            .padding(.bottom, 52)
+            .padding(.bottom, 34)
         }
     }
-    
+
     // MARK: Success View
     private var successView: some View {
         VStack(spacing: 0) {
-            Spacer()
+            Spacer(minLength: 82)
 
             Image(systemName: "checkmark.circle")
-                .font(.system(size: 64, weight: .light))
+                .font(.system(size: 82, weight: .regular)) // Estimated from the confirmation glyph scale.
                 .foregroundStyle(.white)
-                .padding(.bottom, 20)
+                .padding(.bottom, 24)
 
             Text("All set!")
-                .font(.title.bold())
+                .font(.system(size: OnboardingMockup.successTitleSize, weight: .semibold))
                 .foregroundStyle(.white)
-                .padding(.bottom, 36)
+                .padding(.bottom, 42)
 
             VStack(spacing: 0) {
-                ForEach(0..<4) { index in
-                    // SLOT 1 = FOB (hardware, always active), SLOT 2 = OWNER, SLOT 3-4 = GUEST
-                    let tier: String = index == 0 ? "FOB" : (index == 1 ? "OWNER" : "GUEST")
-                    // isCurrent only applies to phone-key slots (index > 0)
-                    let isCurrent: Bool = index > 0 && (viewModel.provisioningSuccess?.slotId == index + 1)
-                    let slotName: String = getSlotName(for: index)
-                    // SLOT 1 badge is always blue; other slots go blue only when current
-                    let badgeActive: Bool = (index == 0) || isCurrent
+                ForEach(successRows) { row in
+                    HStack(alignment: .center, spacing: 16) {
+                        Text("SLOT \(row.id)")
+                            .font(.system(size: OnboardingMockup.successSlotLabelSize, weight: .medium))
+                            .foregroundStyle(OnboardingMockup.mutedText)
+                            .frame(width: 70, alignment: .leading)
 
-                    HStack(spacing: 12) {
-                        Text("SLOT \(index + 1)")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.35))
-                            .frame(width: 46, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(row.title)
+                                .font(.system(size: OnboardingMockup.slotNameSize, weight: .semibold))
+                                .foregroundStyle(row.isActive ? .white : OnboardingMockup.tertiaryText)
 
-                        Text(slotName)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(badgeActive ? .white : .white.opacity(0.35))
+                            Text(row.tier)
+                                .font(.system(size: OnboardingMockup.slotMetaSize, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 4)
+                                .background(row.isActive ? OnboardingMockup.accentBlue : OnboardingMockup.inactiveBadge, in: RoundedRectangle(cornerRadius: 6, style: .continuous)) // Estimated badge radius.
+                        }
+                        .frame(maxHeight: .infinity, alignment: .center)
 
                         Spacer()
 
-                        Text(tier)
-                            .font(.system(size: 10, weight: .semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(badgeActive ? Color.blue : Color.white.opacity(0.1),
-                                        in: Capsule())
-                            .foregroundStyle(badgeActive ? .white : .white.opacity(0.4))
-
-                        // Reserve fixed width so rows stay same width whether checked or not
-                        if isCurrent {
+                        if row.isCurrentDevice {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 16)
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(OnboardingMockup.accentBlue)
+                                .frame(width: 28)
+                                .frame(maxHeight: .infinity, alignment: .center)
                         } else {
-                            Color.clear.frame(width: 16)
+                            Color.clear
+                                .frame(width: 28)
+                                .frame(maxHeight: .infinity, alignment: .center)
                         }
                     }
-                    .frame(height: 52)
+                    .frame(height: OnboardingMockup.successRowHeight)
                     .padding(.horizontal, 20)
 
-                    if index < 3 {
-                        // Use Rectangle instead of Divider — Divider can expand unexpectedly in VStack(spacing:0)
+                    if row.id < 4 {
                         Rectangle()
-                            .fill(Color.white.opacity(0.08))
+                            .fill(OnboardingMockup.divider)
                             .frame(height: 1)
                             .padding(.leading, 20)
                     }
                 }
             }
-            .background(Color.white.opacity(0.07))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(OnboardingMockup.successCardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: OnboardingMockup.slotCardCornerRadius, style: .continuous))
             .padding(.horizontal, 24)
 
             Spacer()
 
             Button(action: { viewModel.finishOnboarding() }) {
                 Text("Done")
-                    .font(.body.weight(.semibold))
+                    .font(.system(size: 20, weight: .bold))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.blue, in: Capsule())
+                    .frame(height: OnboardingMockup.primaryButtonHeight)
+                    .background(OnboardingMockup.accentBlue, in: RoundedRectangle(cornerRadius: OnboardingMockup.primaryButtonCornerRadius, style: .continuous))
                     .foregroundStyle(.white)
             }
-            .padding(.horizontal, 32)
-            .padding(.bottom, 52)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 34)
         }
     }
-    
-    private func getSlotName(for index: Int) -> String {
-        if index == 0 { return "Uguisu" }
-        if index + 1 == viewModel.provisioningSuccess?.slotId { return viewModel.provisioningSuccess?.name ?? "Phone" }
-        return "EMPTY"
+
+    private var successRows: [SuccessOverviewRow] {
+        let recoveredById = Dictionary(uniqueKeysWithValues: viewModel.successOverviewSlots.map { ($0.id, $0) })
+
+        return (1...4).map { slotId in
+            let currentProvisionedSlot = viewModel.provisioningSuccess?.slotId == slotId
+            let recoveredSlot = recoveredById[slotId]
+            let title: String
+            let isActive: Bool
+
+            if slotId == 1 {
+                let recoveredName = recoveredSlot?.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                title = recoveredName?.isEmpty == false ? recoveredName! : "Uguisu"
+                isActive = true
+            } else if let recoveredSlot, recoveredSlot.used {
+                let recoveredName = recoveredSlot.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                title = recoveredName.isEmpty ? "Phone Key" : recoveredName
+                isActive = true
+            } else if currentProvisionedSlot {
+                title = viewModel.provisioningSuccess?.name ?? "Phone Key"
+                isActive = true
+            } else {
+                title = "EMPTY"
+                isActive = false
+            }
+
+            return SuccessOverviewRow(
+                id: slotId,
+                title: title,
+                tier: slotTier(for: slotId),
+                isActive: isActive || slotId == 1,
+                isCurrentDevice: currentProvisionedSlot
+            )
+        }
+    }
+
+    private func slotTier(for slotId: Int) -> String {
+        switch slotId {
+        case 1:
+            return "FOB"
+        case 2:
+            return "OWNER"
+        default:
+            return "GUEST"
+        }
     }
 }
