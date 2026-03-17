@@ -593,21 +593,24 @@ final class OnboardingViewModel: ObservableObject {
             return Data(repeating: 0x42, count: 16)
         }
         #endif
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
-            ImmoCrypto.shared.decryptProvisionedKeyAsync(
+        let saltKt = kotlinByteArray(from: Array(salt))
+        let keyKt = kotlinByteArray(from: Array(encryptedKey))
+        let params = defaultArgonParams()
+        // Use the non-suspend background variant to completely avoid the
+        // ObjCExportCoroutines bridge, which can deadlock with Dispatchers.Main on iOS.
+        return try await withCheckedThrowingContinuation { continuation in
+            ImmoCrypto.shared.decryptProvisionedKeyBackground(
                 pin: pin,
-                salt: self.kotlinByteArray(from: Array(salt)),
-                encryptedKey: self.kotlinByteArray(from: Array(encryptedKey)),
-                params: self.defaultArgonParams()
-            ) { result, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let result {
+                salt: saltKt,
+                encryptedKey: keyKt,
+                params: params,
+                onSuccess: { [self] result in
                     continuation.resume(returning: self.data(from: result))
-                } else {
-                    continuation.resume(throwing: IosBleProximityServiceError.system("Provisioning decrypt returned no result"))
+                },
+                onError: { message in
+                    continuation.resume(throwing: IosBleProximityServiceError.system(message))
                 }
-            }
+            )
         }
     }
 

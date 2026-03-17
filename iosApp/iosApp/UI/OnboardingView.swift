@@ -264,7 +264,7 @@ struct OnboardingView: View {
                 Spacer()
 
                 VStack(spacing: 8) {
-                    Text("Scan QR from Whimbrel")
+                    Text("Scan from Whimbrel")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white)
 
@@ -331,7 +331,7 @@ struct OnboardingView: View {
                 Button(action: {
                     viewModel.startRecoveryFlow()
                 }) {
-                    Text("Recover key from lost phone")
+                    Text("Forgot your old phone?")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.55))
                         .padding(.vertical, 8)
@@ -575,138 +575,161 @@ struct OnboardingView: View {
     
     // MARK: Importing View
     private var importingView: some View {
-        VStack(spacing: 40) {
-            QRDecryptionAnimationView()
-                .frame(width: 250, height: 250)
-            
-            Text(viewModel.importingStatusText)
-                .foregroundColor(.gray)
-                .font(.headline)
+        VStack(spacing: 0) {
+            Spacer()
+
+            Image(systemName: "qrcode")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 220, height: 220)
+                .foregroundStyle(.white)
+                .padding(.bottom, 36)
+
+            Text("Decoding...")
+                .font(.title3.weight(.medium))
+                .foregroundStyle(.white.opacity(0.7))
+
+            Spacer()
         }
     }
     
     // MARK: Permission View
     private var permissionView: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text("Enable proximity unlock?")
-                .font(.title2)
-                .bold()
-                .foregroundColor(.white)
-            
-            VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 0) {
+            Spacer()
+
+            Image(systemName: "dot.radiowaves.left.and.right")
+                .font(.system(size: 56, weight: .light))
+                .foregroundStyle(.white)
+                .padding(.bottom, 28)
+
+            Text("Proximity Unlock")
+                .font(.title.bold())
+                .foregroundStyle(.white)
+                .padding(.bottom, 24)
+
+            VStack(spacing: 12) {
                 Text("Pipit can automatically unlock your vehicle when you walk up to it.")
                 Text("This requires \"Always Allow\" location access so the app can detect your vehicle in the background.")
                 Text("Your location is never stored or transmitted.")
             }
-            .foregroundColor(.gray)
-            
+            .font(.subheadline)
+            .foregroundStyle(.white.opacity(0.55))
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 40)
+
             Spacer()
-            
-            VStack(spacing: 12) {
-                Button(action: {
-                    viewModel.requestLocationPermission()
-                }) {
+
+            VStack(spacing: 20) {
+                Button(action: { viewModel.requestLocationPermission() }) {
                     Text("Enable Proximity")
-                        .bold()
+                        .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
+                        .padding(.vertical, 16)
+                        .background(Color.blue, in: Capsule())
+                        .foregroundStyle(.white)
                 }
-                
-                Button(action: {
-                    viewModel.skipLocationPermission()
-                }) {
+                .padding(.horizontal, 32)
+
+                Button(action: { viewModel.skipLocationPermission() }) {
                     Text("Skip for Now")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .foregroundColor(.gray)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.5))
                 }
             }
-            .padding(.bottom, 40)
+            .padding(.bottom, 52)
         }
-        .padding(.horizontal, 32)
-        .padding(.top, 60)
     }
     
     // MARK: Success View
     private var successView: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                Spacer()
-                Image(systemName: "checkmark")
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundColor(.green)
-                    .padding(.top, 40)
-                Spacer()
-            }
-            
-            Text("You're all set.")
-                .font(.title3)
-                .bold()
-                .foregroundColor(.white)
-                .padding(.top, 20)
+        VStack(spacing: 0) {
+            Spacer()
+
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 64, weight: .light))
+                .foregroundStyle(.white)
                 .padding(.bottom, 20)
-            
+
+            Text("All set!")
+                .font(.title.bold())
+                .foregroundStyle(.white)
+                .padding(.bottom, 36)
+
             VStack(spacing: 0) {
                 ForEach(0..<4) { index in
-                    let isCurrent = (viewModel.provisioningSuccess?.slotId == index)
-                    let slotName = getSlotName(for: index)
-                    let tier = index == 0 ? "HARDWARE" : (index == 1 ? "OWNER" : "GUEST")
-                    
-                    HStack(alignment: .top) {
-                        Text("Slot \(index)")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                            .frame(width: 60, alignment: .leading)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(slotName)
-                                .foregroundColor(isCurrent ? .white : .gray)
-                            Text(tier)
-                                .font(.caption2)
-                                .foregroundColor(isCurrent ? .blue : .gray)
-                        }
-                        
+                    // SLOT 1 = FOB (hardware, always active), SLOT 2 = OWNER, SLOT 3-4 = GUEST
+                    let tier: String = index == 0 ? "FOB" : (index == 1 ? "OWNER" : "GUEST")
+                    // isCurrent only applies to phone-key slots (index > 0)
+                    let isCurrent: Bool = index > 0 && (viewModel.provisioningSuccess?.slotId == index + 1)
+                    let slotName: String = getSlotName(for: index)
+                    // SLOT 1 badge is always blue; other slots go blue only when current
+                    let badgeActive: Bool = (index == 0) || isCurrent
+
+                    HStack(spacing: 12) {
+                        Text("SLOT \(index + 1)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.35))
+                            .frame(width: 46, alignment: .leading)
+
+                        Text(slotName)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(badgeActive ? .white : .white.opacity(0.35))
+
                         Spacer()
-                        
-                        if index == 0 {
-                            Image(systemName: "key.fill").foregroundColor(.gray)
-                        } else if isCurrent {
-                            Circle()
-                                .fill(Color.blue)
-                                .frame(width: 10, height: 10)
+
+                        Text(tier)
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(badgeActive ? Color.blue : Color.white.opacity(0.1),
+                                        in: Capsule())
+                            .foregroundStyle(badgeActive ? .white : .white.opacity(0.4))
+
+                        // Reserve fixed width so rows stay same width whether checked or not
+                        if isCurrent {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 16)
+                        } else {
+                            Color.clear.frame(width: 16)
                         }
                     }
-                    .padding(.vertical, 12)
+                    .frame(height: 52)
+                    .padding(.horizontal, 20)
+
+                    if index < 3 {
+                        // Use Rectangle instead of Divider — Divider can expand unexpectedly in VStack(spacing:0)
+                        Rectangle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(height: 1)
+                            .padding(.leading, 20)
+                    }
                 }
             }
-            .padding(.horizontal, 16)
-            .background(Color(.systemGray6))
-            .cornerRadius(12)
-            
+            .background(Color.white.opacity(0.07))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 24)
+
             Spacer()
-            
-            Button(action: {
-                viewModel.finishOnboarding()
-            }) {
+
+            Button(action: { viewModel.finishOnboarding() }) {
                 Text("Done")
-                    .bold()
+                    .font(.body.weight(.semibold))
                     .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
+                    .padding(.vertical, 16)
+                    .background(Color.blue, in: Capsule())
+                    .foregroundStyle(.white)
             }
-            .padding(.bottom, 40)
+            .padding(.horizontal, 32)
+            .padding(.bottom, 52)
         }
-        .padding(.horizontal, 32)
     }
     
     private func getSlotName(for index: Int) -> String {
         if index == 0 { return "Uguisu" }
-        if index == viewModel.provisioningSuccess?.slotId { return viewModel.provisioningSuccess?.name ?? "Phone" }
-        return "— empty —"
+        if index + 1 == viewModel.provisioningSuccess?.slotId { return viewModel.provisioningSuccess?.name ?? "Phone" }
+        return "EMPTY"
     }
 }
