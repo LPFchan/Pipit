@@ -18,49 +18,66 @@ struct RootView: View {
     var body: some View {
         Group {
             if hasProvisionedKey {
-                ZStack {
+                ZStack(alignment: .topLeading) {
+                    Color(uiColor: .systemBackground).edgesIgnoringSafeArea(.all)
+                    
                     ZStack {
-                        HomeView(onTapSettings: {
+                        ZStack {
+                            HomeView()
+                            .opacity(showSettings ? 0 : 1)
+                        }
+                        .rotation3DEffect(.degrees(flipDegrees), axis: (x: 0, y: 1, z: 0))
+                        
+                        if showSettings {
+                            SettingsView(bleService: bleService, onLocalKeyDeleted: {
+                                hasProvisionedKey = false
+                                showSettings = false
+                                flipDegrees = 0
+                            })
+                            .rotation3DEffect(.degrees(flipDegrees - 180), axis: (x: 0, y: 1, z: 0))
+                            .transition(.opacity)
+                            .overlay(
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.6)) {
+                                        flipDegrees = 0
+                                        showSettings = false
+                                    }
+                                }) {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .frame(width: 36, height: 36)
+                                        .background(.ultraThinMaterial, in: Circle())
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.top, 16)
+                                .padding(.trailing, 16),
+                                alignment: .topTrailing
+                            )
+                        }
+                    }
+                    .modifier(DisconnectOverlayModifier(
+                        connectionState: bleService.connectionState,
+                        isOverlayEnabled: true,
+                        isBluetoothPoweredOff: bleService.isBluetoothPoweredOff
+                    ))
+
+                    // Persistent Gear Button above everything else
+                    if !showSettings {
+                        Button(action: {
                             withAnimation(.easeInOut(duration: 0.6)) {
                                 flipDegrees = 180
                                 showSettings = true
                             }
-                        })
-                        .opacity(showSettings ? 0 : 1)
-                        .modifier(DisconnectOverlayModifier(
-                            connectionState: bleService.connectionState,
-                            isOverlayEnabled: true,
-                            isBluetoothPoweredOff: bleService.isBluetoothPoweredOff
-                        ))
-                    }
-                    .rotation3DEffect(.degrees(flipDegrees), axis: (x: 0, y: 1, z: 0))
-                    
-                    if showSettings {
-                        SettingsView(bleService: bleService, onLocalKeyDeleted: {
-                            hasProvisionedKey = false
-                            showSettings = false
-                            flipDegrees = 0
-                        })
-                        .rotation3DEffect(.degrees(flipDegrees - 180), axis: (x: 0, y: 1, z: 0))
-                        .transition(.opacity) // ensure it doesn't animate position incorrectly
-                        // Cross-fade close button via navigation or overlay 
-                        .overlay(
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.6)) {
-                                    flipDegrees = 0
-                                    showSettings = false
-                                }
-                            }) {
-                                Image(systemName: "xmark")
-                                    .font(.title2)
-                                    .padding()
-                                    .background(Circle().fill(Color(uiColor: .systemBackground).opacity(0.8)))
-                                    .foregroundColor(.primary)
-                            }
-                            .padding(.top, 16)
-                            .padding(.trailing, 16),
-                            alignment: .topTrailing
-                        )
+                        }) {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 15, weight: .medium))
+                                .frame(width: 36, height: 36)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.leading, 16)
+                        .padding(.top, 16)
+                        .transition(.opacity)
                     }
                 }
             } else {

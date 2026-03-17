@@ -18,37 +18,39 @@ struct SettingsView: View {
 
     var body: some View {
         ZStack {
-            Color(uiColor: .systemBackground).edgesIgnoringSafeArea(.all)
+            // Replaced with Color.clear to not double-stack backgrounds during flip transition
+            Color.clear.edgesIgnoringSafeArea(.all)
             
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: 12) {
                     headerView
                     statusView
-                    
+
                     if let errorMessage = viewModel.errorMessage {
                         errorBanner(errorMessage)
                     }
 
                     Form {
                         proximitySection
-                        
+
                         if viewModel.isOwnerView {
                             keysSection
-                        }
-
-                        yourKeySection
-
-                        if viewModel.isOwnerView {
                             deviceSection
+                        } else {
+                            yourKeySection
                         }
 
                         aboutSection
+
+                        #if targetEnvironment(simulator)
+                        devSection
+                        #endif
                     }
                     .scrollContentBackground(.hidden)
                     .padding(.horizontal, -16)
                 }
                 .padding(24)
-                .padding(.top, 40) // Make room for custom close button
+                .padding(.top, 52) // Make room for custom close button
             }
             .onAppear {
                 viewModel.onAppear()
@@ -92,7 +94,20 @@ struct SettingsView: View {
                     Button("OK", role: .cancel) { viewModel.alertType = nil }
                 }
             } message: { alertType in
-                Text("Confirmation")
+                switch alertType {
+                case .deleteConfirmation(let slot):
+                    Text("This will permanently revoke slot \(slot.id) from Uguisu.")
+                case .replaceConfirmation:
+                    Text("The existing key in this slot will be overwritten.")
+                case .deletionConfirmation:
+                    Text("Your phone key will be removed from this device.")
+                case .transferConfirmation:
+                    Text("A one-time QR code will be generated to transfer your key.")
+                case .info(_, let message):
+                    Text(message)
+                default:
+                    EmptyView()
+                }
             }
             .sheet(item: $viewModel.showQrSheet) { qrType in
                 qrSheetContent(for: qrType)
@@ -102,54 +117,56 @@ struct SettingsView: View {
 
     // MARK: - View Components
     private var headerView: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Settings")
-                    .font(.title)
-                    .fontWeight(.bold)
-                Text(viewModel.headerSubtitle)
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .lineLimit(nil)
-            }
-            Spacer()
-            Button(action: { dismiss() }) {
-                Text("Close")
-            }
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Settings")
+                .font(.largeTitle.bold())
+            Text(viewModel.headerSubtitle)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var statusView: some View {
-        HStack(spacing: 10) {
+        Group {
             if viewModel.isLoading {
-                ProgressView()
-            }
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(viewModel.statusText)
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .lineLimit(nil)
-            }
-            
-            Spacer()
-            
-            if viewModel.showRetry {
-                Button("Retry") {
-                    viewModel.retryLoadSlots()
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .scaleEffect(0.85)
+                    Text(viewModel.statusText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer()
                 }
+            } else if viewModel.showRetry {
+                HStack {
+                    Text(viewModel.statusText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Retry") { viewModel.retryLoadSlots() }
+                        .font(.footnote.weight(.medium))
+                }
+            } else {
+                EmptyView()
             }
         }
     }
 
     private func errorBanner(_ message: String) -> some View {
-        Text(message)
-            .font(.body)
-            .foregroundColor(.red)
-            .lineLimit(nil)
-            .padding(12)
-            .background(Color.red.opacity(0.1))
-            .cornerRadius(8)
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(.red)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var proximitySection: some View {
@@ -349,6 +366,66 @@ struct SettingsView: View {
         }
     }
 
+    #if targetEnvironment(simulator)
+    private var devSection: some View {
+        Section {
+            VStack(spacing: 10) {
+                let isConnected = bleService.connectionState == .connectedUnlocked
+                    || bleService.connectionState == .connectedLocked
+
+                Button(action: {
+                    if isConnected {
+                        bleService.simulatorSetConnectionState(.disconnected)
+                        UserDefaults.standard.set(false, forKey: "DEV_BYPASS_OVERLAY")
+                    } else {
+                        bleService.simulatorSetConnectionState(.connectedUnlocked)
+                        UserDefaults.standard.set(true, forKey: "DEV_BYPASS_OVERLAY")
+                    }
+                }) {
+                    HStack {
+                        Text(isConnected ? "Simulate Disconnect" : "Simulate Connected")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.black)
+                        Spacer()
+                        Image(systemName: isConnected ? "bolt.slash.fill" : "bolt.fill")
+                            .foregroundStyle(Color.black)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .background(Color.yellow, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                if isConnected {
+                    Button(action: {
+                        bleService.simulatorSetConnectionState(
+                            bleService.connectionState == .connectedUnlocked ? .connectedLocked : .connectedUnlocked
+                        )
+                    }) {
+                        HStack {
+                            Text(bleService.connectionState == .connectedUnlocked ? "Switch → Locked" : "Switch → Unlocked")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.black)
+                            Spacer()
+                            Image(systemName: bleService.connectionState == .connectedUnlocked ? "lock.fill" : "lock.open.fill")
+                                .foregroundStyle(Color.black)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background(Color.yellow.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text("DEVELOPER")
+        } footer: {
+            Text("Simulator-only. Overrides BLE connection state for UI testing.")
+        }
+    }
+    #endif
+
     // MARK: - Helper Views
     private func sliderBlock(
         title: String,
@@ -359,22 +436,25 @@ struct SettingsView: View {
         enabled: Bool,
         onChange: @escaping (Double) -> Void
     ) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             HStack {
                 Text(title)
-                    .font(.headline)
+                    .font(.subheadline.weight(.medium))
                 Spacer()
                 Text(label)
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
             Text(subtitle)
                 .font(.caption)
-                .foregroundColor(.secondary)
-                .lineLimit(nil)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Slider(value: .constant(value), in: range)
                 .disabled(!enabled)
+                .opacity(enabled ? 1 : 0.4)
                 .onChange(of: value) { newValue in onChange(newValue) }
+                .padding(.top, 2)
         }
     }
 

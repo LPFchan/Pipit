@@ -1421,6 +1421,13 @@ extension IosBleProximityService: CBPeripheralDelegate {
         guard characteristic.uuid == Self.charMgmtResponse else { return }
         completePendingResponse(with: characteristic.value ?? Data())
     }
+
+    #if targetEnvironment(simulator)
+    /// Simulator-only helper: directly override the connection state for UI testing.
+    public func simulatorSetConnectionState(_ state: ConnectionState) {
+        connectionState = state
+    }
+    #endif
 }
 
 private extension Data {

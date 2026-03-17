@@ -5,9 +5,9 @@ struct PipitApp: App {
     @StateObject private var bleService = IosBleProximityService()
     
     init() {
-        #if DEBUG
-        // During debug previews, mock connected state so the Disconnect overlay does not block the UI.
-        bleService.connectionState = .connectedUnlocked
+        #if targetEnvironment(simulator)
+        // During simulator runs, start in a connected state so the disconnect overlay does not block the UI.
+        bleService.simulatorSetConnectionState(.connectedUnlocked)
         #endif
     }
     

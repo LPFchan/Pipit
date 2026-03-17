@@ -94,24 +94,60 @@ struct QRScannerView: UIViewControllerRepresentable {
 struct ScannerCutoutOverlay: View {
     var body: some View {
         GeometryReader { geometry in
-            let cutoutSize = CGSize(width: 250, height: 250)
-            let cutoutRect = CGRect(
-                x: (geometry.size.width - cutoutSize.width) / 2,
-                y: (geometry.size.height - cutoutSize.height) / 2,
-                width: cutoutSize.width,
-                height: cutoutSize.height
-            )
+            let size: CGFloat = 256
+            let x = (geometry.size.width - size) / 2
+            let y = (geometry.size.height - size) / 2
+            let r = CGRect(x: x, y: y, width: size, height: size)
+            let cr: CGFloat = 22  // corner radius
+            let cl: CGFloat = 30  // corner arm length
+            let lw: CGFloat = 3   // line width
 
+            // Dimmed background with cutout
             Path { path in
                 path.addRect(CGRect(origin: .zero, size: geometry.size))
-                path.addRoundedRect(in: cutoutRect, cornerSize: CGSize(width: 16, height: 16))
+                path.addRoundedRect(in: r, cornerSize: CGSize(width: cr, height: cr))
             }
-            .fill(Color.black.opacity(0.7), style: FillStyle(eoFill: true))
-            
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.white.opacity(0.5), lineWidth: 2)
-                .frame(width: cutoutSize.width, height: cutoutSize.height)
-                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+            .fill(Color.black.opacity(0.55), style: FillStyle(eoFill: true))
+
+            // Apple-style corner bracket markers
+            Path { path in
+                // Top-left
+                path.move(to: CGPoint(x: r.minX + lw / 2, y: r.minY + cr + cl))
+                path.addLine(to: CGPoint(x: r.minX + lw / 2, y: r.minY + cr))
+                path.addQuadCurve(
+                    to: CGPoint(x: r.minX + cr, y: r.minY + lw / 2),
+                    control: CGPoint(x: r.minX + lw / 2, y: r.minY + lw / 2)
+                )
+                path.addLine(to: CGPoint(x: r.minX + cr + cl, y: r.minY + lw / 2))
+
+                // Top-right
+                path.move(to: CGPoint(x: r.maxX - cr - cl, y: r.minY + lw / 2))
+                path.addLine(to: CGPoint(x: r.maxX - cr, y: r.minY + lw / 2))
+                path.addQuadCurve(
+                    to: CGPoint(x: r.maxX - lw / 2, y: r.minY + cr),
+                    control: CGPoint(x: r.maxX - lw / 2, y: r.minY + lw / 2)
+                )
+                path.addLine(to: CGPoint(x: r.maxX - lw / 2, y: r.minY + cr + cl))
+
+                // Bottom-right
+                path.move(to: CGPoint(x: r.maxX - lw / 2, y: r.maxY - cr - cl))
+                path.addLine(to: CGPoint(x: r.maxX - lw / 2, y: r.maxY - cr))
+                path.addQuadCurve(
+                    to: CGPoint(x: r.maxX - cr, y: r.maxY - lw / 2),
+                    control: CGPoint(x: r.maxX - lw / 2, y: r.maxY - lw / 2)
+                )
+                path.addLine(to: CGPoint(x: r.maxX - cr - cl, y: r.maxY - lw / 2))
+
+                // Bottom-left
+                path.move(to: CGPoint(x: r.minX + cr + cl, y: r.maxY - lw / 2))
+                path.addLine(to: CGPoint(x: r.minX + cr, y: r.maxY - lw / 2))
+                path.addQuadCurve(
+                    to: CGPoint(x: r.minX + lw / 2, y: r.maxY - cr),
+                    control: CGPoint(x: r.minX + lw / 2, y: r.maxY - lw / 2)
+                )
+                path.addLine(to: CGPoint(x: r.minX + lw / 2, y: r.maxY - cr - cl))
+            }
+            .stroke(Color.white, style: StrokeStyle(lineWidth: lw, lineCap: .round, lineJoin: .round))
         }
         .ignoresSafeArea()
     }
@@ -226,19 +262,25 @@ struct OnboardingView: View {
             
             VStack {
                 Spacer()
-                
-                Text("Scan from Whimbrel")
-                    .foregroundColor(.white)
-                    .font(.body)
-                    .padding(.bottom, 60)
-                
-                if let error = viewModel.scanErrorMessage {
-                    Text(error)
-                        .foregroundColor(.red)
-                        .font(.footnote)
-                        .padding()
+
+                VStack(spacing: 8) {
+                    Text("Scan QR from Whimbrel")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white)
+
+                    if let error = viewModel.scanErrorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red.opacity(0.9))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                            .transition(.opacity)
+                    }
                 }
-                
+                .padding(.bottom, 32)
+
                 #if targetEnvironment(simulator)
                 if !viewModel.isScanLocked {
                     Button(action: {
@@ -248,81 +290,138 @@ struct OnboardingView: View {
                         }
                     }) {
                         Text("DEV: Simulate Scanned QR")
-                            .foregroundColor(.black)
-                            .padding()
+                            .font(.caption.weight(.medium))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                             .background(Color.yellow)
-                            .cornerRadius(8)
+                            .foregroundColor(.black)
+                            .clipShape(Capsule())
                     }
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 16)
                 }
                 #endif
-                
+
                 Button(action: {
                     viewModel.startRecoveryFlow()
                 }) {
-                    Text("recover key from lost phone >")
+                    Text("Recover key from lost phone")
                         .font(.footnote)
-                        .foregroundColor(Color.white.opacity(0.7))
-                        .padding()
+                        .foregroundStyle(.white.opacity(0.55))
+                        .padding(.vertical, 8)
                 }
-                Spacer().frame(height: 40)
+                .padding(.bottom, 36)
             }
         }
     }
     
     // MARK: PIN Input View
     private var pinInputView: some View {
-        VStack(spacing: 20) {
-            Text("Enter PIN")
-                .font(.title2)
-                .foregroundColor(.white)
-            
-            Text("Enter the 6-digit PIN used to create this key.")
-                .foregroundColor(.gray)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            SecureField("6-digit PIN", text: $viewModel.pinCode)
-                .keyboardType(.numberPad)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(8)
-                .padding(.horizontal, 40)
-            
+        VStack(spacing: 0) {
+            Spacer()
+
+            VStack(spacing: 10) {
+                Image(systemName: "key.fill")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.white)
+                    .padding(.bottom, 6)
+
+                Text("Enter PIN")
+                    .font(.largeTitle.bold())
+                    .foregroundStyle(.white)
+
+                Text("The 6-digit PIN set during Guillemot setup.")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            }
+
+            Spacer().frame(height: 52)
+
+            ZStack {
+                // Hidden text field captures input
+                SecureField("", text: $viewModel.pinCode)
+                    .keyboardType(.numberPad)
+                    .foregroundColor(.clear)
+                    .accentColor(.clear)
+                    .onChange(of: viewModel.pinCode) { newValue in
+                        if newValue.count > 6 {
+                            viewModel.pinCode = String(newValue.prefix(6))
+                        }
+                    }
+
+                // Visual digit boxes
+                HStack(spacing: 10) {
+                    ForEach(0..<6, id: \.self) { index in
+                        pinDigitBox(index: index)
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+
             if let error = viewModel.pinErrorMessage {
                 Text(error)
-                    .foregroundColor(.red)
                     .font(.footnote)
+                    .foregroundStyle(.red.opacity(0.85))
+                    .padding(.top, 14)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            } else {
+                Spacer().frame(height: 14 + 16) // match error text approx height
             }
-            
+
+            Spacer().frame(height: 32)
+
             if viewModel.isProvisioningInFlight {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(1.2)
+                    .padding(.vertical, 4)
             } else {
-                Button(action: {
-                    viewModel.confirmPin()
-                }) {
-                    Text("Unlock")
-                        .bold()
+                Button(action: { viewModel.confirmPin() }) {
+                    Text("Continue")
+                        .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
+                        .padding(.vertical, 16)
+                        .background(
+                            viewModel.pinCode.count == 6 ? Color.white : Color.white.opacity(0.18),
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                        .foregroundStyle(viewModel.pinCode.count == 6 ? Color.black : Color.white.opacity(0.45))
                 }
-                .padding(.horizontal, 40)
+                .padding(.horizontal, 32)
+                .disabled(viewModel.pinCode.count != 6)
+                .animation(.easeInOut(duration: 0.18), value: viewModel.pinCode.count)
             }
-            
+
             Spacer()
-            
-            Button("Cancel") {
-                viewModel.returnToCamera()
-            }
-            .foregroundColor(.white)
-            .padding(.bottom, 40)
+
+            Button("Cancel") { viewModel.returnToCamera() }
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.55))
+                .padding(.bottom, 44)
         }
-        .padding(.top, 60)
+    }
+
+    private func pinDigitBox(index: Int) -> some View {
+        let filled = index < viewModel.pinCode.count
+        return ZStack {
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Color.white.opacity(filled ? 0.18 : 0.07))
+                .frame(width: 46, height: 56)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(filled ? Color.white.opacity(0.75) : Color.white.opacity(0.18),
+                                lineWidth: filled ? 1.5 : 1)
+                )
+
+            if filled {
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 10, height: 10)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.22, dampingFraction: 0.65), value: filled)
     }
     
     // MARK: Recovery View
