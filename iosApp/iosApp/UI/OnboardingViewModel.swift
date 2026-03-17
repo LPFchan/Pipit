@@ -425,6 +425,10 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
     
+    func skipLocationPermission() {
+        onboardingState = .success
+    }
+    
     func returnToCamera() {
         isScanLocked = false
         scanErrorMessage = nil

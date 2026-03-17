@@ -91,6 +91,73 @@ struct QRScannerView: UIViewControllerRepresentable {
     }
 }
 
+struct ScannerCutoutOverlay: View {
+    var body: some View {
+        GeometryReader { geometry in
+            let cutoutSize = CGSize(width: 250, height: 250)
+            let cutoutRect = CGRect(
+                x: (geometry.size.width - cutoutSize.width) / 2,
+                y: (geometry.size.height - cutoutSize.height) / 2,
+                width: cutoutSize.width,
+                height: cutoutSize.height
+            )
+
+            Path { path in
+                path.addRect(CGRect(origin: .zero, size: geometry.size))
+                path.addRoundedRect(in: cutoutRect, cornerSize: CGSize(width: 16, height: 16))
+            }
+            .fill(Color.black.opacity(0.7), style: FillStyle(eoFill: true))
+            
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.5), lineWidth: 2)
+                .frame(width: cutoutSize.width, height: cutoutSize.height)
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+        }
+        .ignoresSafeArea()
+    }
+}
+
+struct QRDecryptionAnimationView: View {
+    @State private var phase: Int = 0 // 0: Start, 1: Dissolve, 2: Converge, 3: Resolve
+    
+    var body: some View {
+        ZStack {
+            if phase < 3 {
+                // Particles
+                ForEach(0..<20, id: \.self) { i in
+                    Rectangle()
+                        .fill(phase < 2 ? Color.white : Color.blue)
+                        .frame(width: 8, height: 8)
+                        .offset(
+                            x: phase == 0 ? 0 : (phase == 1 ? CGFloat.random(in: -100...100) : 0),
+                            y: phase == 0 ? 0 : (phase == 1 ? CGFloat.random(in: -100...100) : 0)
+                        )
+                        .rotationEffect(.degrees(phase == 1 ? Double.random(in: 0...360) : 0))
+                        .opacity(phase == 0 ? 0 : (phase == 2 ? 0 : 1))
+                        .animation(.easeInOut(duration: 0.4), value: phase)
+                }
+            } else {
+                Image(systemName: "key.fill")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 60, height: 60)
+                    .foregroundColor(.blue)
+                    .shadow(color: .blue, radius: 10, x: 0, y: 0)
+                    .transition(.scale.combined(with: .opacity))
+                    .onAppear {
+                        let impact = UIImpactFeedbackGenerator(style: .medium)
+                        impact.impactOccurred()
+                    }
+            }
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { phase = 1 } // Dissolve
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { phase = 2 } // Converge
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { withAnimation(.spring()) { phase = 3 } } // Resolve
+        }
+    }
+}
+
 // MARK: - Onboarding View
 
 struct OnboardingView: View {
@@ -105,12 +172,10 @@ struct OnboardingView: View {
             Color.black.ignoresSafeArea()
             
             switch viewModel.onboardingState {
-            case .camera:
+            case .camera, .recovery:
                 cameraView
             case .pin:
                 pinInputView
-            case .recovery:
-                recoveryView
             case .importing:
                 importingView
             case .locationPermission:
@@ -119,6 +184,29 @@ struct OnboardingView: View {
                 successView
             }
         }
+        .sheet(isPresented: Binding(
+            get: { viewModel.onboardingState == .recovery },
+            set: { isPresented in
+                if !isPresented && viewModel.onboardingState == .recovery {
+                    viewModel.cancelRecovery()
+                }
+            }
+        )) {
+            NavigationView {
+                recoveryView
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Cancel") {
+                                viewModel.cancelRecovery()
+                            }
+                            .foregroundColor(.white)
+                        }
+                    }
+            }
+            .preferredColorScheme(.dark)
+            .presentationDetents([.fraction(0.85), .large])
+        }
         .onDisappear {
             viewModel.onDisappear()
         }
@@ -126,56 +214,59 @@ struct OnboardingView: View {
     
     // MARK: Camera View
     private var cameraView: some View {
-        VStack {
-            Text("Provision Device")
-                .font(.headline)
-                .foregroundColor(.white)
-                .padding(.top, 20)
-            
-            Spacer()
-            
-            ZStack {
-                QRScannerView(onScan: { code in
-                    DispatchQueue.main.async {
-                        viewModel.handleScannedQr(code)
-                    }
-                }, isEnabled: !viewModel.isScanLocked)
-                .frame(height: 350)
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.3), lineWidth: 2)
-                )
-                
-                VStack {
-                    Spacer()
-                    Text("Scan a provisioning QR code")
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(8)
-                        .padding(.bottom, 16)
+        ZStack {
+            QRScannerView(onScan: { code in
+                DispatchQueue.main.async {
+                    viewModel.handleScannedQr(code)
                 }
-            }
-            .padding(.horizontal, 24)
+            }, isEnabled: !viewModel.isScanLocked)
+            .ignoresSafeArea()
             
-            if let error = viewModel.scanErrorMessage {
-                Text(error)
-                    .foregroundColor(.red)
-                    .font(.footnote)
-                    .padding()
-            }
+            ScannerCutoutOverlay()
             
-            Spacer()
-            
-            Button(action: {
-                viewModel.startRecoveryFlow()
-            }) {
-                Text("Recover existing device")
-                    .foregroundColor(.blue)
-                    .padding()
+            VStack {
+                Spacer()
+                
+                Text("Scan from Whimbrel")
+                    .foregroundColor(.white)
+                    .font(.body)
+                    .padding(.bottom, 60)
+                
+                if let error = viewModel.scanErrorMessage {
+                    Text(error)
+                        .foregroundColor(.red)
+                        .font(.footnote)
+                        .padding()
+                }
+                
+                #if targetEnvironment(simulator)
+                if !viewModel.isScanLocked {
+                    Button(action: {
+                        let mockQr = "immogen://prov?slot=2&ctr=0&key=00112233445566778899aabbccddeeff&name=Simulator%20Key"
+                        DispatchQueue.main.async {
+                            viewModel.handleScannedQr(mockQr)
+                        }
+                    }) {
+                        Text("DEV: Simulate Scanned QR")
+                            .foregroundColor(.black)
+                            .padding()
+                            .background(Color.yellow)
+                            .cornerRadius(8)
+                    }
+                    .padding(.bottom, 20)
+                }
+                #endif
+                
+                Button(action: {
+                    viewModel.startRecoveryFlow()
+                }) {
+                    Text("recover key from lost phone >")
+                        .font(.footnote)
+                        .foregroundColor(Color.white.opacity(0.7))
+                        .padding()
+                }
+                Spacer().frame(height: 40)
             }
-            Spacer().frame(height: 40)
         }
     }
     
@@ -236,50 +327,47 @@ struct OnboardingView: View {
     
     // MARK: Recovery View
     private var recoveryView: some View {
-        VStack(spacing: 24) {
-            Text("Recovery")
-                .font(.largeTitle)
-                .foregroundColor(.white)
-                .padding(.top, 40)
-            
-            if viewModel.recoveryState == .slotPicker || viewModel.recoveryState == .ownerProof || viewModel.recoveryState == .recovering {
-                recoverySlotPickerContent
-            } else {
-                Text(viewModel.statusText)
-                    .foregroundColor(.gray)
-                    .multilineTextAlignment(.center)
-                    .padding()
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 24) {
+                Text("Recovery")
+                    .font(.largeTitle)
+                    .foregroundColor(.white)
+                    .padding(.top, 40)
                 
-                if viewModel.recoveryState == .waitingForWindowOpen || viewModel.recoveryState == .connecting || viewModel.recoveryState == .loadingSlots {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                if viewModel.recoveryState == .slotPicker || viewModel.recoveryState == .ownerProof || viewModel.recoveryState == .recovering {
+                    recoverySlotPickerContent
+                } else {
+                    Text(viewModel.statusText)
+                        .foregroundColor(.gray)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                    
+                    if viewModel.recoveryState == .waitingForWindowOpen || viewModel.recoveryState == .connecting || viewModel.recoveryState == .loadingSlots {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    }
                 }
-            }
-            
-            if let error = viewModel.recoveryErrorMessage {
-                Text(error)
-                    .foregroundColor(.red)
-                    .font(.footnote)
+                
+                if let error = viewModel.recoveryErrorMessage {
+                    Text(error)
+                        .foregroundColor(.red)
+                        .font(.footnote)
+                        .padding()
+                }
+                
+                Spacer()
+                
+                if viewModel.recoveryState == .error {
+                    Button("Retry") {
+                        viewModel.retryRecovery()
+                    }
                     .padding()
-            }
-            
-            Spacer()
-            
-            if viewModel.recoveryState == .error {
-                Button("Retry") {
-                    viewModel.retryRecovery()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
                 }
-                .padding()
-                .background(Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(8)
             }
-            
-            Button("Cancel") {
-                viewModel.cancelRecovery()
-            }
-            .foregroundColor(.white)
-            .padding(.bottom, 40)
         }
     }
     
@@ -361,65 +449,138 @@ struct OnboardingView: View {
     
     // MARK: Importing View
     private var importingView: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                .scaleEffect(1.5)
+        VStack(spacing: 40) {
+            QRDecryptionAnimationView()
+                .frame(width: 250, height: 250)
             
             Text(viewModel.importingStatusText)
-                .foregroundColor(.white)
+                .foregroundColor(.gray)
                 .font(.headline)
         }
     }
     
     // MARK: Permission View
     private var permissionView: some View {
-        VStack(spacing: 24) {
-            Text("Location Permission")
-                .font(.title)
+        VStack(alignment: .leading, spacing: 24) {
+            Text("Enable proximity unlock?")
+                .font(.title2)
+                .bold()
                 .foregroundColor(.white)
             
-            Text("Pipit requires Location Permission to reliably connect to the device in the background. Please select 'Always Allow'.")
-                .foregroundColor(.gray)
-                .multilineTextAlignment(.center)
-                .padding()
-            
-            Button("Allow Location") {
-                viewModel.requestLocationPermission()
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Pipit can automatically unlock your vehicle when you walk up to it.")
+                Text("This requires \"Always Allow\" location access so the app can detect your vehicle in the background.")
+                Text("Your location is never stored or transmitted.")
             }
-            .padding()
-            .background(Color.blue)
-            .foregroundColor(.white)
-            .cornerRadius(8)
+            .foregroundColor(.gray)
+            
+            Spacer()
+            
+            VStack(spacing: 12) {
+                Button(action: {
+                    viewModel.requestLocationPermission()
+                }) {
+                    Text("Enable Proximity")
+                        .bold()
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+                
+                Button(action: {
+                    viewModel.skipLocationPermission()
+                }) {
+                    Text("Skip for Now")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .foregroundColor(.gray)
+                }
+            }
+            .padding(.bottom, 40)
         }
+        .padding(.horizontal, 32)
+        .padding(.top, 60)
     }
     
     // MARK: Success View
     private var successView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "checkmark.circle.fill")
-                .resizable()
-                .frame(width: 80, height: 80)
-                .foregroundColor(.green)
-                .padding(.top, 60)
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                Spacer()
+                Image(systemName: "checkmark")
+                    .font(.system(size: 40, weight: .bold))
+                    .foregroundColor(.green)
+                    .padding(.top, 40)
+                Spacer()
+            }
             
-            Text("Successfully Provisioned!")
-                .font(.title)
+            Text("You're all set.")
+                .font(.title3)
                 .bold()
                 .foregroundColor(.white)
+                .padding(.top, 20)
+                .padding(.bottom, 20)
+            
+            VStack(spacing: 0) {
+                ForEach(0..<4) { index in
+                    let isCurrent = (viewModel.provisioningSuccess?.slotId == index)
+                    let slotName = getSlotName(for: index)
+                    let tier = index == 0 ? "HARDWARE" : (index == 1 ? "OWNER" : "GUEST")
+                    
+                    HStack(alignment: .top) {
+                        Text("Slot \(index)")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                            .frame(width: 60, alignment: .leading)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(slotName)
+                                .foregroundColor(isCurrent ? .white : .gray)
+                            Text(tier)
+                                .font(.caption2)
+                                .foregroundColor(isCurrent ? .blue : .gray)
+                        }
+                        
+                        Spacer()
+                        
+                        if index == 0 {
+                            Image(systemName: "key.fill").foregroundColor(.gray)
+                        } else if isCurrent {
+                            Circle()
+                                .fill(Color.blue)
+                                .frame(width: 10, height: 10)
+                        }
+                    }
+                    .padding(.vertical, 12)
+                }
+            }
+            .padding(.horizontal, 16)
+            .background(Color(.systemGray6))
+            .cornerRadius(12)
             
             Spacer()
             
-            Button("Continue") {
+            Button(action: {
                 viewModel.finishOnboarding()
+            }) {
+                Text("Done")
+                    .bold()
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
             }
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(Color.blue)
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            .padding(.horizontal, 40)
             .padding(.bottom, 40)
         }
+        .padding(.horizontal, 32)
+    }
+    
+    private func getSlotName(for index: Int) -> String {
+        if index == 0 { return "Uguisu" }
+        if index == viewModel.provisioningSuccess?.slotId { return viewModel.provisioningSuccess?.name ?? "Phone" }
+        return "— empty —"
     }
 }

@@ -3,13 +3,16 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject private var bleService: IosBleProximityService
     @State private var showTapHint: Bool = true
+    var onTapSettings: (() -> Void)?
     
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color(uiColor: .systemBackground).edgesIgnoringSafeArea(.all)
             
             // Gear button
-            NavigationLink(value: NavigationRoute.settings) {
+            Button(action: {
+                onTapSettings?()
+            }) {
                 Image(systemName: "gearshape.fill")
                     .imageScale(.large)
                     .padding()
@@ -17,6 +20,7 @@ struct HomeView: View {
             }
             .padding(.leading, 4)
             .padding(.top, 4)
+            .foregroundColor(.primary)
             
             // Center content
             VStack(spacing: 8) {

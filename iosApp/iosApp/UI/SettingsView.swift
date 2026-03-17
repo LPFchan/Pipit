@@ -17,7 +17,9 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        ZStack {
+            Color(uiColor: .systemBackground).edgesIgnoringSafeArea(.all)
+            
             ScrollView {
                 VStack(spacing: 16) {
                     headerView
@@ -46,9 +48,8 @@ struct SettingsView: View {
                     .padding(.horizontal, -16)
                 }
                 .padding(24)
+                .padding(.top, 40) // Make room for custom close button
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(true)
             .onAppear {
                 viewModel.onAppear()
             }

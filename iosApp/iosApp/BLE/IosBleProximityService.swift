@@ -166,6 +166,7 @@ public enum IosBleProximityServiceError: LocalizedError {
     @Published public private(set) var lastCommandPayloadHex: String?
     @Published public private(set) var managementState: BleManagementSessionState = .init()
     @Published public private(set) var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
+    @Published public private(set) var isBluetoothPoweredOff: Bool = false
 
     private let locationManager = CLLocationManager()
     private var centralManager: CBCentralManager?
@@ -1187,6 +1188,7 @@ extension IosBleProximityService: CLLocationManagerDelegate {
 
 extension IosBleProximityService: CBCentralManagerDelegate {
     public func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        isBluetoothPoweredOff = (central.state == .poweredOff)
         switch central.state {
         case .poweredOn:
             let continuations = pendingPoweredOnContinuations

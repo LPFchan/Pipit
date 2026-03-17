@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct DisconnectOverlaySwiftUIView: View {
+    var isBluetoothPoweredOff: Bool = false
+    
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
@@ -15,10 +17,38 @@ struct DisconnectOverlaySwiftUIView: View {
             }
             .ignoresSafeArea()
             
-            Text("○ Disconnected")
-                .font(.title3)
-                .foregroundColor(.primary)
-                .allowsHitTesting(false)
+            if isBluetoothPoweredOff {
+                Button(action: {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }) {
+                    Text("✕ Bluetooth is off")
+                        .font(.title3)
+                        .foregroundColor(.primary)
+                }
+            } else {
+                Text("○ Disconnected")
+                    .font(.title3)
+                    .foregroundColor(.primary)
+                    .allowsHitTesting(false)
+            }
+            
+            #if targetEnvironment(simulator)
+            VStack {
+                Spacer()
+                Button(action: {
+                    UserDefaults.standard.set(true, forKey: "DEV_BYPASS_OVERLAY")
+                }) {
+                    Text("DEV: Bypass Overlay")
+                        .padding()
+                        .background(Color.yellow)
+                        .foregroundColor(.black)
+                        .cornerRadius(8)
+                }
+                .padding(.bottom, 40)
+            }
+            #endif
         }
     }
 }
