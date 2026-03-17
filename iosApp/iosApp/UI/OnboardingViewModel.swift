@@ -660,6 +660,13 @@ final class OnboardingViewModel {
     }
 
     func slotTierLabel(for slotId: Int) -> String {
-        return slotId == 0 ? "Owner" : "Guest"
+        switch slotId {
+        case 0:
+            return "FOB"
+        case 1:
+            return "Owner"
+        default:
+            return "Guest"
+        }
     }
 }

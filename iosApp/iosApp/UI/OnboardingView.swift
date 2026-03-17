@@ -12,11 +12,11 @@ import shared
 private enum OnboardingMockup {
     static let accentBlue = Color(red: 0.078, green: 0.592, blue: 0.965) // Estimated from the CTA fill in the mockup.
     static let linkBlue = Color(red: 0.000, green: 0.573, blue: 0.988) // Estimated from the secondary link color in the mockup.
-    static let recoverySheetBackground = Color.white.opacity(0.10) // Estimated tint layered over the native material blur.
+    static let recoverySheetBackground = Color(red: 0.238, green: 0.238, blue: 0.250).opacity(0.36) // Estimated from the darker smoky tint layered over the native sheet blur.
     static let successCardBackground = Color(red: 0.168, green: 0.168, blue: 0.182) // Estimated from the slot summary card.
-    static let closeButtonFill = Color.white.opacity(0.14) // Estimated from the circular close affordance.
-    static let closeButtonSymbol = Color.white.opacity(0.58) // Estimated from the close symbol tint.
-    static let secondaryText = Color.white.opacity(0.92)
+    static let closeButtonFill = Color.white.opacity(0.15) // Estimated from the circular close affordance.
+    static let closeButtonSymbol = Color.white.opacity(0.62) // Estimated from the close symbol tint.
+    static let secondaryText = Color.white.opacity(0.88)
     static let tertiaryText = Color(red: 0.690, green: 0.690, blue: 0.718) // Estimated from secondary copy in the mockup.
     static let mutedText = Color.white.opacity(0.38)
     static let divider = Color.white.opacity(0.12)
@@ -25,8 +25,8 @@ private enum OnboardingMockup {
 
     static let appTitleSize: CGFloat = 26 // Estimated from the top "Pipit" title.
     static let scanLabelFontSize: CGFloat = 23 // Estimated from the larger "Scan from Whimbrel" text in the mockup.
-    static let recoveryTitleSize: CGFloat = 17 // Matches the compact sheet title sizing in the mockup.
-    static let recoveryBodySize: CGFloat = 17 // Estimated from the recovery instruction copy.
+    static let recoveryTitleSize: CGFloat = 16 // Estimated from the compact sheet title sizing in the mockup.
+    static let recoveryBodySize: CGFloat = 15 // Estimated from the recovery instruction copy in the mockup.
     static let decodingLabelSize: CGFloat = 28 // Estimated from "Decoding...".
     static let permissionTitleSize: CGFloat = 32 // Estimated from "Proximity Unlock".
     static let permissionBodySize: CGFloat = 17 // Estimated from the three permission paragraphs.
@@ -36,11 +36,13 @@ private enum OnboardingMockup {
     static let slotMetaSize: CGFloat = 14 // Estimated from the SLOT label and tier pill typography.
 
     static let primaryButtonCornerRadius: CGFloat = 19 // Estimated from the rounded CTA corners.
-    static let recoverySheetCornerRadius: CGFloat = 34 // Estimated from the recovery sheet rounding.
+    static let recoverySheetCornerRadius: CGFloat = 30 // Estimated from the recovery sheet rounding in the mockup.
     static let slotCardCornerRadius: CGFloat = 30 // Estimated from the success card rounding.
-    static let closeButtonDiameter: CGFloat = 40 // Estimated from the circular close control.
-    static let recoverySheetHeight: CGFloat = 518 // Estimated from the visible bottom sheet height in the reference.
-    static let recoveryStatusBottomPadding: CGFloat = 34 // Estimated from the tighter spinner-to-home-indicator spacing in the reference.
+    static let closeButtonDiameter: CGFloat = 38 // Estimated from the circular close control.
+    static let recoverySheetHeight: CGFloat = 468 // Estimated from the shorter visible bottom sheet height in the reference.
+    static let recoveryMessageHorizontalPadding: CGFloat = 46 // Estimated from the message width in the reference.
+    static let recoveryMessageToSpinnerGap: CGFloat = 42 // Estimated from the tighter message-to-spinner spacing in the reference.
+    static let recoveryStatusBottomPadding: CGFloat = 16 // Estimated from the tighter spinner-to-home-indicator spacing in the reference.
     static let primaryButtonHeight: CGFloat = 58 // Estimated from the permission and success CTA height.
     static let scannerCutoutSize: CGFloat = 246 // Estimated from the smaller scanning window width in the mockup.
     static let scannerCutoutCornerRadius: CGFloat = 34 // Estimated from the more rounded scanning window corners in the mockup.
@@ -90,6 +92,157 @@ private struct SuccessOverviewRow: Identifiable {
     let tier: String
     let isActive: Bool
     let isCurrentDevice: Bool
+}
+
+struct SlotPresentationRow: Identifiable {
+    let id: Int
+    let title: String
+    let tier: String
+    let isActive: Bool
+    let isCurrentDevice: Bool
+    let detail: String?
+
+    init(
+        id: Int,
+        title: String,
+        tier: String,
+        isActive: Bool,
+        isCurrentDevice: Bool = false,
+        detail: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.tier = tier
+        self.isActive = isActive
+        self.isCurrentDevice = isCurrentDevice
+        self.detail = detail
+    }
+}
+
+struct SlotPresentationStyle {
+    let background: Color
+    let border: Color
+    let slotLabel: Color
+    let activeTitle: Color
+    let inactiveTitle: Color
+    let activeDetail: Color
+    let inactiveDetail: Color
+    let activeBadgeBackground: Color
+    let inactiveBadgeBackground: Color
+    let activeBadgeText: Color
+    let inactiveBadgeText: Color
+    let divider: Color
+    let currentDeviceTint: Color
+    let accessoryTint: Color
+
+    static let onboardingDark = SlotPresentationStyle(
+        background: OnboardingMockup.successCardBackground,
+        border: .clear,
+        slotLabel: OnboardingMockup.mutedText,
+        activeTitle: .white,
+        inactiveTitle: OnboardingMockup.tertiaryText,
+        activeDetail: OnboardingMockup.secondaryText,
+        inactiveDetail: OnboardingMockup.mutedText,
+        activeBadgeBackground: OnboardingMockup.accentBlue,
+        inactiveBadgeBackground: OnboardingMockup.inactiveBadge,
+        activeBadgeText: .white,
+        inactiveBadgeText: .white,
+        divider: OnboardingMockup.divider,
+        currentDeviceTint: OnboardingMockup.accentBlue,
+        accessoryTint: Color.white.opacity(0.92)
+    )
+
+    static let settingsGrouped = SlotPresentationStyle(
+        background: Color(uiColor: .systemBackground),
+        border: Color.black.opacity(0.06),
+        slotLabel: Color(uiColor: .secondaryLabel),
+        activeTitle: Color(uiColor: .label),
+        inactiveTitle: Color(uiColor: .secondaryLabel),
+        activeDetail: Color(uiColor: .secondaryLabel),
+        inactiveDetail: Color(uiColor: .tertiaryLabel),
+        activeBadgeBackground: Color.accentColor,
+        inactiveBadgeBackground: Color(uiColor: .tertiarySystemFill),
+        activeBadgeText: .white,
+        inactiveBadgeText: Color(uiColor: .secondaryLabel),
+        divider: Color.black.opacity(0.06),
+        currentDeviceTint: Color.accentColor,
+        accessoryTint: Color(uiColor: .secondaryLabel)
+    )
+}
+
+struct SlotPresentationCard: View {
+    let rows: [SlotPresentationRow]
+    var style: SlotPresentationStyle = .onboardingDark
+    var rowMinHeight: CGFloat = OnboardingMockup.successRowHeight
+    var accessoryWidth: CGFloat = 28
+    var accessory: ((SlotPresentationRow) -> AnyView)? = nil
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                HStack(alignment: .center, spacing: 16) {
+                    Text("SLOT \(row.id)")
+                        .font(.system(size: OnboardingMockup.successSlotLabelSize, weight: .medium))
+                        .foregroundStyle(style.slotLabel)
+                        .frame(width: 70, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(row.title)
+                            .font(.system(size: OnboardingMockup.slotNameSize, weight: .semibold))
+                            .foregroundStyle(row.isActive ? style.activeTitle : style.inactiveTitle)
+                            .lineLimit(2)
+
+                        Text(row.tier)
+                            .font(.system(size: OnboardingMockup.slotMetaSize, weight: .bold))
+                            .foregroundStyle(row.isActive ? style.activeBadgeText : style.inactiveBadgeText)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(row.isActive ? style.activeBadgeBackground : style.inactiveBadgeBackground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                        if let detail = row.detail, !detail.isEmpty {
+                            Text(detail)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(row.isActive ? style.activeDetail : style.inactiveDetail)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    accessoryView(for: row)
+                        .frame(width: accessoryWidth, alignment: .trailing)
+                }
+                .frame(minHeight: rowMinHeight)
+                .padding(.horizontal, 20)
+                .padding(.vertical, row.detail == nil ? 0 : 10)
+
+                if index < rows.count - 1 {
+                    Rectangle()
+                        .fill(style.divider)
+                        .frame(height: 1)
+                        .padding(.leading, 20)
+                }
+            }
+        }
+        .background(style.background)
+        .overlay(
+            RoundedRectangle(cornerRadius: OnboardingMockup.slotCardCornerRadius, style: .continuous)
+                .stroke(style.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OnboardingMockup.slotCardCornerRadius, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func accessoryView(for row: SlotPresentationRow) -> some View {
+        if let accessory {
+            accessory(row)
+        } else if row.isCurrentDevice {
+            Image(systemName: "checkmark")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(style.currentDeviceTint)
+        } else {
+            Color.clear
+        }
+    }
 }
 
 // MARK: - Scanner
@@ -379,8 +532,12 @@ struct OnboardingView: View {
                         Spacer()
 
                         Menu {
-                            Button("Simulate scanned QR") {
-                                viewModel.handleScannedQr(simulatorMockQr)
+                            Button("Simulate guest QR (slot 3)") {
+                                viewModel.handleScannedQr(simulatorGuestMockQr)
+                            }
+
+                            Button("Simulate owner QR (slot 1)") {
+                                viewModel.handleScannedQr(simulatorOwnerMockQr)
                             }
 
                             Button("Hard reset app and permissions", role: .destructive) {
@@ -404,8 +561,12 @@ struct OnboardingView: View {
         }
     }
 
-    private var simulatorMockQr: String {
-        "immogen://prov?slot=2&ctr=0&salt=00112233445566778899aabbccddeeff&ekey=00112233445566778899aabbccddeeff0011223344556677&name=Chloe%27s%20iPhone"
+    private var simulatorGuestMockQr: String {
+        "immogen://prov?slot=3&ctr=0&key=00112233445566778899aabbccddeeff&name=Guest%20iPhone"
+    }
+
+    private var simulatorOwnerMockQr: String {
+        "immogen://prov?slot=1&ctr=0&salt=00112233445566778899aabbccddeeff&ekey=00112233445566778899aabbccddeeff0011223344556677&name=Owner%20iPhone"
     }
 
     private func performSimulatorHardReset() {
@@ -576,20 +737,22 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             Spacer()
 
-            Text(message)
-                .font(.system(size: OnboardingMockup.recoveryBodySize, weight: .medium))
-                .foregroundStyle(OnboardingMockup.secondaryText)
-                .multilineTextAlignment(.center)
-                .lineSpacing(3)
-                .padding(.horizontal, 52)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 0) {
+                Text(message)
+                    .font(.system(size: OnboardingMockup.recoveryBodySize, weight: .medium))
+                    .foregroundStyle(OnboardingMockup.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                    .padding(.horizontal, OnboardingMockup.recoveryMessageHorizontalPadding)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Spacer().frame(height: 68) // Estimated gap reserved for the future centered 3D model footprint.
+                Spacer().frame(height: OnboardingMockup.recoveryMessageToSpinnerGap)
 
-            ProgressView()
-                .tint(.white)
-                .scaleEffect(1.24)
-                .padding(.bottom, OnboardingMockup.recoveryStatusBottomPadding)
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(1.08)
+            }
+            .padding(.bottom, OnboardingMockup.recoveryStatusBottomPadding)
         }
     }
 
@@ -834,55 +997,15 @@ struct OnboardingView: View {
                 .foregroundStyle(.white)
                 .padding(.bottom, 42)
 
-            VStack(spacing: 0) {
-                ForEach(successRows) { row in
-                    HStack(alignment: .center, spacing: 16) {
-                        Text("SLOT \(row.id)")
-                            .font(.system(size: OnboardingMockup.successSlotLabelSize, weight: .medium))
-                            .foregroundStyle(OnboardingMockup.mutedText)
-                            .frame(width: 70, alignment: .leading)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(row.title)
-                                .font(.system(size: OnboardingMockup.slotNameSize, weight: .semibold))
-                                .foregroundStyle(row.isActive ? .white : OnboardingMockup.tertiaryText)
-
-                            Text(row.tier)
-                                .font(.system(size: OnboardingMockup.slotMetaSize, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 4)
-                                .background(row.isActive ? OnboardingMockup.accentBlue : OnboardingMockup.inactiveBadge, in: RoundedRectangle(cornerRadius: 6, style: .continuous)) // Estimated badge radius.
-                        }
-                        .frame(maxHeight: .infinity, alignment: .center)
-
-                        Spacer()
-
-                        if row.isCurrentDevice {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundStyle(OnboardingMockup.accentBlue)
-                                .frame(width: 28)
-                                .frame(maxHeight: .infinity, alignment: .center)
-                        } else {
-                            Color.clear
-                                .frame(width: 28)
-                                .frame(maxHeight: .infinity, alignment: .center)
-                        }
-                    }
-                    .frame(height: OnboardingMockup.successRowHeight)
-                    .padding(.horizontal, 20)
-
-                    if row.id < 4 {
-                        Rectangle()
-                            .fill(OnboardingMockup.divider)
-                            .frame(height: 1)
-                            .padding(.leading, 20)
-                    }
-                }
-            }
-            .background(OnboardingMockup.successCardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: OnboardingMockup.slotCardCornerRadius, style: .continuous))
+            SlotPresentationCard(rows: successRows.map {
+                SlotPresentationRow(
+                    id: $0.id,
+                    title: $0.title,
+                    tier: $0.tier,
+                    isActive: $0.isActive,
+                    isCurrentDevice: $0.isCurrentDevice
+                )
+            })
             .padding(.horizontal, 24)
 
             Spacer()
@@ -903,13 +1026,13 @@ struct OnboardingView: View {
     private var successRows: [SuccessOverviewRow] {
         let recoveredById = Dictionary(uniqueKeysWithValues: viewModel.successOverviewSlots.map { ($0.id, $0) })
 
-        return (1...4).map { slotId in
+        return (0...3).map { slotId in
             let currentProvisionedSlot = viewModel.provisioningSuccess?.slotId == slotId
             let recoveredSlot = recoveredById[slotId]
             let title: String
             let isActive: Bool
 
-            if slotId == 1 {
+            if slotId == 0 {
                 let recoveredName = recoveredSlot?.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 title = recoveredName?.isEmpty == false ? recoveredName! : "Uguisu"
                 isActive = true
@@ -929,7 +1052,7 @@ struct OnboardingView: View {
                 id: slotId,
                 title: title,
                 tier: slotTier(for: slotId),
-                isActive: isActive || slotId == 1,
+                isActive: isActive || slotId == 0,
                 isCurrentDevice: currentProvisionedSlot
             )
         }
@@ -937,9 +1060,9 @@ struct OnboardingView: View {
 
     private func slotTier(for slotId: Int) -> String {
         switch slotId {
-        case 1:
+        case 0:
             return "FOB"
-        case 2:
+        case 1:
             return "OWNER"
         default:
             return "GUEST"

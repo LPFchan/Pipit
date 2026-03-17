@@ -13,7 +13,6 @@ struct RootView: View {
     
     @State private var hasProvisionedKey: Bool = false
     @State private var showSettings = false
-    @State private var flipDegrees = 0.0
     
     var body: some View {
         Group {
@@ -22,24 +21,25 @@ struct RootView: View {
                     Color(uiColor: .systemBackground).edgesIgnoringSafeArea(.all)
                     
                     ZStack {
-                        ZStack {
-                            HomeView()
+                        HomeView()
                             .opacity(showSettings ? 0 : 1)
-                        }
-                        .rotation3DEffect(.degrees(flipDegrees), axis: (x: 0, y: 1, z: 0))
+                            .allowsHitTesting(!showSettings)
                         
                         if showSettings {
                             SettingsView(bleService: bleService, onLocalKeyDeleted: {
                                 hasProvisionedKey = false
                                 showSettings = false
-                                flipDegrees = 0
                             })
-                            .rotation3DEffect(.degrees(flipDegrees - 180), axis: (x: 0, y: 1, z: 0))
-                            .transition(.opacity)
+                            .transition(
+                                .asymmetric(
+                                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                                    removal: .move(edge: .trailing).combined(with: .opacity)
+                                )
+                            )
+                            .zIndex(1)
                             .overlay(
                                 Button(action: {
-                                    withAnimation(.easeInOut(duration: 0.6)) {
-                                        flipDegrees = 0
+                                    withAnimation(.easeInOut(duration: 0.28)) {
                                         showSettings = false
                                     }
                                 }) {
@@ -64,8 +64,7 @@ struct RootView: View {
                     // Persistent Gear Button above everything else
                     if !showSettings {
                         Button(action: {
-                            withAnimation(.easeInOut(duration: 0.6)) {
-                                flipDegrees = 180
+                            withAnimation(.easeInOut(duration: 0.28)) {
                                 showSettings = true
                             }
                         }) {

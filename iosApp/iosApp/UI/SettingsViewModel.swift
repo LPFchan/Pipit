@@ -9,6 +9,13 @@ import shared
 
 @MainActor
 final class SettingsViewModel: ObservableObject {
+    struct ProximityPreset: Identifiable {
+        let id: Int
+        let title: String
+        let unlockRssi: Int
+        let lockRssi: Int
+    }
+
     enum SlotLoadState {
         case idle
         case loading
@@ -167,6 +174,25 @@ final class SettingsViewModel: ObservableObject {
         return nil
     }
 
+    var proximityPresets: [ProximityPreset] {
+        Self.defaultProximityPresets
+    }
+
+    var selectedProximityPresetIndex: Int {
+        guard !Self.defaultProximityPresets.isEmpty else { return 0 }
+
+        return Self.defaultProximityPresets.enumerated()
+            .min { lhs, rhs in
+                presetDistance(to: lhs.element) < presetDistance(to: rhs.element)
+            }?
+            .offset ?? 0
+    }
+
+    var selectedProximityPreset: ProximityPreset {
+        let index = min(max(selectedProximityPresetIndex, 0), Self.defaultProximityPresets.count - 1)
+        return Self.defaultProximityPresets[index]
+    }
+
     // MARK: - Public Actions
     func onAppear() {
         if case .idle = slotLoadState {
@@ -185,6 +211,18 @@ final class SettingsViewModel: ObservableObject {
     func backgroundUnlockToggled() {
 #if canImport(shared)
         appSettings.isProximityEnabled = proximityEnabled
+        updateProximityUi()
+#endif
+    }
+
+    func setProximityPreset(index: Int) {
+#if canImport(shared)
+        let clampedIndex = min(max(index, 0), Self.defaultProximityPresets.count - 1)
+        let preset = Self.defaultProximityPresets[clampedIndex]
+        unlockRssi = preset.unlockRssi
+        lockRssi = preset.lockRssi
+        appSettings.unlockRssi = Int32(preset.unlockRssi)
+        appSettings.lockRssi = Int32(preset.lockRssi)
         updateProximityUi()
 #endif
     }
@@ -407,6 +445,18 @@ final class SettingsViewModel: ObservableObject {
         objectWillChange.send()
 #endif
     }
+
+    private func presetDistance(to preset: ProximityPreset) -> Int {
+        abs(unlockRssi - preset.unlockRssi) + abs(lockRssi - preset.lockRssi)
+    }
+
+    private static let defaultProximityPresets: [ProximityPreset] = [
+        ProximityPreset(id: 0, title: "VERY NEAR", unlockRssi: -42, lockRssi: -58),
+        ProximityPreset(id: 1, title: "NEAR", unlockRssi: -50, lockRssi: -66),
+        ProximityPreset(id: 2, title: "MIDDLE", unlockRssi: -58, lockRssi: -74),
+        ProximityPreset(id: 3, title: "FAR", unlockRssi: -66, lockRssi: -82),
+        ProximityPreset(id: 4, title: "VERY FAR", unlockRssi: -74, lockRssi: -90)
+    ]
 
     private func loadSlots() {
         slotLoadTask?.cancel()

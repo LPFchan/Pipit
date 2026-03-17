@@ -1,9 +1,10 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(\.dismiss) var dismiss
     @StateObject private var viewModel: SettingsViewModel
     @EnvironmentObject private var bleService: IosBleProximityService
+
+    private let slotCardStyle = SlotPresentationStyle.settingsGrouped
 
     init(
         bleService: IosBleProximityService,
@@ -18,39 +19,32 @@ struct SettingsView: View {
 
     var body: some View {
         ZStack {
-            // Replaced with Color.clear to not double-stack backgrounds during flip transition
-            Color.clear.edgesIgnoringSafeArea(.all)
-            
-            ScrollView {
-                VStack(spacing: 12) {
+            Color(uiColor: .systemGroupedBackground)
+                .ignoresSafeArea()
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 18) {
                     headerView
-                    statusView
+
+                    if viewModel.isLoading || viewModel.showRetry {
+                        statusView
+                    }
 
                     if let errorMessage = viewModel.errorMessage {
                         errorBanner(errorMessage)
                     }
 
-                    Form {
-                        proximitySection
+                    proximitySection
 
-                        if viewModel.isOwnerView {
-                            keysSection
-                            deviceSection
-                        } else {
-                            yourKeySection
-                        }
+                    keysSection
 
-                        aboutSection
-
-                        #if targetEnvironment(simulator)
-                        devSection
-                        #endif
-                    }
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, -16)
+                    #if targetEnvironment(simulator)
+                    devSection
+                    #endif
                 }
-                .padding(24)
-                .padding(.top, 52) // Make room for custom close button
+                .padding(.horizontal, 20)
+                .padding(.top, 52)
+                .padding(.bottom, 36)
             }
             .onAppear {
                 viewModel.onAppear()
@@ -95,6 +89,8 @@ struct SettingsView: View {
                 }
             } message: { alertType in
                 switch alertType {
+                case .guestProvisionConfirmation(let slotId):
+                    Text("Create a guest key for slot \(slotId) and show a one-time transfer QR code.")
                 case .deleteConfirmation(let slot):
                     Text("This will permanently revoke slot \(slot.id) from Uguisu.")
                 case .replaceConfirmation:
@@ -115,265 +111,197 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - View Components
     private var headerView: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        HStack {
             Text("Settings")
-                .font(.largeTitle.bold())
-            Text(viewModel.headerSubtitle)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+            Spacer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var statusView: some View {
-        Group {
+        HStack(spacing: 12) {
             if viewModel.isLoading {
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .scaleEffect(0.85)
-                    Text(viewModel.statusText)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-            } else if viewModel.showRetry {
-                HStack {
-                    Text(viewModel.statusText)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Retry") { viewModel.retryLoadSlots() }
-                        .font(.footnote.weight(.medium))
-                }
+                ProgressView()
+                    .scaleEffect(0.85)
             } else {
-                EmptyView()
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(viewModel.statusText)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 12)
+
+            if viewModel.showRetry {
+                Button("Retry") {
+                    viewModel.retryLoadSlots()
+                }
+                .font(.footnote.weight(.semibold))
             }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.black.opacity(0.04), lineWidth: 1)
+                )
+        )
     }
 
     private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
+
             Text(message)
                 .font(.footnote)
                 .foregroundStyle(.red)
-                .lineLimit(nil)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
         }
-        .padding(12)
-        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(16)
+        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private var proximitySection: some View {
-        Section {
-            VStack(spacing: 12) {
-                HStack {
+        settingsSection(
+            eyebrow: "Proximity",
+            title: "Proximity Unlock"
+        ) {
+            VStack(spacing: 14) {
+                HStack(alignment: .center, spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Background Unlock")
+                        Text("Proximity Unlock")
                             .font(.headline)
-                        Text(viewModel.proximityEnabled ? "Automatic unlock and lock are enabled." : "Manual control only.")
+
+                        Text(viewModel.proximityEnabled ? "Enabled" : "Disabled")
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
+
                     Spacer()
-                    Toggle("", isOn: $viewModel.proximityEnabled)
-                        .onChange(of: viewModel.proximityEnabled) { _ in viewModel.backgroundUnlockToggled() }
+
+                    Toggle("", isOn: proximityToggleBinding)
+                        .labelsHidden()
                 }
+                .padding(16)
+                .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-                sliderBlock(
-                    title: "Unlock RSSI",
-                    subtitle: "Closer to 0 unlocks sooner.",
-                    value: Double(viewModel.unlockRssi),
-                    range: -95...(-35),
-                    label: "\(viewModel.unlockRssi) dBm",
-                    enabled: viewModel.proximityEnabled,
-                    onChange: viewModel.unlockRssiChanged
-                )
-
-                sliderBlock(
-                    title: "Lock RSSI",
-                    subtitle: "Always at least 10 dBm weaker than unlock.",
-                    value: Double(viewModel.lockRssi),
-                    range: -105...Double(viewModel.unlockRssi - 10),
-                    label: "\(viewModel.lockRssi) dBm",
-                    enabled: viewModel.proximityEnabled,
-                    onChange: viewModel.lockRssiChanged
-                )
+                if viewModel.proximityEnabled {
+                    thresholdPresetControl
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: .top).combined(with: .opacity),
+                                removal: .scale(scale: 0.98, anchor: .top).combined(with: .opacity)
+                            )
+                        )
+                }
             }
-            .padding(.vertical, 8)
-        } header: {
-            Text("PROXIMITY")
-        } footer: {
-            Text("These preferences are stored locally and already feed the existing BLE proximity layer.")
+            .animation(.snappy(duration: 0.26, extraBounce: 0), value: viewModel.proximityEnabled)
         }
+    }
+
+    private var proximityToggleBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.proximityEnabled },
+            set: { newValue in
+                withAnimation(.snappy(duration: 0.26, extraBounce: 0)) {
+                    viewModel.proximityEnabled = newValue
+                }
+                viewModel.backgroundUnlockToggled()
+            }
+        )
     }
 
     private var keysSection: some View {
-        Section {
-            VStack(spacing: 12) {
-                switch viewModel.slotLoadState {
-                case .idle:
-                    Text("Waiting to connect to the vehicle.")
-                        .font(.body)
-                case .loading:
-                    HStack {
-                        ProgressView()
-                        Text(viewModel.statusText)
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                    }
-                case .loaded:
-                    ForEach(viewModel.completedSlots, id: \.id) { slot in
-                        slotRowViewOwner(slot: slot)
-                    }
-                case .error(let message):
-                    Text(message)
-                        .font(.body)
-                        .foregroundColor(.red)
-                }
-            }
-            .padding(.vertical, 8)
-        } header: {
-            Text("KEYS")
-        } footer: {
-            Text("Live slot data comes from SLOTS? over the existing management transport. Owner writes re-identify before mutating a slot.")
+        settingsSection(
+            eyebrow: "Keys"
+        ) {
+            keysContent
         }
     }
 
-    private var yourKeySection: some View {
-        Section {
-            VStack(spacing: 12) {
-                if let localSlotId = viewModel.localSlotId,
-                   let slot = viewModel.completedSlots.first(where: { $0.id == localSlotId }) {
-                    slotRowViewGuest(slot: slot)
-                    Button(action: { viewModel.showTransferConfirmation() }) {
-                        Text("Transfer to New Phone")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
+    @ViewBuilder
+    private var keysContent: some View {
+        switch viewModel.slotLoadState {
+        case .idle:
+            inlineStateCard(
+                icon: "antenna.radiowaves.left.and.right",
+                tint: .secondary,
+                title: "Waiting for a management session",
+                body: "Open Settings near the vehicle to pull the latest slot state."
+            )
+        case .loading:
+            inlineStateCard(
+                icon: "dot.radiowaves.left.and.right",
+                tint: .secondary,
+                title: "Loading slots",
+                body: viewModel.statusText,
+                showsProgress: true
+            )
+        case .error(let message):
+            inlineStateCard(
+                icon: "wifi.exclamationmark",
+                tint: .red,
+                title: "Unable to load slots",
+                body: message,
+                actionTitle: "Retry",
+                action: viewModel.retryLoadSlots
+            )
+        case .loaded:
+            VStack(spacing: 14) {
+                if viewModel.isOwnerView {
+                    SlotPresentationCard(
+                        rows: settingsSlotRows,
+                        style: slotCardStyle,
+                        rowMinHeight: 96,
+                        accessoryWidth: 32,
+                        accessory: { ownerAccessoryView(for: $0) }
+                    )
                 } else {
-                    switch viewModel.slotLoadState {
-                    case .loading:
-                        HStack {
-                            ProgressView()
-                            Text(viewModel.statusText)
-                                .font(.body)
-                                .foregroundColor(.secondary)
-                        }
-                    case .error(let message):
-                        Text(message)
-                            .font(.body)
-                            .foregroundColor(.red)
-                    case .loaded:
-                        Text("Your local phone key could not be matched to a returned slot.")
-                            .font(.body)
-                    case .idle:
-                        Text("Waiting to connect to the vehicle.")
-                            .font(.body)
+                    SlotPresentationCard(
+                        rows: settingsSlotRows,
+                        style: slotCardStyle,
+                        rowMinHeight: 96
+                    )
+                }
+
+                if viewModel.localSlotId != nil {
+                    primaryActionButton(title: "Transfer to New Phone", systemImage: "qrcode") {
+                        viewModel.showTransferConfirmation()
                     }
                 }
             }
-            .padding(.vertical, 8)
-        } header: {
-            Text("YOUR KEY")
-        } footer: {
-            Text("Your phone slot stays separate from the rest of the vehicle state and owns its transfer flow.")
-        }
-    }
-
-    private var deviceSection: some View {
-        Section {
-            VStack(spacing: 12) {
-                Button(action: { viewModel.showTransferConfirmation() }) {
-                    Text("Transfer to New Phone")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-
-                Text("Slot 0 stays read-only on iOS. Use Whimbrel or Android USB OTG flows for Uguisu replacement, PIN changes, and firmware flashing.")
-                    .font(.body)
-
-                Text("Current management state: \(managementStatusTextDisplay)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.vertical, 8)
-        } header: {
-            Text("DEVICE")
-        } footer: {
-            Text("Owner migration stays here. USB-C OTG maintenance remains Android-only and is intentionally hidden on iOS.")
-        }
-    }
-
-    private var aboutSection: some View {
-        Section {
-            VStack(spacing: 8) {
-                if let localSlotId = viewModel.localSlotId {
-                    Text("Local phone slot: \(localSlotId)")
-                        .font(.body)
-                } else {
-                    Text("No local phone slot is currently stored on this device.")
-                        .font(.body)
-                }
-
-                Text("Management state: \(managementStatusTextDisplay)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-                   let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
-                    Text("Version \(version) (\(build))")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                if !viewModel.isOwnerView {
-                    switch viewModel.slotLoadState {
-                    case .loaded:
-                        ForEach(viewModel.completedSlots, id: \.id) { slot in
-                            slotRowViewAbout(slot: slot)
-                        }
-                    case .loading:
-                        HStack {
-                            ProgressView()
-                            Text("Loading the read-only slot overview.")
-                                .font(.body)
-                                .foregroundColor(.secondary)
-                        }
-                    case .error(let message):
-                        Text(message)
-                            .font(.body)
-                            .foregroundColor(.red)
-                    case .idle:
-                        Text("The slot overview appears here after the first management connection.")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-            .padding(.vertical, 8)
-        } header: {
-            Text("ABOUT")
-        } footer: {
-            Text("Management session state and slot context.")
         }
     }
 
     #if targetEnvironment(simulator)
     private var devSection: some View {
-        Section {
-            VStack(spacing: 10) {
+        settingsSection(
+            eyebrow: "Developer",
+            title: "Simulator controls",
+            footer: "Simulator-only. Overrides BLE connection state for UI testing."
+        ) {
+            VStack(spacing: 12) {
                 let isConnected = bleService.connectionState == .connectedUnlocked
                     || bleService.connectionState == .connectedLocked
 
-                Button(action: {
+                secondaryActionButton(
+                    title: isConnected ? "Simulate Disconnect" : "Simulate Connected",
+                    systemImage: isConnected ? "bolt.slash.fill" : "bolt.fill",
+                    tint: Color.yellow.opacity(0.95),
+                    foreground: .black
+                ) {
                     if isConnected {
                         bleService.simulatorSetConnectionState(.disconnected)
                         UserDefaults.standard.set(false, forKey: "DEV_BYPASS_OVERLAY")
@@ -381,43 +309,27 @@ struct SettingsView: View {
                         bleService.simulatorSetConnectionState(.connectedUnlocked)
                         UserDefaults.standard.set(true, forKey: "DEV_BYPASS_OVERLAY")
                     }
-                }) {
-                    HStack {
-                        Text(isConnected ? "Simulate Disconnect" : "Simulate Connected")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.black)
-                        Spacer()
-                        Image(systemName: isConnected ? "bolt.slash.fill" : "bolt.fill")
-                            .foregroundStyle(Color.black)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .background(Color.yellow, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
-                .buttonStyle(.plain)
 
                 if isConnected {
-                    Button(action: {
+                    secondaryActionButton(
+                        title: bleService.connectionState == .connectedUnlocked ? "Switch to Locked" : "Switch to Unlocked",
+                        systemImage: bleService.connectionState == .connectedUnlocked ? "lock.fill" : "lock.open.fill",
+                        tint: Color.yellow.opacity(0.7),
+                        foreground: .black
+                    ) {
                         bleService.simulatorSetConnectionState(
                             bleService.connectionState == .connectedUnlocked ? .connectedLocked : .connectedUnlocked
                         )
-                    }) {
-                        HStack {
-                            Text(bleService.connectionState == .connectedUnlocked ? "Switch → Locked" : "Switch → Unlocked")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Color.black)
-                            Spacer()
-                            Image(systemName: bleService.connectionState == .connectedUnlocked ? "lock.fill" : "lock.open.fill")
-                                .foregroundStyle(Color.black)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 11)
-                        .background(Color.yellow.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
-                    .buttonStyle(.plain)
                 }
 
-                Button(action: {
+                secondaryActionButton(
+                    title: "Hard Reset App and Permissions",
+                    systemImage: "trash.fill",
+                    tint: Color.red.opacity(0.9),
+                    foreground: .white
+                ) {
                     if let bundleID = Bundle.main.bundleIdentifier {
                         UserDefaults.standard.removePersistentDomain(forName: bundleID)
                     }
@@ -428,154 +340,268 @@ struct SettingsView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         exit(0)
                     }
-                }) {
-                    HStack {
-                        Text("Hard Reset App & Permissions")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.black)
-                        Spacer()
-                        Image(systemName: "trash.fill")
-                            .foregroundStyle(Color.black)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .background(Color.yellow, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
-                .buttonStyle(.plain)
             }
-            .padding(.vertical, 4)
-        } header: {
-            Text("DEVELOPER")
-        } footer: {
-            Text("Simulator-only. Overrides BLE connection state for UI testing.")
         }
     }
     #endif
 
-    // MARK: - Helper Views
-    private func sliderBlock(
-        title: String,
-        subtitle: String,
-        value: Double,
-        range: ClosedRange<Double>,
-        label: String,
-        enabled: Bool,
-        onChange: @escaping (Double) -> Void
+    private func settingsSection<Content: View>(
+        eyebrow: String,
+        title: String? = nil,
+        footer: String? = nil,
+        @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(spacing: 4) {
-            HStack {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(eyebrow.uppercased())
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            if let title {
                 Text(title)
-                    .font(.subheadline.weight(.medium))
-                Spacer()
-                Text(label)
-                    .font(.subheadline)
+                    .font(.title3.weight(.semibold))
+            }
+
+            content()
+
+            if let footer {
+                Text(footer)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Slider(value: .constant(value), in: range)
-                .disabled(!enabled)
-                .opacity(enabled ? 1 : 0.4)
-                .onChange(of: value) { newValue in onChange(newValue) }
-                .padding(.top, 2)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.black.opacity(0.04), lineWidth: 1)
+                )
+        )
     }
 
-    private func slotRowViewOwner(slot: BleManagementSlot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Slot \(slot.id) · \(viewModel.slotTierLabel(for: slot.id))")
-                        .font(.headline)
-                    Text(viewModel.slotDisplayName(for: slot))
-                        .font(.body)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 6) {
-                    Text(viewModel.slotBadge(for: slot))
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.accentColor)
+    private var thresholdPresetControl: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Threshold")
+                    .font(.headline)
 
-                    if viewModel.shouldShowSlotControl(for: slot) {
-                        slotMenu(for: slot)
+                Spacer()
+
+                Text(viewModel.selectedProximityPreset.title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.accentColor.opacity(0.12), in: Capsule())
+            }
+
+            Slider(
+                value: Binding(
+                    get: { Double(viewModel.selectedProximityPresetIndex) },
+                    set: { viewModel.setProximityPreset(index: Int($0.rounded())) }
+                ),
+                in: 0...Double(max(viewModel.proximityPresets.count - 1, 0)),
+                step: 1
+            )
+
+            HStack(alignment: .top, spacing: 6) {
+                ForEach(viewModel.proximityPresets) { preset in
+                    VStack(spacing: 6) {
+                        Circle()
+                            .fill(preset.id == viewModel.selectedProximityPresetIndex ? Color.accentColor : Color(uiColor: .quaternaryLabel))
+                            .frame(width: 6, height: 6)
+
+                        Text(preset.title)
+                            .font(.caption2.weight(preset.id == viewModel.selectedProximityPresetIndex ? .semibold : .medium))
+                            .foregroundStyle(preset.id == viewModel.selectedProximityPresetIndex ? .primary : .secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    .frame(maxWidth: .infinity)
                 }
             }
-            Text(viewModel.slotDetailText(for: slot))
-                .font(.caption)
-                .foregroundColor(.secondary)
         }
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(12)
+        .padding(16)
+        .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
-    private func slotRowViewGuest(slot: BleManagementSlot) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Slot \(slot.id) · \(viewModel.slotTierLabel(for: slot.id))")
-                        .font(.headline)
-                    Text(viewModel.slotDisplayName(for: slot))
-                        .font(.body)
+    private func inlineStateCard(
+        icon: String,
+        tint: Color,
+        title: String,
+        body: String,
+        showsProgress: Bool = false,
+        actionTitle: String? = nil,
+        action: (() -> Void)? = nil
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.12))
+                    .frame(width: 34, height: 34)
+
+                if showsProgress {
+                    ProgressView()
+                        .scaleEffect(0.75)
+                        .tint(tint)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(tint)
                 }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+
+                Text(body)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .font(.footnote.weight(.semibold))
+            }
+        }
+        .padding(16)
+        .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func primaryActionButton(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Text(title)
+                    .font(.headline)
                 Spacer()
-                Text(viewModel.slotBadge(for: slot))
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.accentColor)
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .semibold))
             }
-            Text(viewModel.slotDetailText(for: slot))
-                .font(.caption)
-                .foregroundColor(.secondary)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(12)
+        .buttonStyle(.plain)
     }
 
-    private func slotRowViewAbout(slot: BleManagementSlot) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Slot \(slot.id) · \(viewModel.slotTierLabel(for: slot.id))")
-                        .font(.headline)
-                    Text(viewModel.slotDisplayName(for: slot))
-                        .font(.body)
-                }
+    private func secondaryActionButton(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        foreground: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Text(title)
+                    .font(.headline)
                 Spacer()
-                Text(viewModel.slotBadge(for: slot))
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.accentColor)
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .semibold))
             }
-            Text(viewModel.slotDetailTextAbout(for: slot))
-                .font(.caption)
-                .foregroundColor(.secondary)
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .background(tint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(12)
+        .buttonStyle(.plain)
     }
 
-    private func slotMenu(for slot: BleManagementSlot) -> some View {
-        Menu {
-            Button("Rename") {
-                viewModel.showRenamePrompt(for: slot)
-            }
-            Button("Replace") {
-                viewModel.showReplaceConfirmation(for: slot)
-            }
-            Button("Delete", role: .destructive) {
-                viewModel.showDeleteConfirmation(for: slot)
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
+    private var settingsSlotRows: [SlotPresentationRow] {
+        viewModel.completedSlots.map { slot in
+            slotPresentationRow(for: slot)
         }
+    }
+
+    private func slotPresentationRow(for slot: BleManagementSlot) -> SlotPresentationRow {
+        SlotPresentationRow(
+            id: slot.id,
+            title: slotTitle(for: slot),
+            tier: slotTierBadgeText(for: slot.id),
+            isActive: slot.id == 0 || slot.used || slot.id == viewModel.localSlotId,
+            isCurrentDevice: slot.id == viewModel.localSlotId
+        )
+    }
+
+    private func slotTitle(for slot: BleManagementSlot) -> String {
+        let title = viewModel.slotDisplayName(for: slot).trimmingCharacters(in: .whitespacesAndNewlines)
+        if title.isEmpty {
+            return slot.id == 0 ? "Uguisu" : "Empty"
+        }
+        return title
+    }
+
+    private func slotTierBadgeText(for slotId: Int) -> String {
+        switch slotId {
+        case 0:
+            return "FOB"
+        case 1:
+            return "OWNER"
+        default:
+            return "GUEST"
+        }
+    }
+
+    private func ownerAccessoryView(for row: SlotPresentationRow) -> AnyView {
+        guard let slot = viewModel.completedSlots.first(where: { $0.id == row.id }) else {
+            return AnyView(Color.clear)
+        }
+
+        if slot.id == viewModel.localSlotId {
+            return AnyView(
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(slotCardStyle.currentDeviceTint)
+            )
+        }
+
+        if slot.id == 0 {
+            return AnyView(Color.clear)
+        }
+
+        if !slot.used {
+            return AnyView(
+                Button(action: {
+                    viewModel.showGuestProvisionConfirmation(slotId: slot.id)
+                }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(slotCardStyle.currentDeviceTint)
+                }
+                .buttonStyle(.plain)
+            )
+        }
+
+        return AnyView(
+            Menu {
+                Button("Rename") {
+                    viewModel.showRenamePrompt(for: slot)
+                }
+                Button("Replace") {
+                    viewModel.showReplaceConfirmation(for: slot)
+                }
+                Button("Delete", role: .destructive) {
+                    viewModel.showDeleteConfirmation(for: slot)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(slotCardStyle.accessoryTint)
+            }
+        )
     }
 
     @ViewBuilder
@@ -599,7 +625,7 @@ struct SettingsView: View {
                 title: title,
                 body: body,
                 payload: payload,
-                doneTitle: "Done — I've Scanned",
+                doneTitle: "Done - I've Scanned",
                 onDone: {
                     viewModel.alertType = .deletionConfirmation
                     viewModel.showQrSheet = nil
