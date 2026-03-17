@@ -7,37 +7,64 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		1D60589E0D05DD3D006BFB54 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AppDelegate.swift /* AppDelegate.swift */; };
-		1D6058A00D05DD3D006BFB54 /* RootViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = RootViewController.swift /* RootViewController.swift */; };
-		1D6058A10D05DD3D006BFB54 /* SettingsPlaceholderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = SettingsPlaceholderViewController.swift /* SettingsPlaceholderViewController.swift */; };
-		1D6058A20D05DD3D006BFB54 /* HomeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = HomeViewController.swift /* HomeViewController.swift */; };
-		1D6058A30D05DD3D006BFB54 /* OnboardingPlaceholderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = OnboardingPlaceholderViewController.swift /* OnboardingPlaceholderViewController.swift */; };
+		058637AE5E8D8958E83182AC /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15ACB021A0EB535077F4F0FA /* HomeView.swift */; };
+		058C18E87477E99DA397C853 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191C008F6EC4425923F30345 /* SettingsViewModel.swift */; };
+		07DBC818AE271E1558887074 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DA5D355AA45FF9A40BD4708 /* OnboardingView.swift */; };
+		0B0EFB064183963EECD196A0 /* DisconnectOverlaySwiftUIView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09132914ACF970D6CD2BAF35 /* DisconnectOverlaySwiftUIView.swift */; };
+		108E3B3EF6B40A33BCB5AA40 /* PipitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32FD3699F89E455D1702042B /* PipitApp.swift */; };
+		1B01D085685AE81CCAE9F675 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDE64444413036E71036E2F /* OnboardingView.swift */; };
 		1D6058A40D05DD3D006BFB54 /* FobPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FobPlaceholderView.swift /* FobPlaceholderView.swift */; };
-		1D6058A50D05DD3D006BFB54 /* DisconnectOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DisconnectOverlayView.swift /* DisconnectOverlayView.swift */; };
 		1D6058A60D05DD3D006BFB54 /* FobRealityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FobRealityView.swift /* FobRealityView.swift */; };
 		1D6058A70D05DD3D006BFB54 /* IosBleProximityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = IosBleProximityService.swift /* IosBleProximityService.swift */; };
-		95BF90D62F68848C00D02126 /* RecoverySwiftUIView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95BF90D52F68848C00D02126 /* RecoverySwiftUIView.swift */; };
-		95BF90D82F68875F00D02126 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95BF90D72F68875F00D02126 /* main.swift */; };
+		24F137BEB7C0C3BC6E6024BA /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFC81CD531991F87389F5AF2 /* RootView.swift */; };
+		334B126D0019CFDF3242F1C4 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F638B17924132D4F9F1F324 /* SettingsViewModel.swift */; };
+		466711AFAA47BB3A68977FB8 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C13591F313A09BE1F331F35 /* OnboardingViewModel.swift */; };
+		5B5FB53EA0FE324361F1B3D5 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 938B9032C51C3B32C7E7CF76 /* SettingsViewModel.swift */; };
+		78DAA08901C9BB75BA1F0119 /* FobRealityViewWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3B8377B1B54FE1337652D92 /* FobRealityViewWrapper.swift */; };
+		88EB1FBD6019F467D71A2FC9 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90D58F7CA649FECE310D05B /* SettingsViewModel.swift */; };
+		A2F440D7770F2F69059FCF85 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F22D762CBFAB40F2BA4C127 /* OnboardingView.swift */; };
+		A69CD32C0F50DC9E6834EA6F /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D8A3FD14E75BB885FBAED5 /* OnboardingViewModel.swift */; };
+		A7D64F588C53EB351C0BE5BE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9127467A7AF5B5C9B6D0094F /* SettingsView.swift */; };
+		CEBFC72DC1D31B5C6CED61A6 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B099269BCB3B184DAEB651 /* OnboardingViewModel.swift */; };
+		F1CA6B2F4770126B93B27E72 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E327DC64CD9FAA9B49CBD0D0 /* SettingsViewModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		09132914ACF970D6CD2BAF35 /* DisconnectOverlaySwiftUIView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DisconnectOverlaySwiftUIView.swift; path = iosApp/iosApp/UI/DisconnectOverlaySwiftUIView.swift; sourceTree = "<group>"; };
+		0F638B17924132D4F9F1F324 /* SettingsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsViewModel.swift; path = iosApp/iosApp/UI/SettingsViewModel.swift; sourceTree = "<group>"; };
+		15ACB021A0EB535077F4F0FA /* HomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = iosApp/iosApp/UI/HomeView.swift; sourceTree = "<group>"; };
+		191C008F6EC4425923F30345 /* SettingsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsViewModel.swift; path = iosApp/iosApp/UI/SettingsViewModel.swift; sourceTree = "<group>"; };
+		1DA5D355AA45FF9A40BD4708 /* OnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = iosApp/iosApp/UI/OnboardingView.swift; sourceTree = "<group>"; };
+		32FD3699F89E455D1702042B /* PipitApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PipitApp.swift; path = iosApp/iosApp/PipitApp.swift; sourceTree = "<group>"; };
+		33D8A3FD14E75BB885FBAED5 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingViewModel.swift; path = iosApp/iosApp/UI/OnboardingViewModel.swift; sourceTree = "<group>"; };
+		50B099269BCB3B184DAEB651 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingViewModel.swift; path = iosApp/iosApp/UI/OnboardingViewModel.swift; sourceTree = "<group>"; };
+		5F22D762CBFAB40F2BA4C127 /* OnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = iosApp/iosApp/UI/OnboardingView.swift; sourceTree = "<group>"; };
+		6C13591F313A09BE1F331F35 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingViewModel.swift; path = iosApp/iosApp/UI/OnboardingViewModel.swift; sourceTree = "<group>"; };
+		9127467A7AF5B5C9B6D0094F /* SettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = iosApp/iosApp/UI/SettingsView.swift; sourceTree = "<group>"; };
+		938B9032C51C3B32C7E7CF76 /* SettingsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsViewModel.swift; path = iosApp/iosApp/UI/SettingsViewModel.swift; sourceTree = "<group>"; };
 		95A420C22F641C80004D07BD /* Pipit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Pipit.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		95BF90D52F68848C00D02126 /* RecoverySwiftUIView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecoverySwiftUIView.swift; path = iosApp/iosApp/UI/RecoverySwiftUIView.swift; sourceTree = "<group>"; };
-		95BF90D72F68875F00D02126 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
-		AppDelegate.swift /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = iosApp/iosApp/AppDelegate.swift; sourceTree = "<group>"; };
-		DisconnectOverlayView.swift /* DisconnectOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DisconnectOverlayView.swift; path = iosApp/iosApp/UI/DisconnectOverlayView.swift; sourceTree = "<group>"; };
+		A3B8377B1B54FE1337652D92 /* FobRealityViewWrapper.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FobRealityViewWrapper.swift; path = iosApp/iosApp/UI/FobRealityViewWrapper.swift; sourceTree = "<group>"; };
+		B90D58F7CA649FECE310D05B /* SettingsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsViewModel.swift; path = iosApp/iosApp/UI/SettingsViewModel.swift; sourceTree = "<group>"; };
+		DDDE64444413036E71036E2F /* OnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = iosApp/iosApp/UI/OnboardingView.swift; sourceTree = "<group>"; };
+		DFC81CD531991F87389F5AF2 /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RootView.swift; path = iosApp/iosApp/RootView.swift; sourceTree = "<group>"; };
+		E327DC64CD9FAA9B49CBD0D0 /* SettingsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsViewModel.swift; path = iosApp/iosApp/UI/SettingsViewModel.swift; sourceTree = "<group>"; };
 		FobPlaceholderView.swift /* FobPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FobPlaceholderView.swift; path = iosApp/iosApp/UI/FobPlaceholderView.swift; sourceTree = "<group>"; };
 		FobRealityView.swift /* FobRealityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FobRealityView.swift; path = iosApp/iosApp/UI/FobRealityView.swift; sourceTree = "<group>"; };
-		HomeViewController.swift /* HomeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeViewController.swift; path = iosApp/iosApp/UI/HomeViewController.swift; sourceTree = "<group>"; };
 		Info_plist /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = iosApp/iosApp/Info.plist; sourceTree = "<group>"; };
 		IosBleProximityService.swift /* IosBleProximityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IosBleProximityService.swift; path = iosApp/iosApp/BLE/IosBleProximityService.swift; sourceTree = "<group>"; };
-		OnboardingPlaceholderViewController.swift /* OnboardingPlaceholderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OnboardingPlaceholderViewController.swift; path = iosApp/iosApp/UI/OnboardingPlaceholderViewController.swift; sourceTree = "<group>"; };
 		Resources /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Resources; path = iosApp/iosApp/Resources; sourceTree = "<group>"; };
-		RootViewController.swift /* RootViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RootViewController.swift; path = iosApp/iosApp/UI/RootViewController.swift; sourceTree = "<group>"; };
-		SettingsPlaceholderViewController.swift /* SettingsPlaceholderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsPlaceholderViewController.swift; path = iosApp/iosApp/UI/SettingsPlaceholderViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		13BEF07458054461059A0076 /* iosApp */ = {
+			isa = PBXGroup;
+			children = (
+				60837AB2DF5C7A26B359451D /* UI */,
+				759E8A068E245E3946DCCB31 /* iosApp */,
+			);
+			name = iosApp;
+			sourceTree = "<group>";
+		};
 		1D6058920D05DD3D006BFB54 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -50,20 +77,53 @@
 			isa = PBXGroup;
 			children = (
 				E1C1A9010D05DD3D006BFB54 /* iOS */,
+				09132914ACF970D6CD2BAF35 /* DisconnectOverlaySwiftUIView.swift */,
+				15ACB021A0EB535077F4F0FA /* HomeView.swift */,
+				9127467A7AF5B5C9B6D0094F /* SettingsView.swift */,
+				A3B8377B1B54FE1337652D92 /* FobRealityViewWrapper.swift */,
+				32FD3699F89E455D1702042B /* PipitApp.swift */,
+				DFC81CD531991F87389F5AF2 /* RootView.swift */,
+				B90D58F7CA649FECE310D05B /* SettingsViewModel.swift */,
+				938B9032C51C3B32C7E7CF76 /* SettingsViewModel.swift */,
+				13BEF07458054461059A0076 /* iosApp */,
 			);
+			sourceTree = "<group>";
+		};
+		3EFCBF316BB6C5B0B8D29DE5 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				33D8A3FD14E75BB885FBAED5 /* OnboardingViewModel.swift */,
+				5F22D762CBFAB40F2BA4C127 /* OnboardingView.swift */,
+			);
+			name = UI;
+			sourceTree = "<group>";
+		};
+		60837AB2DF5C7A26B359451D /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				E327DC64CD9FAA9B49CBD0D0 /* SettingsViewModel.swift */,
+				191C008F6EC4425923F30345 /* SettingsViewModel.swift */,
+				0F638B17924132D4F9F1F324 /* SettingsViewModel.swift */,
+				50B099269BCB3B184DAEB651 /* OnboardingViewModel.swift */,
+				DDDE64444413036E71036E2F /* OnboardingView.swift */,
+				6C13591F313A09BE1F331F35 /* OnboardingViewModel.swift */,
+				1DA5D355AA45FF9A40BD4708 /* OnboardingView.swift */,
+			);
+			name = UI;
+			sourceTree = "<group>";
+		};
+		759E8A068E245E3946DCCB31 /* iosApp */ = {
+			isa = PBXGroup;
+			children = (
+				3EFCBF316BB6C5B0B8D29DE5 /* UI */,
+			);
+			name = iosApp;
 			sourceTree = "<group>";
 		};
 		A1C1A9010D05DD3D006BFB54 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
-				95BF90D52F68848C00D02126 /* RecoverySwiftUIView.swift */,
-				AppDelegate.swift /* AppDelegate.swift */,
-				RootViewController.swift /* RootViewController.swift */,
-				SettingsPlaceholderViewController.swift /* SettingsPlaceholderViewController.swift */,
-				HomeViewController.swift /* HomeViewController.swift */,
-				OnboardingPlaceholderViewController.swift /* OnboardingPlaceholderViewController.swift */,
 				FobPlaceholderView.swift /* FobPlaceholderView.swift */,
-				DisconnectOverlayView.swift /* DisconnectOverlayView.swift */,
 				FobRealityView.swift /* FobRealityView.swift */,
 				IosBleProximityService.swift /* IosBleProximityService.swift */,
 			);
@@ -82,7 +142,6 @@
 		E1C1A9010D05DD3D006BFB54 /* iOS */ = {
 			isa = PBXGroup;
 			children = (
-				95BF90D72F68875F00D02126 /* main.swift */,
 				A1C1A9010D05DD3D006BFB54 /* Sources */,
 				B1C1A9010D05DD3D006BFB54 /* Resources */,
 			);
@@ -172,17 +231,26 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1D60589E0D05DD3D006BFB54 /* AppDelegate.swift in Sources */,
-				1D6058A00D05DD3D006BFB54 /* RootViewController.swift in Sources */,
-				1D6058A10D05DD3D006BFB54 /* SettingsPlaceholderViewController.swift in Sources */,
-				1D6058A20D05DD3D006BFB54 /* HomeViewController.swift in Sources */,
-				1D6058A30D05DD3D006BFB54 /* OnboardingPlaceholderViewController.swift in Sources */,
-				95BF90D62F68848C00D02126 /* RecoverySwiftUIView.swift in Sources */,
 				1D6058A40D05DD3D006BFB54 /* FobPlaceholderView.swift in Sources */,
-				95BF90D82F68875F00D02126 /* main.swift in Sources */,
-				1D6058A50D05DD3D006BFB54 /* DisconnectOverlayView.swift in Sources */,
 				1D6058A60D05DD3D006BFB54 /* FobRealityView.swift in Sources */,
 				1D6058A70D05DD3D006BFB54 /* IosBleProximityService.swift in Sources */,
+				0B0EFB064183963EECD196A0 /* DisconnectOverlaySwiftUIView.swift in Sources */,
+				058637AE5E8D8958E83182AC /* HomeView.swift in Sources */,
+				A7D64F588C53EB351C0BE5BE /* SettingsView.swift in Sources */,
+				78DAA08901C9BB75BA1F0119 /* FobRealityViewWrapper.swift in Sources */,
+				108E3B3EF6B40A33BCB5AA40 /* PipitApp.swift in Sources */,
+				24F137BEB7C0C3BC6E6024BA /* RootView.swift in Sources */,
+				88EB1FBD6019F467D71A2FC9 /* SettingsViewModel.swift in Sources */,
+				5B5FB53EA0FE324361F1B3D5 /* SettingsViewModel.swift in Sources */,
+				A69CD32C0F50DC9E6834EA6F /* OnboardingViewModel.swift in Sources */,
+				A2F440D7770F2F69059FCF85 /* OnboardingView.swift in Sources */,
+				F1CA6B2F4770126B93B27E72 /* SettingsViewModel.swift in Sources */,
+				058C18E87477E99DA397C853 /* SettingsViewModel.swift in Sources */,
+				334B126D0019CFDF3242F1C4 /* SettingsViewModel.swift in Sources */,
+				CEBFC72DC1D31B5C6CED61A6 /* OnboardingViewModel.swift in Sources */,
+				1B01D085685AE81CCAE9F675 /* OnboardingView.swift in Sources */,
+				466711AFAA47BB3A68977FB8 /* OnboardingViewModel.swift in Sources */,
+				07DBC818AE271E1558887074 /* OnboardingView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -220,18 +288,12 @@
 					"$(inherited)",
 					"$(SRCROOT)/shared/build/bin/iosArm64/debugFramework",
 				);
-				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = (
-					"$(inherited)",
-					"$(SRCROOT)/shared/build/bin/iosSimulatorArm64/debugFramework",
-				);
-				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = (
-					"$(inherited)",
-					"$(SRCROOT)/shared/build/bin/iosX64/debugFramework",
-				);
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(inherited) $(SRCROOT)/shared/build/bin/iosSimulatorArm64/debugFramework";
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(inherited) $(SRCROOT)/shared/build/bin/iosX64/debugFramework";
 				INFOPLIST_FILE = iosApp/iosApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Pipit;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				MARKETING_VERSION = 0.1.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
@@ -257,18 +319,12 @@
 					"$(inherited)",
 					"$(SRCROOT)/shared/build/bin/iosArm64/releaseFramework",
 				);
-				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = (
-					"$(inherited)",
-					"$(SRCROOT)/shared/build/bin/iosSimulatorArm64/releaseFramework",
-				);
-				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = (
-					"$(inherited)",
-					"$(SRCROOT)/shared/build/bin/iosX64/releaseFramework",
-				);
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(inherited) $(SRCROOT)/shared/build/bin/iosSimulatorArm64/releaseFramework";
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(inherited) $(SRCROOT)/shared/build/bin/iosX64/releaseFramework";
 				INFOPLIST_FILE = iosApp/iosApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Pipit;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				MARKETING_VERSION = 0.1.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
