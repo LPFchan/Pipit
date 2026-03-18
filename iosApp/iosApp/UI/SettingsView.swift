@@ -174,10 +174,7 @@ struct SettingsView: View {
     }
 
     private var proximitySection: some View {
-        settingsSection(
-            eyebrow: "Proximity",
-            title: "Proximity Unlock"
-        ) {
+        settingsSection {
             VStack(spacing: 14) {
                 HStack(alignment: .center, spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -264,15 +261,13 @@ struct SettingsView: View {
                     SlotPresentationCard(
                         rows: settingsSlotRows,
                         style: slotCardStyle,
-                        rowMinHeight: 96,
-                        accessoryWidth: 32,
+                        accessoryWidth: 24,
                         accessory: { ownerAccessoryView(for: $0) }
                     )
                 } else {
                     SlotPresentationCard(
                         rows: settingsSlotRows,
-                        style: slotCardStyle,
-                        rowMinHeight: 96
+                        style: slotCardStyle
                     )
                 }
 
@@ -347,15 +342,17 @@ struct SettingsView: View {
     #endif
 
     private func settingsSection<Content: View>(
-        eyebrow: String,
+        eyebrow: String? = nil,
         title: String? = nil,
         footer: String? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(eyebrow.uppercased())
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            if let eyebrow {
+                Text(eyebrow.uppercased())
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
 
             if let title {
                 Text(title)
@@ -557,7 +554,7 @@ struct SettingsView: View {
 
     private func ownerAccessoryView(for row: SlotPresentationRow) -> AnyView {
         guard let slot = viewModel.completedSlots.first(where: { $0.id == row.id }) else {
-            return AnyView(Color.clear)
+            return AnyView(Color.clear.frame(height: 0))
         }
 
         if slot.id == viewModel.localSlotId {
@@ -565,11 +562,12 @@ struct SettingsView: View {
                 Image(systemName: "checkmark")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(slotCardStyle.currentDeviceTint)
+                    .offset(x: 2, y: -2)
             )
         }
 
         if slot.id == 0 {
-            return AnyView(Color.clear)
+            return AnyView(Color.clear.frame(height: 0))
         }
 
         if !slot.used {
