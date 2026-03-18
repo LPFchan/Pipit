@@ -147,6 +147,72 @@ const ledCapMat = new THREE.MeshPhysicalMaterial({
     toneMapped:   false,
 });
 
+// PCB — matte green FR4 substrate, faint metallic sheen for copper pads
+const pcbMat = new THREE.MeshStandardMaterial({
+    color:     0x1b3a1e,
+    roughness: 0.88,
+    metalness: 0.08,
+});
+
+// Metal contacts / spring clips / screws (stainless / brass)
+const metalMat = new THREE.MeshStandardMaterial({
+    color:     0xb8a870,  // warm brass; change to 0xb0b8c0 for stainless
+    roughness: 0.22,
+    metalness: 0.92,
+});
+
+// Rubber — gaskets, grip inserts, o-rings
+const rubberMat = new THREE.MeshStandardMaterial({
+    color:     0x101010,
+    roughness: 0.96,
+    metalness: 0.00,
+});
+
+// ─────────────────────────────────────────────────────────────
+// Material assignment rules
+//
+// HOW TO USE
+// ──────────
+// 1. Set DEBUG_NAMES = true (below), load the page, and check
+//    the browser / Logcat / Xcode console for a line like:
+//      [FobViewer] meshes in GLB: "Housing Top", "Housing Bottom", "LED", ...
+//
+//    Alternatively open your .glb in https://gltf.report — the scene tree
+//    shows every node name exactly as Three.js will see it.
+//
+// 2. Fill in MATERIAL_RULES below. Each entry is:
+//      { match: string | RegExp, mat: <one of the materials above> }
+//    `match` is tested against child.name (case-insensitive substring or regex).
+//    Rules are checked top-to-bottom; the FIRST match wins.
+//    The last catch-all rule assigns housingMat to everything unmatched.
+//
+// 3. Re-export from Onshape whenever you rename parts so the names stay in sync.
+// ─────────────────────────────────────────────────────────────
+const DEBUG_NAMES = true;   // ← set false before shipping
+
+const MATERIAL_RULES = [
+    // ── Exact / specific names first ────────────────────────
+    // Fill these in once you know your Onshape part names.
+    // Example:  { match: 'Housing Top',  mat: housingMat },
+    //           { match: 'Housing Bottom', mat: housingMat },
+    //           { match: 'Button',       mat: buttonMat  },
+    //           { match: 'LED',          mat: ledMat     },
+    //           { match: 'Lens',         mat: ledCapMat  },
+    //           { match: 'PCB',          mat: pcbMat     },
+    //           { match: 'Battery Clip', mat: metalMat   },
+
+    // ── Fallback keyword patterns ────────────────────────────
+    { match: /led|rgb|emitter|die/i,              mat: ledMat     },
+    { match: /diffuser|lens|cap|dome/i,           mat: ledCapMat  },
+    { match: /button|btn|trigger|key/i,           mat: buttonMat  },
+    { match: /pcb|board|substrate|fr4/i,          mat: pcbMat     },
+    { match: /clip|spring|pin|contact|metal|brass|steel|screw|nut/i, mat: metalMat },
+    { match: /rubber|gasket|seal|grip|o.?ring/i,  mat: rubberMat  },
+
+    // ── Catch-all (must be last) ─────────────────────────────
+    { match: /.*/, mat: housingMat },
+];
+
 // ─────────────────────────────────────────────────────────────
 // Placeholder geometry — Uguisu fob body
 //
@@ -207,18 +273,22 @@ gltfLoader.load(
 
         const model = gltf.scene;
 
-        // Map imported mesh names to our materials.
-        // Adjust 'led_rgb', 'button' etc. to match actual node names in the .glb.
+        // Debug: print every mesh name so you can fill in MATERIAL_RULES above.
+        if (DEBUG_NAMES) {
+            const names = [];
+            model.traverse(c => { if (c.isMesh) names.push(`"${c.name}"`); });
+            console.log('[FobViewer] meshes in GLB:', names.join(', '));
+        }
+
+        // Assign materials using MATERIAL_RULES (defined above).
         model.traverse((child) => {
             if (!child.isMesh) return;
-            const n = child.name.toLowerCase();
-            if (n.includes('led') || n.includes('rgb')) {
-                child.material = ledMat;
-            } else if (n.includes('button') || n.includes('btn')) {
-                child.material = buttonMat;
-            } else {
-                child.material = housingMat;
-            }
+            const rule = MATERIAL_RULES.find(r =>
+                r.match instanceof RegExp
+                    ? r.match.test(child.name)
+                    : child.name.toLowerCase().includes(r.match.toLowerCase())
+            );
+            if (rule) child.material = rule.mat;
         });
 
         // Normalise scale so the longest axis ≈ FOB_W
