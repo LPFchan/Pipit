@@ -1,13 +1,13 @@
 import UIKit
 
-/// Placeholder 3D fob area: tap = unlock, 700ms long press = lock. Button depression and haptics.
+/// Placeholder fob area shown when no USDZ/GLB model is available.
+/// Tap = unlock, 700 ms long press = lock.
 final class FobPlaceholderView: UIView {
 
     private let onTap: () -> Void
     private let onLongPress: () -> Void
     private let cardView = UIView()
-    private let label = UILabel()
-    private var pressedOffset: NSLayoutConstraint?
+    private let iconView = UIImageView()
 
     init(onTap: @escaping () -> Void, onLongPress: @escaping () -> Void) {
         self.onTap = onTap
@@ -19,12 +19,13 @@ final class FobPlaceholderView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     private func setup() {
-        cardView.backgroundColor = .secondarySystemFill
-        cardView.layer.cornerRadius = 16
+        cardView.backgroundColor = UIColor.secondarySystemFill
+        cardView.layer.cornerRadius = 20
+        cardView.layer.cornerCurve = .continuous
         cardView.layer.shadowColor = UIColor.black.cgColor
-        cardView.layer.shadowOpacity = 0.15
-        cardView.layer.shadowRadius = 8
-        cardView.layer.shadowOffset = CGSize(width: 0, height: 4)
+        cardView.layer.shadowOpacity = 0.10
+        cardView.layer.shadowRadius = 12
+        cardView.layer.shadowOffset = CGSize(width: 0, height: 6)
         cardView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(cardView)
         NSLayoutConstraint.activate([
@@ -34,15 +35,15 @@ final class FobPlaceholderView: UIView {
             cardView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
 
-        label.text = "Uguisu\n(placeholder)"
-        label.numberOfLines = 2
-        label.textAlignment = .center
-        label.font = .preferredFont(forTextStyle: .body)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        cardView.addSubview(label)
+        let config = UIImage.SymbolConfiguration(pointSize: 36, weight: .light)
+        iconView.image = UIImage(systemName: "lock.rectangle.on.rectangle", withConfiguration: config)
+        iconView.tintColor = .tertiaryLabel
+        iconView.contentMode = .scaleAspectFit
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(iconView)
         NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: cardView.centerYAnchor)
+            iconView.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: cardView.centerYAnchor)
         ])
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
@@ -81,9 +82,9 @@ final class FobPlaceholderView: UIView {
     }
 
     private func setPressed(_ pressed: Bool) {
-        UIView.animate(withDuration: 0.08) {
-            self.cardView.layer.shadowRadius = pressed ? 2 : 8
-            self.cardView.transform = CGAffineTransform(translationX: 0, y: pressed ? 4 : 0)
+        UIView.animate(withDuration: 0.1, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0) {
+            self.cardView.layer.shadowRadius = pressed ? 3 : 12
+            self.cardView.transform = CGAffineTransform(scaleX: pressed ? 0.97 : 1.0, y: pressed ? 0.97 : 1.0)
         }
     }
 }

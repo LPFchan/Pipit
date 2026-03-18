@@ -6,6 +6,10 @@ import com.ionspin.kotlin.crypto.pwhash.crypto_pwhash_ALG_DEFAULT
 import com.ionspin.kotlin.crypto.pwhash.crypto_pwhash_argon2i_ALG_ARGON2I13
 import com.ionspin.kotlin.crypto.pwhash.crypto_pwhash_argon2id_ALG_ARGON2ID13
 import kotlin.math.min
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Pure Kotlin AES-CCM implementation matching the Guillemot C++ `immo_crypto` logic.
@@ -123,11 +127,33 @@ object ImmoCrypto {
         salt: ByteArray,
         encryptedKey: ByteArray,
         params: Argon2Params = Argon2Params(),
-    ): ByteArray {
+    ): ByteArray = withContext(Dispatchers.Default) {
         if (!isInitialized()) {
             initialize()
         }
-        return decryptProvisionedKey(pin, salt, encryptedKey, params)
+        decryptProvisionedKey(pin, salt, encryptedKey, params)
+    }
+
+    /**
+     * Non-suspend variant for ObjC/Swift callers that bypasses the ObjCExportCoroutines
+     * bridge. Work runs on Dispatchers.Default; callbacks fire on that same thread.
+     */
+    fun decryptProvisionedKeyBackground(
+        pin: String,
+        salt: ByteArray,
+        encryptedKey: ByteArray,
+        params: Argon2Params = Argon2Params(),
+        onSuccess: (ByteArray) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        GlobalScope.launch(Dispatchers.Default) {
+            try {
+                if (!isInitialized()) initialize()
+                onSuccess(decryptProvisionedKey(pin, salt, encryptedKey, params))
+            } catch (e: Throwable) {
+                onError(e.message ?: "Decryption failed")
+            }
+        }
     }
 
     fun decryptProvisionedKey(

@@ -166,6 +166,7 @@ public enum IosBleProximityServiceError: LocalizedError {
     @Published public private(set) var lastCommandPayloadHex: String?
     @Published public private(set) var managementState: BleManagementSessionState = .init()
     @Published public private(set) var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
+    @Published public private(set) var isBluetoothPoweredOff: Bool = false
 
     private let locationManager = CLLocationManager()
     private var centralManager: CBCentralManager?
@@ -173,6 +174,7 @@ public enum IosBleProximityServiceError: LocalizedError {
     private var isProximityCommandPending = false
     private var isVehicleBeaconMonitoringActive = false
     private var isInsideVehicleBeaconRegion = false
+    private var currentManagementState: BleManagementSessionState = .init()
 
     private var passiveScanMode: PassiveScanMode = .none
     private var activeDiscoveryRequest: DiscoveryRequest?
@@ -252,7 +254,7 @@ public enum IosBleProximityServiceError: LocalizedError {
         if activeDiscoveryRequest == nil {
             refreshScanning()
         }
-        if managementState.connectionState == .disconnected {
+        if currentManagementState.connectionState == .disconnected {
             connectionState = .disconnected
         }
     }
@@ -276,16 +278,21 @@ public enum IosBleProximityServiceError: LocalizedError {
             refreshScanning()
         }
         isWindowOpen = false
-        if managementState.connectionState == .disconnected && passiveScanMode == .none {
+        if currentManagementState.connectionState == .disconnected && passiveScanMode == .none {
             connectionState = .disconnected
         }
     }
 
     public func connectManagement(mode: BleManagementConnectMode) async throws {
+        #if targetEnvironment(simulator)
+        try await connectSimulatorManagement(mode: mode)
+        return
+        #endif
+
         ensureCentralManager()
         try await awaitPoweredOnCentral()
 
-        if managementState.connectionState == .ready,
+        if currentManagementState.connectionState == .ready,
            activeManagementMode == mode,
            managementPeripheral?.state == .connected,
            managementCommandCharacteristic != nil,
@@ -321,6 +328,10 @@ public enum IosBleProximityServiceError: LocalizedError {
     }
 
     public func requestSlots() async throws -> BleManagementSlotsResponse {
+        #if targetEnvironment(simulator)
+        return try simulatorRequestSlots()
+        #endif
+
         let response = try await executeManagementCommand(
             name: "SLOTS?",
             payload: Data("SLOTS?".utf8)
@@ -336,6 +347,10 @@ public enum IosBleProximityServiceError: LocalizedError {
     }
 
     public func identify(slotId: Int) async throws -> BleManagementCommandSuccess {
+        #if targetEnvironment(simulator)
+        return try simulatorIdentify(slotId: slotId)
+        #endif
+
         let payload = try buildIdentifyPayload(slotId: slotId)
         lastCommandPayloadHex = payload.hexEncodedString()
 
@@ -351,6 +366,10 @@ public enum IosBleProximityServiceError: LocalizedError {
     }
 
     public func provision(slotId: Int, key: Data, counter: UInt32, name: String) async throws -> BleManagementCommandSuccess {
+        #if targetEnvironment(simulator)
+        return try simulatorProvision(slotId: slotId, key: key, counter: counter, name: name)
+        #endif
+
         try validateSlotId(slotId)
         try validateKeyLength(key)
 
@@ -360,6 +379,10 @@ public enum IosBleProximityServiceError: LocalizedError {
     }
 
     public func rename(slotId: Int, name: String) async throws -> BleManagementCommandSuccess {
+        #if targetEnvironment(simulator)
+        return try simulatorRename(slotId: slotId, name: name)
+        #endif
+
         try validateSlotId(slotId)
 
         let command = "RENAME:\(slotId):\(encodeCommandField(name))"
@@ -368,6 +391,10 @@ public enum IosBleProximityServiceError: LocalizedError {
     }
 
     public func revoke(slotId: Int) async throws -> BleManagementCommandSuccess {
+        #if targetEnvironment(simulator)
+        return try simulatorRevoke(slotId: slotId)
+        #endif
+
         try validateSlotId(slotId)
 
         let command = "REVOKE:\(slotId)"
@@ -376,6 +403,10 @@ public enum IosBleProximityServiceError: LocalizedError {
     }
 
     public func recover(slotId: Int, key: Data, counter: UInt32, name: String) async throws -> BleManagementCommandSuccess {
+        #if targetEnvironment(simulator)
+        return try simulatorRecover(slotId: slotId, key: key, counter: counter, name: name)
+        #endif
+
         try validateSlotId(slotId)
         try validateKeyLength(key)
 
@@ -519,7 +550,7 @@ public enum IosBleProximityServiceError: LocalizedError {
         guard activeOperation == nil else { return }
         guard pendingConnectionReadyContinuation == nil else { return }
         guard pendingWriteContinuation == nil else { return }
-        guard managementState.connectionState == .disconnected else { return }
+        guard currentManagementState.connectionState == .disconnected else { return }
 
         currentRssiHistory.append(rssi)
         if currentRssiHistory.count > Self.rssiHistorySize {
@@ -696,7 +727,7 @@ public enum IosBleProximityServiceError: LocalizedError {
         } catch {
             responseTask.cancel()
             failPendingOperation(with: error)
-            if managementState.connectionState != .disconnected {
+            if currentManagementState.connectionState != .disconnected {
                 updateManagementState(
                     connectionState: .error,
                     mode: activeManagementMode,
@@ -734,13 +765,19 @@ public enum IosBleProximityServiceError: LocalizedError {
         peripheral: CBPeripheral?,
         lastError: String?
     ) {
-        managementState = BleManagementSessionState(
+        let nextState = BleManagementSessionState(
             connectionState: connectionState,
             mode: mode,
             peripheralIdentifier: peripheral?.identifier,
             peripheralName: peripheral?.name,
             lastError: lastError
         )
+
+        currentManagementState = nextState
+
+        DispatchQueue.main.async { [weak self] in
+            self?.managementState = nextState
+        }
     }
 
     private func disconnectCurrentPeripheral(expectReconnect: Bool) {
@@ -1187,6 +1224,7 @@ extension IosBleProximityService: CLLocationManagerDelegate {
 
 extension IosBleProximityService: CBCentralManagerDelegate {
     public func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        isBluetoothPoweredOff = (central.state == .poweredOff)
         switch central.state {
         case .poweredOn:
             let continuations = pendingPoweredOnContinuations
@@ -1419,6 +1457,225 @@ extension IosBleProximityService: CBPeripheralDelegate {
         guard characteristic.uuid == Self.charMgmtResponse else { return }
         completePendingResponse(with: characteristic.value ?? Data())
     }
+
+    #if targetEnvironment(simulator)
+    private struct SimulatorManagementSlotRecord: Codable {
+        var id: Int
+        var used: Bool
+        var counter: UInt32
+        var name: String
+    }
+
+    private static let simulatorManagementSlotsDefaultsKey = "SIM_MANAGEMENT_SLOTS_V1"
+
+    private func connectSimulatorManagement(mode: BleManagementConnectMode) async throws {
+        activeManagementMode = mode
+        updateManagementState(connectionState: .scanning, mode: mode, peripheral: nil, lastError: nil)
+        try await Task.sleep(nanoseconds: 120_000_000)
+        updateManagementState(connectionState: .ready, mode: mode, peripheral: nil, lastError: nil)
+    }
+
+    private func simulatorRequestSlots() throws -> BleManagementSlotsResponse {
+        try ensureSimulatorManagementReady()
+        let slots = simulatorManagementSlots().map {
+            BleManagementSlot(id: $0.id, used: $0.used, counter: $0.counter, name: $0.name)
+        }
+        return BleManagementSlotsResponse(raw: "SIMULATOR_SLOTS", slots: slots)
+    }
+
+    private func simulatorIdentify(slotId: Int) throws -> BleManagementCommandSuccess {
+        try ensureSimulatorManagementReady()
+        try validateSlotId(slotId)
+
+        #if canImport(shared)
+        _ = try buildIdentifyPayload(slotId: slotId)
+        #else
+        throw IosBleProximityServiceError.unsupported("Shared framework is unavailable for simulator IDENTIFY")
+        #endif
+
+        let slot = try simulatorManagementSlot(slotId: slotId)
+        return BleManagementCommandSuccess(
+            raw: "SIMULATOR_ACK:IDENTIFY",
+            slotId: slotId,
+            name: slot.name,
+            counter: slot.counter,
+            message: "Simulator identify acknowledged"
+        )
+    }
+
+    private func simulatorProvision(slotId: Int, key: Data, counter: UInt32, name: String) throws -> BleManagementCommandSuccess {
+        try ensureSimulatorManagementReady()
+        try validateSlotId(slotId)
+        try validateKeyLength(key)
+        try ensureSimulatorWritableSlot(slotId)
+
+        let sanitizedName = String(name.prefix(24))
+        var slots = simulatorManagementSlots()
+        updateSimulatorSlot(&slots, slotId: slotId) { slot in
+            slot.used = true
+            slot.counter = counter
+            slot.name = sanitizedName
+        }
+        saveSimulatorManagementSlots(slots)
+
+        return BleManagementCommandSuccess(
+            raw: "SIMULATOR_ACK:PROV",
+            slotId: slotId,
+            name: sanitizedName,
+            counter: counter,
+            message: "Simulator provisioning complete"
+        )
+    }
+
+    private func simulatorRename(slotId: Int, name: String) throws -> BleManagementCommandSuccess {
+        try ensureSimulatorManagementReady()
+        try validateSlotId(slotId)
+        try ensureSimulatorWritableSlot(slotId)
+
+        var slots = simulatorManagementSlots()
+        let sanitizedName = String(name.prefix(24))
+        updateSimulatorSlot(&slots, slotId: slotId) { slot in
+            slot.name = sanitizedName
+            if !sanitizedName.isEmpty {
+                slot.used = true
+            }
+        }
+        saveSimulatorManagementSlots(slots)
+
+        let slot = try simulatorManagementSlot(slotId: slotId)
+        return BleManagementCommandSuccess(
+            raw: "SIMULATOR_ACK:RENAME",
+            slotId: slotId,
+            name: slot.name,
+            counter: slot.counter,
+            message: "Simulator rename complete"
+        )
+    }
+
+    private func simulatorRevoke(slotId: Int) throws -> BleManagementCommandSuccess {
+        try ensureSimulatorManagementReady()
+        try validateSlotId(slotId)
+        try ensureSimulatorWritableSlot(slotId)
+
+        var slots = simulatorManagementSlots()
+        updateSimulatorSlot(&slots, slotId: slotId) { slot in
+            slot.used = false
+            slot.counter = 0
+            slot.name = ""
+        }
+        saveSimulatorManagementSlots(slots)
+
+        return BleManagementCommandSuccess(
+            raw: "SIMULATOR_ACK:REVOKE",
+            slotId: slotId,
+            name: nil,
+            counter: 0,
+            message: "Simulator revoke complete"
+        )
+    }
+
+    private func simulatorRecover(slotId: Int, key: Data, counter: UInt32, name: String) throws -> BleManagementCommandSuccess {
+        try simulatorProvision(slotId: slotId, key: key, counter: counter, name: name)
+    }
+
+    private func ensureSimulatorManagementReady() throws {
+        guard currentManagementState.connectionState == .ready else {
+            throw IosBleProximityServiceError.notConnected
+        }
+    }
+
+    private func ensureSimulatorWritableSlot(_ slotId: Int) throws {
+        if slotId == 0 {
+            throw IosBleProximityServiceError.unsupported("Slot 0 stays read-only in the simulator")
+        }
+    }
+
+    private func simulatorManagementSlot(slotId: Int) throws -> SimulatorManagementSlotRecord {
+        guard let slot = simulatorManagementSlots().first(where: { $0.id == slotId }) else {
+            throw IosBleProximityServiceError.invalidSlot(slotId)
+        }
+        return slot
+    }
+
+    private func simulatorManagementSlots() -> [SimulatorManagementSlotRecord] {
+        var slots = defaultSimulatorManagementSlots()
+
+        if let storedSlots = loadSimulatorManagementSlots() {
+            for storedSlot in storedSlots {
+                if let index = slots.firstIndex(where: { $0.id == storedSlot.id }) {
+                    slots[index] = storedSlot
+                }
+            }
+        }
+
+        #if canImport(shared)
+        if let localSlotId = resolveProvisionedPhoneSlotId() {
+            let localSlot = Int(localSlotId)
+            if let index = slots.firstIndex(where: { $0.id == localSlot }) {
+                slots[index].used = true
+                slots[index].counter = max(slots[index].counter, keyStore.loadCounter(slotId: localSlotId))
+                if slots[index].name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    slots[index].name = defaultSimulatorSlotName(for: localSlot, used: true)
+                }
+            }
+        }
+        #endif
+
+        return slots.sorted { $0.id < $1.id }
+    }
+
+    private func loadSimulatorManagementSlots() -> [SimulatorManagementSlotRecord]? {
+        guard let data = UserDefaults.standard.data(forKey: Self.simulatorManagementSlotsDefaultsKey) else {
+            return nil
+        }
+        return try? JSONDecoder().decode([SimulatorManagementSlotRecord].self, from: data)
+    }
+
+    private func saveSimulatorManagementSlots(_ slots: [SimulatorManagementSlotRecord]) {
+        if let data = try? JSONEncoder().encode(slots.sorted { $0.id < $1.id }) {
+            UserDefaults.standard.set(data, forKey: Self.simulatorManagementSlotsDefaultsKey)
+        }
+    }
+
+    private func updateSimulatorSlot(
+        _ slots: inout [SimulatorManagementSlotRecord],
+        slotId: Int,
+        mutate: (inout SimulatorManagementSlotRecord) -> Void
+    ) {
+        if let index = slots.firstIndex(where: { $0.id == slotId }) {
+            mutate(&slots[index])
+        }
+    }
+
+    private func defaultSimulatorManagementSlots() -> [SimulatorManagementSlotRecord] {
+        [
+            SimulatorManagementSlotRecord(id: 0, used: true, counter: 0, name: "Uguisu"),
+            SimulatorManagementSlotRecord(id: 1, used: false, counter: 0, name: ""),
+            SimulatorManagementSlotRecord(id: 2, used: false, counter: 0, name: ""),
+            SimulatorManagementSlotRecord(id: 3, used: false, counter: 0, name: "")
+        ]
+    }
+
+    private func defaultSimulatorSlotName(for slotId: Int, used: Bool) -> String {
+        switch slotId {
+        case 0:
+            return "Uguisu"
+        case 1:
+            return used ? "Owner Phone" : "Owner"
+        case 2:
+            return used ? "Guest 1" : "Empty"
+        case 3:
+            return used ? "Guest 2" : "Empty"
+        default:
+            return used ? "Provisioned" : "Empty"
+        }
+    }
+
+    /// Simulator-only helper: directly override the connection state for UI testing.
+    public func simulatorSetConnectionState(_ state: ConnectionState) {
+        connectionState = state
+    }
+    #endif
 }
 
 private extension Data {
