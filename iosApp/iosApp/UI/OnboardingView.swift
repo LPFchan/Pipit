@@ -13,14 +13,14 @@ private enum OnboardingMockup {
     static let accentBlue = Color(red: 0.078, green: 0.592, blue: 0.965) // Estimated from the CTA fill in the mockup.
     static let linkBlue = Color(red: 0.000, green: 0.573, blue: 0.988) // Estimated from the secondary link color in the mockup.
     static let recoverySheetBackground = Color(red: 0.238, green: 0.238, blue: 0.250).opacity(0.36) // Estimated from the darker smoky tint layered over the native sheet blur.
-    static let successCardBackground = Color(red: 0.168, green: 0.168, blue: 0.182) // Estimated from the slot summary card.
+    static let successCardBackground = Color(red: 0.171, green: 0.171, blue: 0.183) // Estimated from the slot summary card.
     static let closeButtonFill = Color.white.opacity(0.15) // Estimated from the circular close affordance.
     static let closeButtonSymbol = Color.white.opacity(0.62) // Estimated from the close symbol tint.
     static let secondaryText = Color.white.opacity(0.88)
     static let tertiaryText = Color(red: 0.690, green: 0.690, blue: 0.718) // Estimated from secondary copy in the mockup.
-    static let mutedText = Color.white.opacity(0.38)
-    static let divider = Color.white.opacity(0.12)
-    static let inactiveBadge = Color(red: 0.662, green: 0.662, blue: 0.690) // Estimated from the inactive guest badges.
+    static let mutedText = Color.white.opacity(0.42)
+    static let divider = Color.white.opacity(0.14)
+    static let inactiveBadge = Color(red: 0.734, green: 0.734, blue: 0.770) // Estimated from the inactive guest badges.
     static let scanButtonShadow = Color.black.opacity(0.28) // Estimated from the button depth in the mockup.
 
     static let appTitleSize: CGFloat = 26 // Estimated from the top "Pipit" title.
@@ -30,14 +30,14 @@ private enum OnboardingMockup {
     static let decodingLabelSize: CGFloat = 28 // Estimated from "Decoding...".
     static let permissionTitleSize: CGFloat = 32 // Estimated from "Proximity Unlock".
     static let permissionBodySize: CGFloat = 17 // Estimated from the three permission paragraphs.
-    static let successTitleSize: CGFloat = 31 // Estimated from "All set!".
-    static let successSlotLabelSize: CGFloat = 13 // Estimated from the left-side SLOT labels in the success card.
-    static let slotNameSize: CGFloat = 19 // Estimated from the slot row primary label.
-    static let slotMetaSize: CGFloat = 14 // Estimated from the SLOT label and tier pill typography.
+    static let successTitleSize: CGFloat = 33 // Estimated from "All set!".
+    static let successSlotLabelSize: CGFloat = 12 // Estimated from the left-side SLOT labels in the success card.
+    static let slotNameSize: CGFloat = 18 // Estimated from the slot row primary label.
+    static let slotMetaSize: CGFloat = 13 // Estimated from the SLOT label and tier pill typography.
 
     static let primaryButtonCornerRadius: CGFloat = 19 // Estimated from the rounded CTA corners.
     static let recoverySheetCornerRadius: CGFloat = 30 // Estimated from the recovery sheet rounding in the mockup.
-    static let slotCardCornerRadius: CGFloat = 30 // Estimated from the success card rounding.
+    static let slotCardCornerRadius: CGFloat = 28 // Estimated from the success card rounding.
     static let closeButtonDiameter: CGFloat = 38 // Estimated from the circular close control.
     static let recoverySheetHeight: CGFloat = 468 // Estimated from the shorter visible bottom sheet height in the reference.
     static let recoveryMessageHorizontalPadding: CGFloat = 46 // Estimated from the message width in the reference.
@@ -48,7 +48,21 @@ private enum OnboardingMockup {
     static let scannerCutoutCornerRadius: CGFloat = 34 // Estimated from the more rounded scanning window corners in the mockup.
     static let scanLabelTopGap: CGFloat = 20 // Estimated vertical gap from the cutout bottom to the scan label.
     static let qrPreviewSize: CGFloat = 378 // Estimated from the decoding QR preview width.
-    static let successRowHeight: CGFloat = 96 // Estimated from the row block height in the reference success card.
+    static let successRowHeight: CGFloat = 94 // Estimated from the row block height in the reference success card.
+    static let successTopSpacer: CGFloat = 60 // Estimated from the top safe-area offset to the confirmation icon.
+    static let successIconSize: CGFloat = 80 // Estimated from the confirmation glyph scale.
+    static let successIconBottomGap: CGFloat = 28 // Estimated icon-to-title spacing.
+    static let successTitleBottomGap: CGFloat = 64 // Estimated title-to-card spacing.
+    static let successCardHorizontalPadding: CGFloat = 32 // Estimated outer inset of the summary card.
+    static let successButtonHorizontalPadding: CGFloat = 32 // Estimated outer inset of the success CTA.
+    static let successButtonBottomPadding: CGFloat = 50 // Estimated bottom inset of the success CTA.
+    static let slotRowHorizontalPadding: CGFloat = 30 // Estimated inner inset of each summary row.
+    static let slotRowSpacing: CGFloat = 18 // Estimated spacing between slot label, content, and accessory.
+    static let slotLabelWidth: CGFloat = 74 // Estimated width of the slot label column.
+    static let slotContentSpacing: CGFloat = 9 // Estimated title-to-badge spacing.
+    static let slotBadgeHorizontalPadding: CGFloat = 10 // Estimated badge horizontal inset.
+    static let slotBadgeVerticalPadding: CGFloat = 5 // Estimated badge vertical inset.
+    static let slotBadgeCornerRadius: CGFloat = 7 // Estimated tier badge corner radius.
 }
 
 private struct QrPayloadPreview: View {
@@ -153,20 +167,20 @@ struct SlotPresentationStyle {
     )
 
     static let settingsGrouped = SlotPresentationStyle(
-        background: Color(uiColor: .systemBackground),
-        border: Color.black.opacity(0.06),
-        slotLabel: Color(uiColor: .secondaryLabel),
-        activeTitle: Color(uiColor: .label),
-        inactiveTitle: Color(uiColor: .secondaryLabel),
-        activeDetail: Color(uiColor: .secondaryLabel),
-        inactiveDetail: Color(uiColor: .tertiaryLabel),
-        activeBadgeBackground: Color.accentColor,
-        inactiveBadgeBackground: Color(uiColor: .tertiarySystemFill),
+        background: OnboardingMockup.successCardBackground,
+        border: .clear,
+        slotLabel: OnboardingMockup.mutedText,
+        activeTitle: .white,
+        inactiveTitle: OnboardingMockup.tertiaryText,
+        activeDetail: OnboardingMockup.secondaryText,
+        inactiveDetail: OnboardingMockup.mutedText,
+        activeBadgeBackground: OnboardingMockup.accentBlue,
+        inactiveBadgeBackground: OnboardingMockup.inactiveBadge,
         activeBadgeText: .white,
-        inactiveBadgeText: Color(uiColor: .secondaryLabel),
-        divider: Color.black.opacity(0.06),
-        currentDeviceTint: Color.accentColor,
-        accessoryTint: Color(uiColor: .secondaryLabel)
+        inactiveBadgeText: .white,
+        divider: OnboardingMockup.divider,
+        currentDeviceTint: OnboardingMockup.accentBlue,
+        accessoryTint: Color.white.opacity(0.92)
     )
 }
 
@@ -180,13 +194,13 @@ struct SlotPresentationCard: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                HStack(alignment: .center, spacing: 16) {
-                    Text("SLOT \(row.id)")
+                HStack(alignment: .center, spacing: OnboardingMockup.slotRowSpacing) {
+                    Text("SLOT \(row.id + 1)")
                         .font(.system(size: OnboardingMockup.successSlotLabelSize, weight: .medium))
                         .foregroundStyle(style.slotLabel)
-                        .frame(width: 70, alignment: .leading)
+                        .frame(width: OnboardingMockup.slotLabelWidth, alignment: .leading)
 
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: OnboardingMockup.slotContentSpacing) {
                         Text(row.title)
                             .font(.system(size: OnboardingMockup.slotNameSize, weight: .semibold))
                             .foregroundStyle(row.isActive ? style.activeTitle : style.inactiveTitle)
@@ -195,9 +209,9 @@ struct SlotPresentationCard: View {
                         Text(row.tier)
                             .font(.system(size: OnboardingMockup.slotMetaSize, weight: .bold))
                             .foregroundStyle(row.isActive ? style.activeBadgeText : style.inactiveBadgeText)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(row.isActive ? style.activeBadgeBackground : style.inactiveBadgeBackground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .padding(.horizontal, OnboardingMockup.slotBadgeHorizontalPadding)
+                            .padding(.vertical, OnboardingMockup.slotBadgeVerticalPadding)
+                            .background(row.isActive ? style.activeBadgeBackground : style.inactiveBadgeBackground, in: RoundedRectangle(cornerRadius: OnboardingMockup.slotBadgeCornerRadius, style: .continuous))
 
                         if let detail = row.detail, !detail.isEmpty {
                             Text(detail)
@@ -212,14 +226,13 @@ struct SlotPresentationCard: View {
                         .frame(width: accessoryWidth, alignment: .trailing)
                 }
                 .frame(minHeight: rowMinHeight)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OnboardingMockup.slotRowHorizontalPadding)
                 .padding(.vertical, row.detail == nil ? 0 : 10)
 
                 if index < rows.count - 1 {
                     Rectangle()
                         .fill(style.divider)
                         .frame(height: 1)
-                        .padding(.leading, 20)
                 }
             }
         }
@@ -985,17 +998,17 @@ struct OnboardingView: View {
     // MARK: Success View
     private var successView: some View {
         VStack(spacing: 0) {
-            Spacer(minLength: 82)
+            Spacer(minLength: OnboardingMockup.successTopSpacer)
 
             Image(systemName: "checkmark.circle")
-                .font(.system(size: 82, weight: .regular)) // Estimated from the confirmation glyph scale.
+                .font(.system(size: OnboardingMockup.successIconSize, weight: .regular))
                 .foregroundStyle(.white)
-                .padding(.bottom, 24)
+                .padding(.bottom, OnboardingMockup.successIconBottomGap)
 
             Text("All set!")
                 .font(.system(size: OnboardingMockup.successTitleSize, weight: .semibold))
                 .foregroundStyle(.white)
-                .padding(.bottom, 42)
+                .padding(.bottom, OnboardingMockup.successTitleBottomGap)
 
             SlotPresentationCard(rows: successRows.map {
                 SlotPresentationRow(
@@ -1006,7 +1019,7 @@ struct OnboardingView: View {
                     isCurrentDevice: $0.isCurrentDevice
                 )
             })
-            .padding(.horizontal, 24)
+            .padding(.horizontal, OnboardingMockup.successCardHorizontalPadding)
 
             Spacer()
 
@@ -1018,8 +1031,8 @@ struct OnboardingView: View {
                     .background(OnboardingMockup.accentBlue, in: RoundedRectangle(cornerRadius: OnboardingMockup.primaryButtonCornerRadius, style: .continuous))
                     .foregroundStyle(.white)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 34)
+            .padding(.horizontal, OnboardingMockup.successButtonHorizontalPadding)
+            .padding(.bottom, OnboardingMockup.successButtonBottomPadding)
         }
     }
 

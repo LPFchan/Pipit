@@ -539,7 +539,7 @@ struct SettingsView: View {
     private func slotTitle(for slot: BleManagementSlot) -> String {
         let title = viewModel.slotDisplayName(for: slot).trimmingCharacters(in: .whitespacesAndNewlines)
         if title.isEmpty {
-            return slot.id == 0 ? "Uguisu" : "Empty"
+            return slot.id == 0 ? "Uguisu" : "EMPTY"
         }
         return title
     }
@@ -562,8 +562,8 @@ struct SettingsView: View {
 
         if slot.id == viewModel.localSlotId {
             return AnyView(
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 20, weight: .semibold))
+                Image(systemName: "checkmark")
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(slotCardStyle.currentDeviceTint)
             )
         }
