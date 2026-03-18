@@ -66,7 +66,7 @@
     /* ── Viewer ──────────────────────────────────────────────── */
     .viewer-pane { flex: 1; position: relative; background: #070910; overflow: hidden; }
     #canvas-container { width: 100%; height: 100%; }
-    #canvas-container canvas { display: block; width: 100% !important; height: 100% !important; }
+    #canvas-container canvas { display: block; width: 100% !important; height: 100% !important; cursor: crosshair; }
 
     .drop-overlay {
       position: absolute; inset: 0;
@@ -412,6 +412,51 @@ controls.dampingFactor   = 0.06;
 controls.autoRotate      = true;
 controls.autoRotateSpeed = 0.7;
 
+// ─────────────────────────────────────────────────────────────
+// Raycaster — canvas click → select part
+// We track pointer delta to distinguish click from orbit drag.
+// ─────────────────────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const _ndcPt    = new THREE.Vector2();
+let _ptrDown    = null;   // { x, y } at pointerdown
+let _ptrDragged = false;
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+    _ptrDown    = { x: e.clientX, y: e.clientY };
+    _ptrDragged = false;
+});
+renderer.domElement.addEventListener('pointermove', (e) => {
+    if (_ptrDown) {
+        const dx = e.clientX - _ptrDown.x, dy = e.clientY - _ptrDown.y;
+        if (dx * dx + dy * dy > 16) _ptrDragged = true;  // >4px threshold
+    }
+});
+renderer.domElement.addEventListener('pointerup', (e) => {
+    const wasClick = _ptrDown && !_ptrDragged;
+    _ptrDown = null;
+    if (!wasClick || !loadedModel) return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    _ndcPt.set(
+        ((e.clientX - rect.left) / rect.width)  *  2 - 1,
+        ((e.clientY - rect.top)  / rect.height) * -2 + 1
+    );
+    raycaster.setFromCamera(_ndcPt, camera);
+
+    const pickable = [];
+    loadedModel.traverse((c) => {
+        if (c.isMesh && !c.userData.isOutline) pickable.push(c);
+    });
+
+    const hits = raycaster.intersectObjects(pickable, false);
+    if (!hits.length) return;
+
+    const hit = hits[0].object;
+    for (const [displayName, entry] of partMap) {
+        if (entry.mesh === hit) { selectPart(displayName); break; }
+    }
+});
+
 new ResizeObserver(() => {
     const w = container.clientWidth, h = container.clientHeight;
     if (!w || !h) return;
@@ -565,6 +610,67 @@ let loadedModel      = null;
 let selectedPartName = null;
 
 // ─────────────────────────────────────────────────────────────
+// Outline highlight
+// Technique: invisible back-face mesh parented to the selected
+// mesh, scaled slightly larger.  Works with WebGPU renderer
+// without any post-processing pass.
+// ─────────────────────────────────────────────────────────────
+const outlineMat = new THREE.MeshBasicMaterial({
+    color:     0x4d7aff,
+    side:      THREE.BackSide,
+    depthTest: true,
+    toneMapped: false,
+});
+
+let _outlineHost = null;   // mesh currently hosting the outline child
+
+function setOutline(mesh) {
+    // Remove outline from previous host
+    if (_outlineHost) {
+        _outlineHost.children
+            .filter(c => c.userData.isOutline)
+            .forEach(c => _outlineHost.remove(c));
+        _outlineHost = null;
+    }
+    if (!mesh) return;
+
+    const ol = new THREE.Mesh(mesh.geometry, outlineMat);
+    ol.scale.setScalar(1.035);
+    ol.userData.isOutline = true;
+    mesh.add(ol);           // child of mesh → follows its transform automatically
+    _outlineHost = mesh;
+}
+
+// ─────────────────────────────────────────────────────────────
+// selectPart — shared by row click AND canvas raycaster click
+// ─────────────────────────────────────────────────────────────
+function selectPart(displayName) {
+    const entry = partMap.get(displayName);
+    if (!entry) return;
+
+    selectedPartName = displayName;
+
+    // Highlight the row and scroll it into view
+    document.querySelectorAll('.part-row.selected').forEach(r => r.classList.remove('selected'));
+    const row = document.querySelector(`.part-row[data-name="${CSS.escape(displayName)}"]`);
+    if (row) {
+        row.classList.add('selected');
+        row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+
+    // Outline in 3D
+    setOutline(entry.mesh);
+
+    // Stop auto-rotate briefly so the user can examine the highlighted part
+    controls.autoRotate = false;
+    clearTimeout(selectPart._resumeTimer);
+    selectPart._resumeTimer = setTimeout(() => { controls.autoRotate = true; }, 3000);
+
+    // Open editor
+    buildEditor(entry.assignedKey);
+}
+
+// ─────────────────────────────────────────────────────────────
 // Heuristic initial guess (mirrors viewer.html patterns)
 // ─────────────────────────────────────────────────────────────
 function guessKey(name) {
@@ -583,6 +689,7 @@ function guessKey(name) {
 // ─────────────────────────────────────────────────────────────
 function applyMaterials() {
     for (const entry of partMap.values()) {
+        if (entry.mesh.userData.isOutline) continue;   // never overwrite outline children
         entry.mesh.material = entry.assignedKey === '_keep'
             ? entry.origMat
             : (MAT_OBJ[entry.assignedKey] ?? entry.origMat);
@@ -790,13 +897,8 @@ function buildPartsUI() {
             updateCode();
         });
 
-        // Row click → select & open editor
-        row.addEventListener('click', () => {
-            document.querySelectorAll('.part-row.selected').forEach(r => r.classList.remove('selected'));
-            row.classList.add('selected');
-            selectedPartName = displayName;
-            buildEditor(entry.assignedKey);
-        });
+        // Row click → select (shared logic with canvas raycaster)
+        row.addEventListener('click', () => selectPart(displayName));
 
         row.appendChild(swatch);
         row.appendChild(nameEl);
@@ -970,6 +1072,7 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     for (const entry of partMap.values()) {
         entry.assignedKey = guessKey(entry.origName ?? '');
     }
+    setOutline(null);
     applyMaterials();
     buildPartsUI();
     selectedPartName = null;
@@ -983,6 +1086,7 @@ const loader = new GLTFLoader();
 
 function loadBuffer(buffer, fileName) {
     loader.parse(buffer, '', (gltf) => {
+        setOutline(null);
         if (loadedModel) scene.remove(loadedModel);
         partMap.clear();
         selectedPartName = null;
