@@ -50,13 +50,13 @@ private enum OnboardingMockup {
     static let scanLabelTopGap: CGFloat = 20 // Estimated vertical gap from the cutout bottom to the scan label.
     static let qrPreviewSize: CGFloat = 378 // Estimated from the decoding QR preview width.
     static let successRowHeight: CGFloat = 58 // Estimated from the row block height in the reference success card.
-    static let successTopSpacer: CGFloat = 48 // Estimated from the top safe-area offset to the confirmation icon.
+    static let successTopSpacer: CGFloat = 36 // Estimated from the top safe-area offset to the confirmation icon.
     static let successIconSize: CGFloat = 72 // Estimated from the confirmation glyph scale.
     static let successIconBottomGap: CGFloat = 22 // Estimated icon-to-title spacing.
     static let successTitleBottomGap: CGFloat = 18 // Estimated title-to-card spacing.
     static let successCardHorizontalPadding: CGFloat = 48 // Estimated outer inset of the summary card.
     static let successButtonHorizontalPadding: CGFloat = 48 // Estimated outer inset of the success CTA.
-    static let successButtonBottomPadding: CGFloat = 46 // Estimated bottom inset of the success CTA.
+    static let successButtonBottomPadding: CGFloat = 76 // Estimated bottom inset of the success CTA.
     static let successButtonHeight: CGFloat = 47 // Estimated success CTA height.
     static let successButtonCornerRadius: CGFloat = 18 // Estimated success CTA radius.
     static let slotRowLeadingPadding: CGFloat = 14 // Estimated inner leading inset of each summary row.
@@ -1010,7 +1010,8 @@ struct OnboardingView: View {
     // MARK: Success View
     private var successView: some View {
         VStack(spacing: 0) {
-            Spacer(minLength: OnboardingMockup.successTopSpacer)
+            Spacer()
+                .frame(maxHeight: OnboardingMockup.successTopSpacer * 2)
 
             Image(systemName: "checkmark.circle")
                 .font(.system(size: OnboardingMockup.successIconSize, weight: .regular))
@@ -1037,14 +1038,14 @@ struct OnboardingView: View {
 
             Button(action: { viewModel.finishOnboarding() }) {
                 Text("Done")
-                    .font(.system(size: OnboardingMockup.successButtonTitleSize, weight: .semibold))
+                    .font(.system(size: 20, weight: .bold))
                     .frame(maxWidth: .infinity)
-                    .frame(height: OnboardingMockup.successButtonHeight)
-                    .background(OnboardingMockup.accentBlue, in: RoundedRectangle(cornerRadius: OnboardingMockup.successButtonCornerRadius, style: .continuous))
+                    .frame(height: OnboardingMockup.primaryButtonHeight)
+                    .background(OnboardingMockup.accentBlue, in: RoundedRectangle(cornerRadius: OnboardingMockup.primaryButtonCornerRadius, style: .continuous))
                     .foregroundStyle(.white)
             }
-            .padding(.horizontal, OnboardingMockup.successButtonHorizontalPadding)
-            .padding(.bottom, OnboardingMockup.successButtonBottomPadding)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 74) // Adjusted to precisely match Proximity View's visually equivalent spacing
         }
     }
 

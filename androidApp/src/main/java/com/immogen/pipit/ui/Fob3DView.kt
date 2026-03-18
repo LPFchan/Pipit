@@ -4,33 +4,26 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
-import io.github.sceneview.Scene
-import io.github.sceneview.math.Position
-import io.github.sceneview.node.ModelNode
-import io.github.sceneview.rememberCameraManipulator
-import io.github.sceneview.rememberCameraNode
-import io.github.sceneview.rememberEngine
-import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberNode
 
 /**
- * 3D fob view using SceneView (Filament). Loads uguisu_placeholder.glb,
- * maps tap = unlock and long-press = lock, and animates button depression (~1–2mm).
+ * 3D fob view using Three.js (via WebView). Loads Uguisu.glb,
+ * maps tap = unlock and long-press = lock, and animates button depression.
  */
 @Composable
 fun Fob3DView(
     onTap: () -> Unit,
     onLongPress: () -> Unit,
+    isUnlocked: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
@@ -60,45 +53,14 @@ fun Fob3DView(
                 )
             }
     ) {
-        val engine = rememberEngine()
-        val modelLoader = rememberModelLoader(engine)
-        val centerNode = rememberNode(engine)
-        val modelNode = remember(modelLoader) {
-            runCatching {
-                val instance = modelLoader.createModelInstance(
-                    assetFileLocation = "uguisu_placeholder.glb"
-                )
-                ModelNode(
-                    modelInstance = instance,
-                    scaleToUnits = 0.08f
-                )
-            }.getOrNull()
-        }
-
-        val cameraNode = rememberCameraNode(engine) {
-            position = Position(y = -0.02f, z = 0.12f)
-            lookAt(centerNode)
-            centerNode.addChildNode(this)
-        }
-        val fallbackNode = rememberNode(engine)
-
-        Scene(
-            modifier = Modifier.fillMaxSize(),
-            engine = engine,
-            modelLoader = modelLoader,
-            cameraNode = cameraNode,
-            cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = cameraNode.worldPosition,
-                targetPosition = centerNode.worldPosition
-            ),
-            childNodes = listOf(
-                centerNode,
-                modelNode ?: fallbackNode
-            ),
-            onFrame = {
-                val zOffset = -0.002f * depressTarget
-                modelNode?.position = Position(z = zOffset)
-            }
+        FobViewer(
+            ledColor = if (isUnlocked) Color.Green else Color.Blue, // Adjust colors as desired
+            isActive = true, // Set depending on connection or animation needs
+            ledBrightness = 1.0f,
+            buttonDepth = depressTarget,
+            // Slight model rotation to show best angle by default
+            modelRotation = Triple(0f, -0.4f, 0f)
         )
     }
 }
+

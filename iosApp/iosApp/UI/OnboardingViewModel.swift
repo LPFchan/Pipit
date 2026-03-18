@@ -380,12 +380,8 @@ final class OnboardingViewModel {
         
         self.provisioningSuccess = ProvisioningSuccess(slotId: slotId, counter: counter, name: name)
         
-        // Let Location auth check if we need to proceed.
-        if bleService.locationAuthorizationStatus == .authorizedAlways {
-            self.onboardingState = .success
-        } else {
-            self.onboardingState = .locationPermission
-        }
+        // Always show the proximity unlock (location permission) step.
+        self.onboardingState = .locationPermission
     }
 
     private func startImportTransition(slotId: Int, key: Data, counter: UInt32, name: String, statusText: String) {

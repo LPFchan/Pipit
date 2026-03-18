@@ -201,6 +201,7 @@ private fun HomeScreen(
         Fob3DView(
             onTap = onTapFob,
             onLongPress = onLongPressFob,
+            isUnlocked = bleState.connectionState == ConnectionState.CONNECTED_UNLOCKED,
             modifier = Modifier
                 .weight(2f)
                 .fillMaxWidth()
@@ -217,66 +218,6 @@ private fun HomeScreen(
             )
         }
         Spacer(modifier = Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun FobPlaceholderView(
-    onTap: () -> Unit,
-    onLongPress: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var pressed by remember { mutableStateOf(false) }
-    val haptic = LocalHapticFeedback.current
-    val depressOffset by animateFloatAsState(
-        targetValue = if (pressed) 1f else 0f,
-        animationSpec = tween(80), label = "depress"
-    )
-    Box(
-        modifier = modifier
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        pressed = true
-                        tryAwaitRelease()
-                        pressed = false
-                    },
-                    onTap = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onTap()
-                    },
-                    onLongPress = {
-                        pressed = true
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onLongPress()
-                        pressed = false
-                    }
-                )
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Surface(
-            modifier = Modifier
-                .size(200.dp, 140.dp)
-                .padding(bottom = (depressOffset * 4).dp),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shadowElevation = if (pressed) 2.dp else 8.dp
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Uguisu\n(placeholder)",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
     }
 }
 

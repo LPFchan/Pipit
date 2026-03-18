@@ -1,4 +1,0 @@
-        let navFrame = nav.navigationBar.bounds
-        let spacer = UIView(frame: CGRect(x: 0, y: 0, width: navFrame.width, height: 20))
-        spacer.backgroundColor = .clear
-        nav.navigationBar.addSubview(spacer)

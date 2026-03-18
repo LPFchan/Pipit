@@ -9,55 +9,38 @@ struct HomeView: View {
         ZStack(alignment: .center) {
             Color.clear.edgesIgnoringSafeArea(.all)
 
+            FobInteractiveViewer(
+                isUnlocked: bleService.connectionState == .connectedUnlocked,
+                onTap: {
+                    interactedThisSession = true
+                    Task { await bleService.sendUnlockCommand() }
+                },
+                onLongPress: {
+                    hasLockedFobAtLeastOnce = true
+                    interactedThisSession = true
+                    Task { await bleService.sendLockCommand() }
+                }
+            )
+            .edgesIgnoringSafeArea(.all)
+
             VStack(spacing: 0) {
                 Spacer()
 
-                // Lock / unlock state badge
-                lockStateBadge
-                    .padding(.bottom, 36)
-
-                FobRealityViewWrapper(
-                    onTap: {
-                        interactedThisSession = true
-                        Task { await bleService.sendUnlockCommand() }
-                    },
-                    onLongPress: {
-                        hasLockedFobAtLeastOnce = true
-                        interactedThisSession = true
-                        Task { await bleService.sendLockCommand() }
-                    }
-                )
-                .frame(width: 220, height: 160)
-
-                // Usage hint — fades out once the user has interacted
-                Text("Tap to unlock  ·  Hold to lock")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 20)
-                    .opacity(!hasLockedFobAtLeastOnce && !interactedThisSession ? 1 : 0)
-                    .animation(.easeOut(duration: 0.4), value: interactedThisSession)
-
-                Spacer()
+                // Educational prompt hint if the user has never locked
+                if !hasLockedFobAtLeastOnce && !interactedThisSession {
+                    Text("Hold to lock, tap to unlock")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 16)
+                        .background(Color(.secondarySystemBackground).opacity(0.8), in: Capsule())
+                        .padding(.bottom, 24)
+                        .transition(.opacity)
+                }
             }
+            .animation(.easeOut(duration: 0.4), value: interactedThisSession)
+            .allowsHitTesting(false)
         }
         .navigationBarHidden(true)
-    }
-
-    // MARK: - Lock state badge
-
-    private var lockStateBadge: some View {
-        let unlocked = bleService.connectionState == .connectedUnlocked
-        return HStack(spacing: 6) {
-            Image(systemName: unlocked ? "lock.open.fill" : "lock.fill")
-                .font(.system(size: 12, weight: .semibold))
-            Text(unlocked ? "Unlocked" : "Locked")
-                .font(.system(size: 12, weight: .semibold))
-                .kerning(0.3)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .background((unlocked ? Color.green : Color(.secondaryLabel)).opacity(0.12), in: Capsule())
-        .foregroundStyle(unlocked ? Color.green : Color(.secondaryLabel))
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: bleService.connectionState)
     }
 }

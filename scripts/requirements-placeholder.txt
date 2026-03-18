@@ -1,3 +1,0 @@
-# For generating placeholder 3D model only
-trimesh>=4.0.0
-numpy>=1.20.0
