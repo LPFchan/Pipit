@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Material Mapper — Uguisu</title>
   <link rel="stylesheet" href="material-mapper.css">
+  <script src="material-mapper-camera.js"></script>
+  <script src="material-mapper-scene.js"></script>
+  <script src="material-mapper-materials.js"></script>
+  <script src="material-mapper-persistence.js"></script>
   <script src="material-mapper-app.js"></script>
   <script type="importmap">
   {
@@ -342,7 +346,24 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 import { GLTFExporter }  from 'three/addons/exporters/GLTFExporter.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-await MaterialMapperApp({ THREE, OrbitControls, GLTFLoader, GLTFExporter, RoomEnvironment });
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+await MaterialMapperApp({
+  THREE,
+  OrbitControls,
+  GLTFLoader,
+  GLTFExporter,
+  RoomEnvironment,
+  EffectComposer,
+  RenderPass,
+  UnrealBloomPass,
+  SSAOPass,
+  ShaderPass,
+});
 </script>
 </body>
 </html>

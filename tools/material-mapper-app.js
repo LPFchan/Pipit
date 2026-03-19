@@ -1,6 +1,6 @@
 'use strict';
 
-window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, GLTFExporter, RoomEnvironment }) {
+window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, GLTFExporter, RoomEnvironment, EffectComposer, RenderPass, UnrealBloomPass, SSAOPass, ShaderPass }) {
     // ─────────────────────────────────────────────────────────────
     // Renderer
     // ─────────────────────────────────────────────────────────────
@@ -27,6 +27,84 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     controls.dampingFactor   = 0.06;
     controls.autoRotate      = false;
     controls.autoRotateSpeed = 0.7;
+
+    let composer = null;
+    let renderPass = null;
+    let bloomPass = null;
+    let ssaoPass = null;
+    let postGradePass = null;
+
+    function setRenderSize(w, h) {
+        renderer.setSize(w, h);
+        if (composer) composer.setSize(w, h);
+        if (bloomPass && bloomPass.setSize) bloomPass.setSize(w, h);
+        if (ssaoPass && ssaoPass.setSize) ssaoPass.setSize(w, h);
+    }
+
+    const PostGradeVignetteShader = {
+        uniforms: {
+            tDiffuse:         { value: null },
+            gradeEnabled:     { value: 0 },
+            saturation:       { value: 1.0 },
+            contrast:         { value: 1.0 },
+            brightness:       { value: 0.0 },
+            vignetteEnabled:  { value: 0 },
+            vignetteOffset:   { value: 1.0 },
+            vignetteDarkness: { value: 1.25 },
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform sampler2D tDiffuse;
+            uniform int gradeEnabled;
+            uniform float saturation;
+            uniform float contrast;
+            uniform float brightness;
+            uniform int vignetteEnabled;
+            uniform float vignetteOffset;
+            uniform float vignetteDarkness;
+            varying vec2 vUv;
+            void main() {
+                vec4 c = texture2D(tDiffuse, vUv);
+                if (gradeEnabled == 1) {
+                    float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+                    c.rgb = mix(vec3(l), c.rgb, saturation);
+                    c.rgb = (c.rgb - 0.5) * contrast + 0.5;
+                    c.rgb += vec3(brightness);
+                }
+                if (vignetteEnabled == 1) {
+                    vec2 uv = (vUv - vec2(0.5)) * vec2(vignetteOffset);
+                    float vig = clamp(1.0 - dot(uv, uv) * vignetteDarkness, 0.0, 1.0);
+                    c.rgb *= vig;
+                }
+                gl_FragColor = c;
+            }
+        `,
+    };
+
+    composer = new EffectComposer(renderer);
+    renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.25, 0.72);
+    bloomPass.enabled = false;
+    composer.addPass(bloomPass);
+
+    ssaoPass = new SSAOPass(scene, camera, 1, 1);
+    ssaoPass.enabled = false;
+    ssaoPass.kernelRadius = 16;
+    ssaoPass.minDistance = 0.005;
+    ssaoPass.maxDistance = 0.18;
+    composer.addPass(ssaoPass);
+
+    postGradePass = new ShaderPass(PostGradeVignetteShader);
+    postGradePass.enabled = false;
+    composer.addPass(postGradePass);
 
     // ─────────────────────────────────────────────────────────────
     // Raycaster — canvas click → select part
@@ -109,7 +187,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         const { w, h } = calcIPhoneCanvasSize();
         container.style.width  = w + 'px';
         container.style.height = h + 'px';
-        renderer.setSize(w, h);
+        setRenderSize(w, h);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         // Size the frame overlay to match exactly
@@ -132,7 +210,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
             container.style.height = '';
             const { w, h } = { w: container.clientWidth, h: container.clientHeight };
             if (w && h) {
-                renderer.setSize(w, h);
+                setRenderSize(w, h);
                 camera.aspect = w / h;
                 camera.updateProjectionMatrix();
             }
@@ -145,7 +223,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         if (isIPhonePreview) { applyIPhoneCanvasSize(); return; }
         const w = container.clientWidth, h = container.clientHeight;
         if (!w || !h) return;
-        renderer.setSize(w, h);
+        setRenderSize(w, h);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
     }).observe(container);
@@ -167,22 +245,25 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
             orthoCamera.quaternion.copy(camera.quaternion);
             orthoCamera.updateProjectionMatrix();
         }
+        const activeCamera = isOrtho ? orthoCamera : camera;
+        if (renderPass) renderPass.camera = activeCamera;
+        if (ssaoPass) ssaoPass.camera = activeCamera;
         updateCameraHUD();
-        renderer.render(scene, isOrtho ? orthoCamera : camera);
+        composer.render();
     });
 
     // ── Lights (photorealistic — matches viewer.html setup) ─────────────────────
     const keyLight = new THREE.DirectionalLight(0xfff8f0, 2.0);
     keyLight.position.set(1.5, 2.5, 2.0);
     keyLight.castShadow = true;
-    keyLight.shadow.mapSize.setScalar(2048);
+    keyLight.shadow.mapSize.setScalar(1024);
     keyLight.shadow.camera.near   = 0.1;
     keyLight.shadow.camera.far    = 10;
     keyLight.shadow.camera.left   = -2;
     keyLight.shadow.camera.right  =  2;
     keyLight.shadow.camera.top    =  2;
     keyLight.shadow.camera.bottom = -2;
-    keyLight.shadow.radius = 4;
+    keyLight.shadow.radius = 8;
     keyLight.shadow.bias   = -0.0005;
     scene.add(keyLight);
     const fillLight = new THREE.DirectionalLight(0xb0c8ff, 0.55);
@@ -215,46 +296,29 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     // ─────────────────────────────────────────────────────────────
     // Camera HUD — live readout, FOV control, camera code export
     // ─────────────────────────────────────────────────────────────
-    function fmtV(v) {
-        return `${v.x.toFixed(4)},  ${v.y.toFixed(4)},  ${v.z.toFixed(4)}`;
-    }
-
     function setHudXYZ(idX, idY, idZ, vec) {
-        const f   = n => (Math.round(n * 10000) / 10000).toString();
-        const elX = document.getElementById(idX);
-        const elY = document.getElementById(idY);
-        const elZ = document.getElementById(idZ);
-        if (document.activeElement !== elX) elX.value = f(vec.x);
-        if (document.activeElement !== elY) elY.value = f(vec.y);
-        if (document.activeElement !== elZ) elZ.value = f(vec.z);
+        if (!cameraModule) return;
+        cameraModule.setHudXYZ(idX, idY, idZ, vec);
     }
 
     function setHudXYZDeg(idX, idY, idZ, euler) {
-        const fD  = r => (Math.round(THREE.MathUtils.radToDeg(r) * 10) / 10).toString();
-        const elX = document.getElementById(idX);
-        const elY = document.getElementById(idY);
-        const elZ = document.getElementById(idZ);
-        if (document.activeElement !== elX) elX.value = fD(euler.x);
-        if (document.activeElement !== elY) elY.value = fD(euler.y);
-        if (document.activeElement !== elZ) elZ.value = fD(euler.z);
+        if (!cameraModule) return;
+        cameraModule.setHudXYZDeg(idX, idY, idZ, euler);
     }
 
     function updateCameraHUD() {
-        setHudXYZ('hud-pos-x', 'hud-pos-y', 'hud-pos-z', camera.position);
-        setHudXYZ('hud-tgt-x', 'hud-tgt-y', 'hud-tgt-z', controls.target);
-        if (loadedModel) setHudXYZDeg('hud-rot-x', 'hud-rot-y', 'hud-rot-z', loadedModel.rotation);
+        if (!cameraModule) return;
+        cameraModule.updateCameraHUD();
+    }
+
+    function syncOrbitTarget() {
+        if (!cameraModule) return;
+        cameraModule.syncOrbitTarget();
     }
 
     function fitCameraToModel() {
-        if (!loadedModel) return;
-        const box    = new THREE.Box3().setFromObject(loadedModel);
-        const size   = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z) || 1;
-        const fov    = camera.fov;
-        const dist   = (maxDim * 0.5) / Math.tan(fov * Math.PI / 360) * 1.5;
-        controls.target.set(0, 0, 0);
-        camera.position.set(0, maxDim * 0.08, dist);
-        controls.update();
+        if (!cameraModule) return;
+        cameraModule.fitCameraToModel();
     }
 
     function generateCameraCode() {
@@ -314,139 +378,21 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         ].join('\n');
     }
 
-    // Position inputs
-    function parseHudXYZ(idX, idY, idZ) {
-        return {
-            x: parseFloat(document.getElementById(idX).value) || 0,
-            y: parseFloat(document.getElementById(idY).value) || 0,
-            z: parseFloat(document.getElementById(idZ).value) || 0,
-        };
+    function applyModelRotationDeg(x, y, z, persist = true) {
+        if (!cameraModule) return;
+        cameraModule.applyModelRotationDeg(x, y, z, persist);
     }
-    ['hud-pos-x','hud-pos-y','hud-pos-z'].forEach(id => {
-        document.getElementById(id).addEventListener('change', () => {
-            const v = parseHudXYZ('hud-pos-x', 'hud-pos-y', 'hud-pos-z');
-            camera.position.set(v.x, v.y, v.z);
-            controls.update();
-            saveState();
-        });
-    });
-    ['hud-tgt-x','hud-tgt-y','hud-tgt-z'].forEach(id => {
-        document.getElementById(id).addEventListener('change', () => {
-            const v = parseHudXYZ('hud-tgt-x', 'hud-tgt-y', 'hud-tgt-z');
-            controls.target.set(v.x, v.y, v.z);
-            controls.update();
-            saveState();
-        });
-    });
-    ['hud-rot-x','hud-rot-y','hud-rot-z'].forEach(id => {
-        document.getElementById(id).addEventListener('change', () => {
-            if (!loadedModel) return;
-            const v = parseHudXYZ('hud-rot-x', 'hud-rot-y', 'hud-rot-z');
-            loadedModel.rotation.set(
-                THREE.MathUtils.degToRad(v.x),
-                THREE.MathUtils.degToRad(v.y),
-                THREE.MathUtils.degToRad(v.z)
-            );
-            saveState();
-        });
-    });
-
-    // FOV input
-    const hudFovInput = document.getElementById('hud-fov');
-    hudFovInput.value = camera.fov;
-    hudFovInput.addEventListener('change', () => {
-        const v = Math.max(5, Math.min(120, parseFloat(hudFovInput.value) || 38));
-        hudFovInput.value = v;
-        camera.fov = v;
-        camera.updateProjectionMatrix();
-        saveState();
-    });
-
-    document.getElementById('hud-fit-btn').addEventListener('click', fitCameraToModel);
 
     function toggleOrtho() {
-        isOrtho = !isOrtho;
-        document.getElementById('hud-ortho-btn').classList.toggle('active', isOrtho);
-        saveState();
-    }
-    document.getElementById('hud-ortho-btn').addEventListener('click', toggleOrtho);
-
-    document.getElementById('hud-copy-cam-btn').addEventListener('click', () => {
-        navigator.clipboard.writeText(generateCameraCode()).then(() => showToast('Camera code copied!'));
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // Material property store + schema
-    //
-    // matProps holds the current values for each material.
-    // These drive both the live Three.js objects and the code output.
-    // Editing in the UI calls setProp() which updates both.
-    // ─────────────────────────────────────────────────────────────
-    // All 7 materials share the same full property set.
-    // Every property is editable; code gen skips Three.js defaults.
-    const matProps = {
-        housingMat: { color: '#181b2a', roughness: 0.50, metalness: 0.00, emissive: '#000000', emissiveIntensity: 0.0, transmission: 0.22, thickness: 0.009, ior: 1.49, opacity: 1.0, transparent: true,  toneMapped: true,  side: 'Double', polygonOffset: false, polygonOffsetFactor: 0, polygonOffsetUnits: 0 },
-        buttonMat:  { color: '#23263a', roughness: 0.18, metalness: 0.04, emissive: '#000000', emissiveIntensity: 0.0, transmission: 0.00, thickness: 0.0,   ior: 1.50, opacity: 1.0, transparent: false, toneMapped: true,  side: 'Front',  polygonOffset: false, polygonOffsetFactor: 0, polygonOffsetUnits: 0 },
-        ledMat:     { color: '#00ff45', roughness: 0.10, metalness: 0.00, emissive: '#00ff45', emissiveIntensity: 4.0, transmission: 0.00, thickness: 0.0,   ior: 1.50, opacity: 1.0, transparent: false, toneMapped: false, side: 'Front',  polygonOffset: false, polygonOffsetFactor: 0, polygonOffsetUnits: 0 },
-        ledCapMat:  { color: '#ffffff', roughness: 0.60, metalness: 0.00, emissive: '#000000', emissiveIntensity: 0.0, transmission: 0.80, thickness: 0.001, ior: 1.50, opacity: 0.88, transparent: true,  toneMapped: false, side: 'Front',  polygonOffset: false, polygonOffsetFactor: 0, polygonOffsetUnits: 0 },
-        pcbMat:     { color: '#1b3a1e', roughness: 0.88, metalness: 0.08, emissive: '#000000', emissiveIntensity: 0.0, transmission: 0.00, thickness: 0.0,   ior: 1.50, opacity: 1.0, transparent: false, toneMapped: true,  side: 'Front',  polygonOffset: true,  polygonOffsetFactor: -2, polygonOffsetUnits: -2 },
-        metalMat:   { color: '#b8a870', roughness: 0.22, metalness: 0.92, emissive: '#000000', emissiveIntensity: 0.0, transmission: 0.00, thickness: 0.0,   ior: 1.50, opacity: 1.0, transparent: false, toneMapped: true,  side: 'Front',  polygonOffset: true,  polygonOffsetFactor: -1, polygonOffsetUnits: -1 },
-        rubberMat:  { color: '#101010', roughness: 0.96, metalness: 0.00, emissive: '#000000', emissiveIntensity: 0.0, transmission: 0.00, thickness: 0.0,   ior: 1.50, opacity: 1.0, transparent: false, toneMapped: true,  side: 'Front',  polygonOffset: false, polygonOffsetFactor: 0, polygonOffsetUnits: 0 },
-    };
-
-    // Shared full schema — same for all materials
-    const FULL_SCHEMA = [
-        { key: 'color',             type: 'color',                                    label: 'Color'        },
-        { key: 'emissive',          type: 'color',                                    label: 'Emissive'     },
-        { key: 'emissiveIntensity', type: 'range', min: 0,   max: 10,  step: 0.1,    label: 'Emissive ×'   },
-        { key: 'roughness',         type: 'range', min: 0,   max: 1,   step: 0.01,   label: 'Roughness'    },
-        { key: 'metalness',         type: 'range', min: 0,   max: 1,   step: 0.01,   label: 'Metalness'    },
-        { key: 'transmission',      type: 'range', min: 0,   max: 1,   step: 0.01,   label: 'Transmission' },
-        { key: 'thickness',         type: 'range', min: 0,   max: 0.1, step: 0.001,  label: 'Thickness'    },
-        { key: 'ior',               type: 'range', min: 1.0, max: 2.5, step: 0.01,   label: 'IOR'          },
-        { key: 'opacity',           type: 'range', min: 0,   max: 1,   step: 0.01,   label: 'Opacity'      },
-        { key: 'transparent',          type: 'toggle',                                    label: 'Transparent'     },
-        { key: 'toneMapped',           type: 'toggle',                                    label: 'Tone Mapped'     },
-        { key: 'side',                 type: 'select', options: ['Front', 'Double'],      label: 'Side'            },
-        { key: 'polygonOffset',        type: 'toggle',                                    label: 'Poly Offset'     },
-        { key: 'polygonOffsetFactor',  type: 'range',  min: -10, max: 10, step: 1,       label: 'Offset Factor'   },
-        { key: 'polygonOffsetUnits',   type: 'range',  min: -10, max: 10, step: 1,       label: 'Offset Units'    },
-    ];
-    const MAT_SCHEMA = {};
-    for (const key of Object.keys(matProps)) MAT_SCHEMA[key] = FULL_SCHEMA;
-
-    // All materials are MeshPhysicalMaterial (Physical is a superset of Standard)
-    const MAT_CLASS = {};
-    for (const key of Object.keys(matProps)) MAT_CLASS[key] = 'MeshPhysicalMaterial';
-
-    // ─────────────────────────────────────────────────────────────
-    // Live Three.js material objects — built from matProps
-    // ─────────────────────────────────────────────────────────────
-    function buildMaterial(key) {
-        const p = matProps[key];
-        return new THREE.MeshPhysicalMaterial({
-            color:             new THREE.Color(p.color),
-            roughness:         p.roughness,
-            metalness:         p.metalness,
-            emissive:          new THREE.Color(p.emissive),
-            emissiveIntensity: p.emissiveIntensity,
-            transmission:      p.transmission,
-            thickness:         p.thickness,
-            ior:               p.ior,
-            opacity:           p.opacity,
-            transparent:          p.transparent,
-            toneMapped:           p.toneMapped,
-            side:                 p.side === 'Double' ? THREE.DoubleSide : THREE.FrontSide,
-            polygonOffset:        p.polygonOffset        ?? false,
-            polygonOffsetFactor:  p.polygonOffsetFactor  ?? 0,
-            polygonOffsetUnits:   p.polygonOffsetUnits   ?? 0,
-        });
+        if (!cameraModule) return;
+        cameraModule.toggleOrtho();
     }
 
-    const MAT_OBJ = {};
-    for (const key of Object.keys(matProps)) {
-        MAT_OBJ[key] = buildMaterial(key);
-    }
+    // ─────────────────────────────────────────────────────────────
+    // Material management (extracted to material-mapper-materials.js)
+    // The materialsModule handles all material properties, schema,
+    // Three.js objects, and UI building for the materials panel.
+    // ─────────────────────────────────────────────────────────────
 
     // ─────────────────────────────────────────────────────────────
     // State
@@ -456,6 +402,27 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     let loadedFileName  = 'model';
     let selectedParts   = new Set();   // set of selected displayNames
     let primarySelected = null;        // the anchor/primary for editor + shift-range
+    let cameraModule    = null;
+    let sceneModule     = null;
+    let sceneState      = null;
+    let materialsModule = null;
+    let persistenceModule = null;
+
+    function fallbackGuessKey(name) {
+        const normalizedName = String(name || '').toLowerCase();
+        if (/led|rgb|emitter|die/.test(normalizedName)) return 'ledMat';
+        if (/diffuser|lens|cap|dome/.test(normalizedName)) return 'ledCapMat';
+        if (/button|btn|trigger/.test(normalizedName)) return 'buttonMat';
+        if (/pcb|board|substrate|fr4/.test(normalizedName)) return 'pcbMat';
+        if (/clip|spring|pin|contact|metal|brass|steel|screw|nut/.test(normalizedName)) return 'metalMat';
+        if (/rubber|gasket|seal|grip/.test(normalizedName)) return 'rubberMat';
+        return 'housingMat';
+    }
+
+    // Module functions — declared here, assigned after modules init
+    let matProps, MAT_OBJ, MAT_SCHEMA;
+    let setProp = () => {}, selectPart = () => {}, setVisibility = () => {}, syncShowAllBtn = () => {}, buildEditor = () => {}, buildPartsUI = () => {}, applyMaterials = () => {}, guessKey = fallbackGuessKey, updateCode = () => {};
+    let saveLastFileToDB = () => {}, loadLastFileFromDB = () => {}, persistSaveState = () => {}, restoreState = () => false;
 
     // ─────────────────────────────────────────────────────────────
     // Outline highlight
@@ -498,239 +465,20 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // selectPart — shared by row click AND canvas raycaster click
-    // ─────────────────────────────────────────────────────────────
-    function selectPart(displayName, { ctrl = false, shift = false } = {}) {
-        if (!partMap.has(displayName)) return;
-
-        if (shift && primarySelected) {
-            // Range select: include all visible rows between anchor and target
-            const rows  = [...document.querySelectorAll('.part-row:not(.hidden)')];
-            const names = rows.map(r => r.dataset.name);
-            const a = names.indexOf(primarySelected);
-            const b = names.indexOf(displayName);
-            if (a !== -1 && b !== -1) {
-                const [lo, hi] = a < b ? [a, b] : [b, a];
-                for (let i = lo; i <= hi; i++) selectedParts.add(names[i]);
-            }
-            // anchor stays for further shift-clicks
-        } else if (ctrl) {
-            // Toggle individual item
-            if (selectedParts.has(displayName)) {
-                selectedParts.delete(displayName);
-                if (primarySelected === displayName)
-                    primarySelected = selectedParts.size > 0 ? [...selectedParts].at(-1) : null;
-            } else {
-                selectedParts.add(displayName);
-                primarySelected = displayName;
-            }
-        } else {
-            // Plain click → single select
-            selectedParts.clear();
-            selectedParts.add(displayName);
-            primarySelected = displayName;
-        }
-
-        // Sync row highlights
-        document.querySelectorAll('.part-row').forEach(r => {
-            r.classList.toggle('selected', selectedParts.has(r.dataset.name));
-        });
-
-        // Scroll primary into view
-        if (primarySelected) {
-            const row = document.querySelector(`.part-row[data-name="${CSS.escape(primarySelected)}"]`);
-            if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }
-
-        // Outlines
-        setOutlines(selectedParts);
-
-        // (auto-rotate is off)
-
-        // Editor: primary's material, annotated with selection count
-        const primaryEntry = primarySelected ? partMap.get(primarySelected) : null;
-        buildEditor(primaryEntry?.assignedKey ?? null, selectedParts.size);
-    }
+    // Material selection and UI management functions are delegated to materialsModule
+    // (selectPart, applyMaterials, setProp, buildEditor, buildPartsUI, etc.)
 
     // ─────────────────────────────────────────────────────────────
-    // Heuristic initial guess (mirrors viewer.html patterns)
-    // ─────────────────────────────────────────────────────────────
-    function guessKey(name) {
-        const n = name.toLowerCase();
-        if (/led|rgb|emitter|die/.test(n))                              return 'ledMat';
-        if (/diffuser|lens|cap|dome/.test(n))                           return 'ledCapMat';
-        if (/button|btn|trigger/.test(n))                               return 'buttonMat';
-        if (/pcb|board|substrate|fr4/.test(n))                          return 'pcbMat';
-        if (/clip|spring|pin|contact|metal|brass|steel|screw|nut/.test(n)) return 'metalMat';
-        if (/rubber|gasket|seal|grip/.test(n))                          return 'rubberMat';
-        return 'housingMat';
-    }
+    // guessKey removed - delegated to materialsModule
 
     // ─────────────────────────────────────────────────────────────
-    // Apply materials to all meshes
-    // ─────────────────────────────────────────────────────────────
-    function applyMaterials() {
-        for (const entry of partMap.values()) {
-            const mat = entry.assignedKey === '_keep' ? null : (MAT_OBJ[entry.assignedKey] ?? null);
-            entry.meshes.forEach((m, i) => {
-                if (m.userData.isOutline) return;
-                m.material = mat ?? entry.origMats[i];
-            });
-        }
-    }
+    // applyMaterials removed - delegated to materialsModule
 
     // ─────────────────────────────────────────────────────────────
-    // setProp — central material property update
-    // Updates matProps, the Three.js object, swatch, and code
-    // ─────────────────────────────────────────────────────────────
-    function setProp(matKey, propKey, value) {
-        matProps[matKey][propKey] = value;
-        const mat = MAT_OBJ[matKey];
-        if (!mat) return;
-
-        if (propKey === 'color') {
-            mat.color.set(value);
-        } else if (propKey === 'emissive') {
-            mat.emissive.set(value);
-        } else if (propKey === 'side') {
-            mat.side = value === 'Double' ? THREE.DoubleSide : THREE.FrontSide;
-        } else if (typeof value === 'boolean') {
-            mat[propKey] = value;
-        } else {
-            mat[propKey] = parseFloat(value);
-        }
-        mat.needsUpdate = true;
-
-        // Refresh swatches for all rows using this material
-        document.querySelectorAll(`.swatch[data-mat="${matKey}"]`).forEach(el => {
-            el.style.background = matProps[matKey].color;
-        });
-
-        updateCode();
-        saveState();
-    }
+    // setProp removed - delegated to materialsModule
 
     // ─────────────────────────────────────────────────────────────
-    // Build material editor for the given matKey
-    // ─────────────────────────────────────────────────────────────
-    function buildEditor(matKey, selCount = 1) {
-        const body    = document.getElementById('editor-body');
-        const tag     = document.getElementById('editor-mat-tag');
-        const affects = document.getElementById('editor-affects');
-
-        body.innerHTML = '';
-
-        if (!matKey || matKey === '_keep') {
-            tag.textContent     = matKey === '_keep' ? '_keep' : '—';
-            affects.textContent = matKey === '_keep' ? 'keeping Onshape material' : '';
-            body.innerHTML = `<div class="editor-placeholder">
-                ${matKey === '_keep' ? 'Original Onshape material is preserved' : 'Click a part to edit its material'}
-            </div>`;
-            return;
-        }
-
-        tag.textContent = matKey;
-
-        if (selCount > 1) {
-            affects.textContent = `${selCount} selected`;
-        } else {
-            // Count how many parts use this material
-            let usageCount = 0;
-            for (const e of partMap.values()) {
-                if (e.assignedKey === matKey) usageCount++;
-            }
-            affects.textContent = `affects ${usageCount} part${usageCount !== 1 ? 's' : ''}`;
-        }
-
-        const schema = MAT_SCHEMA[matKey] ?? [];
-        for (const propDef of schema) {
-            const row = document.createElement('div');
-            row.className = 'prop-row';
-
-            const lbl = document.createElement('label');
-            lbl.className   = 'prop-label';
-            lbl.textContent = propDef.label;
-            row.appendChild(lbl);
-
-            if (propDef.type === 'color') {
-                const wrap   = document.createElement('div');
-                wrap.className = 'prop-color-wrap';
-
-                const picker = document.createElement('input');
-                picker.type  = 'color';
-                picker.className = 'prop-color';
-                picker.value = matProps[matKey][propDef.key] ?? '#ffffff';
-
-                const hexSpan = document.createElement('span');
-                hexSpan.className   = 'prop-hex';
-                hexSpan.textContent = picker.value;
-
-                picker.addEventListener('input', () => {
-                    hexSpan.textContent = picker.value;
-                    setProp(matKey, propDef.key, picker.value);
-                });
-
-                wrap.appendChild(picker);
-                wrap.appendChild(hexSpan);
-                row.appendChild(wrap);
-
-            } else if (propDef.type === 'toggle') {
-                const cb = document.createElement('input');
-                cb.type      = 'checkbox';
-                cb.className = 'prop-toggle';
-                cb.checked   = !!matProps[matKey][propDef.key];
-                cb.addEventListener('change', () => setProp(matKey, propDef.key, cb.checked));
-                row.appendChild(cb);
-
-            } else if (propDef.type === 'select') {
-                const sel = document.createElement('select');
-                sel.className = 'prop-select';
-                for (const opt of propDef.options) {
-                    const o = document.createElement('option');
-                    o.value = opt; o.textContent = opt;
-                    sel.appendChild(o);
-                }
-                sel.value = matProps[matKey][propDef.key] ?? propDef.options[0];
-                sel.addEventListener('change', () => setProp(matKey, propDef.key, sel.value));
-                row.appendChild(sel);
-
-            } else { // 'range'
-                const slider = document.createElement('input');
-                slider.type      = 'range';
-                slider.className = 'prop-slider';
-                slider.min   = propDef.min;
-                slider.max   = propDef.max;
-                slider.step  = propDef.step;
-                slider.value = matProps[matKey][propDef.key] ?? 0;
-
-                const num = document.createElement('input');
-                num.type      = 'number';
-                num.className = 'prop-num';
-                num.min   = propDef.min;
-                num.max   = propDef.max;
-                num.step  = propDef.step;
-                num.value = matProps[matKey][propDef.key] ?? 0;
-
-                slider.addEventListener('input', () => {
-                    const v = parseFloat(slider.value);
-                    num.value = v;
-                    setProp(matKey, propDef.key, v);
-                });
-                num.addEventListener('change', () => {
-                    const v = Math.max(propDef.min, Math.min(propDef.max, parseFloat(num.value) || 0));
-                    num.value    = v;
-                    slider.value = v;
-                    setProp(matKey, propDef.key, v);
-                });
-
-                row.appendChild(slider);
-                row.appendChild(num);
-            }
-
-            body.appendChild(row);
-        }
-    }
+    // buildEditor removed - delegated to materialsModule
 
     // ─────────────────────────────────────────────────────────────
     // Visibility toggle
@@ -738,26 +486,9 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     const EYE_OPEN_SVG = `<svg width="14" height="10" viewBox="0 0 14 10" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 5C2.6 2 4.6 1 7 1C9.4 1 11.4 2 13 5C11.4 8 9.4 9 7 9C4.6 9 2.6 8 1 5Z" stroke="currentColor" stroke-width="1.3"/><circle cx="7" cy="5" r="1.8" fill="currentColor"/></svg>`;
     const EYE_SHUT_SVG = `<svg width="14" height="10" viewBox="0 0 14 10" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 5C2.6 2 4.6 1 7 1C9.4 1 11.4 2 13 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="2" y1="9" x2="12" y2="1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
 
-    function syncShowAllBtn() {
-        const anyHidden = [...partMap.values()].some(e => !e.visible);
-        document.getElementById('show-all-btn').style.display = anyHidden ? '' : 'none';
-    }
+    
 
-    function setVisibility(displayName, visible) {
-        const entry = partMap.get(displayName);
-        if (!entry) return;
-        entry.visible = visible;
-        entry.meshes.forEach(m => { m.visible = visible; });
-
-        const row = document.querySelector(`.part-row[data-name="${CSS.escape(displayName)}"]`);
-        if (row) {
-            row.classList.toggle('invisible', !visible);
-            const btn = row.querySelector('.eye-btn');
-            if (btn) btn.innerHTML = visible ? EYE_OPEN_SVG : EYE_SHUT_SVG;
-        }
-        syncShowAllBtn();
-        saveState();
-    }
+    
 
     document.getElementById('show-all-btn').addEventListener('click', () => {
         for (const [name] of partMap) setVisibility(name, true);
@@ -787,126 +518,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     });
 
     // ─────────────────────────────────────────────────────────────
-    // Build parts list
-    // ─────────────────────────────────────────────────────────────
-    function buildPartsUI() {
-        const list  = document.getElementById('parts-list');
-        const empty = document.getElementById('empty-state');
-        empty.style.display = 'none';
-        [...list.querySelectorAll('.part-row')].forEach(el => el.remove());
-        document.getElementById('reset-btn').style.display = '';
-
-        for (const [displayName, entry] of partMap) {
-            const row = document.createElement('div');
-            row.className = 'part-row';
-            row.dataset.name = displayName;
-            if (!entry.visible) row.classList.add('invisible');
-            if (selectedParts.has(displayName)) row.classList.add('selected');
-
-            // Eye (visibility) button
-            const eyeBtn = document.createElement('button');
-            eyeBtn.className = 'eye-btn';
-            eyeBtn.title     = 'Toggle visibility';
-            eyeBtn.innerHTML = entry.visible ? EYE_OPEN_SVG : EYE_SHUT_SVG;
-            eyeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const newVis = !entry.visible;
-                if (selectedParts.has(displayName) && selectedParts.size > 1) {
-                    for (const name of selectedParts) setVisibility(name, newVis);
-                } else {
-                    setVisibility(displayName, newVis);
-                }
-            });
-
-            // Swatch
-            const swatch = document.createElement('div');
-            swatch.className    = 'swatch';
-            swatch.dataset.mat  = entry.assignedKey;
-            swatch.style.background = entry.assignedKey === '_keep'
-                ? 'transparent'
-                : matProps[entry.assignedKey]?.color ?? '#444';
-            if (entry.assignedKey === '_keep') swatch.style.border = '1px dashed #404060';
-
-            // Name
-            const nameEl = document.createElement('div');
-            nameEl.className   = 'part-name' + (displayName.startsWith('(') ? ' unnamed' : '');
-            nameEl.textContent = displayName;
-            nameEl.title       = displayName;
-
-            // Material selector
-            const sel = document.createElement('select');
-            sel.className = 'mat-select';
-            const options = [
-                ['housingMat', 'Housing — plastic'],
-                ['buttonMat',  'Button — glossy'],
-                ['ledMat',     'LED die — emissive'],
-                ['ledCapMat',  'LED cap — diffuser'],
-                ['pcbMat',     'PCB — FR4'],
-                ['metalMat',   'Metal — contacts'],
-                ['rubberMat',  'Rubber — gasket'],
-                ['_keep',      '— keep original —'],
-            ];
-            for (const [val, label] of options) {
-                const opt = document.createElement('option');
-                opt.value       = val;
-                opt.textContent = label;
-                if (val === entry.assignedKey) opt.selected = true;
-                sel.appendChild(opt);
-            }
-
-            sel.addEventListener('change', (e) => {
-                e.stopPropagation();    // don't trigger row click
-                const key = sel.value;
-
-                // Apply to all selected parts if this part is among them
-                const targets = (selectedParts.has(displayName) && selectedParts.size > 1)
-                    ? [...selectedParts]
-                    : [displayName];
-
-                for (const name of targets) {
-                    const tEntry = partMap.get(name);
-                    if (!tEntry) continue;
-                    tEntry.assignedKey = key;
-
-                    // Sync swatch + dropdown for each affected row
-                    const tRow = document.querySelector(`.part-row[data-name="${CSS.escape(name)}"]`);
-                    if (tRow) {
-                        const tSwatch = tRow.querySelector('.swatch');
-                        if (tSwatch) {
-                            tSwatch.dataset.mat      = key;
-                            tSwatch.style.background = key === '_keep' ? 'transparent' : (matProps[key]?.color ?? '#444');
-                            tSwatch.style.border     = key === '_keep' ? '1px dashed #404060' : '1px solid rgba(255,255,255,.12)';
-                        }
-                        const tSel = tRow.querySelector('.mat-select');
-                        if (tSel && name !== displayName) tSel.value = key;
-                    }
-                }
-
-                applyMaterials();
-
-                // Refresh editor
-                if (selectedParts.has(displayName) || primarySelected === displayName) {
-                    const pEntry = primarySelected ? partMap.get(primarySelected) : null;
-                    buildEditor(pEntry?.assignedKey ?? key, selectedParts.size);
-                }
-
-                updateCode();
-                saveState();
-            });
-
-            // Row click → select (pass keyboard modifiers)
-            row.addEventListener('click', (e) => selectPart(displayName, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey }));
-
-            row.appendChild(eyeBtn);
-            row.appendChild(swatch);
-            row.appendChild(nameEl);
-            row.appendChild(sel);
-            list.appendChild(row);
-        }
-
-        updatePartCount();
-        updateCode();
-    }
+    // buildPartsUI removed - delegated to materialsModule
 
     function updatePartCount() {
         const total   = partMap.size;
@@ -931,18 +543,9 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     // Generate code output
     // Outputs updated material definitions + MATERIAL_RULES
     // ─────────────────────────────────────────────────────────────
-    function colorToHex(cssHex) {
-        // '#181b2a' → '0x181b2a'
-        return '0x' + cssHex.replace('#', '');
-    }
+    
 
-    function fmtVal(v) {
-        if (typeof v === 'number') {
-            // show enough precision without trailing zeros
-            return Number.isInteger(v) ? v.toFixed(1) : parseFloat(v.toPrecision(4)).toString();
-        }
-        return String(v);
-    }
+    
 
     // Three.js MeshPhysicalMaterial defaults — skip these in generated code
     const PROP_DEFAULTS = {
@@ -952,197 +555,9 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         polygonOffset: false, polygonOffsetFactor: 0, polygonOffsetUnits: 0,
     };
 
-    function generateMatDef(key) {
-        const p      = matProps[key];
-        const schema = MAT_SCHEMA[key] ?? [];
-        const lines  = [];
+    
 
-        for (const propDef of schema) {
-            const propKey = propDef.key;
-            const raw     = p[propKey];
-            if (raw === undefined) continue;
-
-            // Skip values that match Three.js defaults (keeps output tidy)
-            if (propKey in PROP_DEFAULTS) {
-                const def = PROP_DEFAULTS[propKey];
-                if (typeof def === 'number'  && Math.abs(raw - def) < 1e-9) continue;
-                if (typeof def === 'boolean' && raw === def) continue;
-                if (typeof def === 'string'  && raw === def) continue;
-            }
-
-            let valueStr;
-            if (propDef.type === 'color') {
-                valueStr = colorToHex(raw);
-            } else if (propDef.type === 'select' && propKey === 'side') {
-                valueStr = raw === 'Double' ? 'THREE.DoubleSide' : 'THREE.FrontSide';
-            } else if (propDef.type === 'toggle') {
-                valueStr = raw ? 'true' : 'false';
-            } else {
-                valueStr = fmtVal(raw);
-            }
-
-            lines.push(`    ${(propKey + ':').padEnd(22)} ${valueStr},`);
-        }
-
-        return `const ${key} = new THREE.MeshPhysicalMaterial({\n${lines.join('\n')}\n});`;
-    }
-
-    function updateCode() {
-        const pre = document.getElementById('code-output');
-        if (partMap.size === 0) {
-            pre.innerHTML = `<span class="cmt">// Load a model first</span>`;
-            return;
-        }
-
-        // Which material keys are actually used?
-        const usedKeys = new Set();
-        for (const e of partMap.values()) {
-            if (e.assignedKey !== '_keep') usedKeys.add(e.assignedKey);
-        }
-
-        const matSection = [...usedKeys].map(k => generateMatDef(k)).join('\n\n');
-
-        const ruleLines = [];
-        for (const [displayName, entry] of partMap) {
-            if (entry.assignedKey === '_keep') continue;
-            const safe = displayName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            ruleLines.push(`    { match: '${safe}',`.padEnd(44) + ` mat: ${entry.assignedKey} },`);
-        }
-        const rulesSection = [
-            `const MATERIAL_RULES = [`,
-            `    // Exact part names — generated by Material Mapper`,
-            ...ruleLines,
-            ``,
-            `    // Catch-all (must be last)`,
-            `    { match: /.*/, mat: housingMat },`,
-            `];`,
-        ].join('\n');
-
-        // Syntax-highlight for display
-        function hlLine(line) {
-            return line
-                .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-                .replace(/\b(const|new)\b/g, '<span class="kw">$1</span>')
-                .replace(/(THREE\.\w+)/g, '<span class="key">$1</span>')
-                .replace(/(0x[0-9a-fA-F]+)/g, '<span class="val">$1</span>')
-                .replace(/('(?:[^'\\]|\\.)*')/g, '<span class="str">$1</span>')
-                .replace(/(\/\/.*)/g, '<span class="cmt">$1</span>');
-        }
-
-        const allLines = [
-            `// ── paste into assets/materials.js (between ▼▼▼ / ▲▲▲ markers) ─────`,
-            ...matSection.split('\n'),
-            ``,
-            `// ── MATERIAL_RULES ──────────────────────────────────────────`,
-            ...rulesSection.split('\n'),
-            ``,
-            `// ── Apply materials ─────────────────────────────────────────`,
-            ...generateApplyLoop().split('\n'),
-            ``,
-            `// ── Find LED meshes (replaces emissive-scan in viewer.html) ─`,
-            ...generateLedDetection().split('\n'),
-            ``,
-            ...generateCameraCode().split('\n'),
-        ];
-
-        pre.innerHTML = allLines.map(hlLine).join('\n');
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Copy button
-    // ─────────────────────────────────────────────────────────────
-    document.getElementById('copy-btn').addEventListener('click', () => {
-        const usedKeys = new Set();
-        for (const e of partMap.values()) {
-            if (e.assignedKey !== '_keep') usedKeys.add(e.assignedKey);
-        }
-        const matSection = [...usedKeys].map(k => generateMatDef(k)).join('\n\n');
-
-        const ruleLines = [];
-        for (const [displayName, entry] of partMap) {
-            if (entry.assignedKey === '_keep') continue;
-            const safe = displayName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            ruleLines.push(`    { match: '${safe}',`.padEnd(44) + ` mat: ${entry.assignedKey} },`);
-        }
-        const rulesSection = [
-            `const MATERIAL_RULES = [`,
-            `    // Exact part names — generated by Material Mapper`,
-            ...ruleLines,
-            ``,
-            `    // Catch-all (must be last)`,
-            `    { match: /.*/, mat: housingMat },`,
-            `];`,
-        ].join('\n');
-
-        const full = [
-            `// ── paste into assets/materials.js (between ▼▼▼ / ▲▲▲ markers) ─────`,
-            matSection,
-            ``,
-            `// ── MATERIAL_RULES ──────────────────────────────────────────`,
-            rulesSection,
-            ``,
-            `// ── Apply materials ─────────────────────────────────────────`,
-            generateApplyLoop(),
-            ``,
-            `// ── Find LED meshes (replaces emissive-scan in viewer.html) ─`,
-            generateLedDetection(),
-            ``,
-            generateCameraCode(),
-        ].join('\n');
-
-        navigator.clipboard.writeText(full).then(() => showToast('Copied!'));
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // Save materials.js button
-    // ─────────────────────────────────────────────────────────────
-    function generateMaterialsJs() {
-        const usedKeys = new Set();
-        for (const e of partMap.values()) {
-            if (e.assignedKey !== '_keep') usedKeys.add(e.assignedKey);
-        }
-        const matSection = [...usedKeys].map(k => generateMatDef(k)).join('\n\n');
-
-        const ruleLines = [];
-        for (const [displayName, entry] of partMap) {
-            if (entry.assignedKey === '_keep') continue;
-            const safe = displayName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            ruleLines.push(`    { match: '${safe}',`.padEnd(44) + ` mat: ${entry.assignedKey} },`);
-        }
-        const rulesSection = [
-            `const MATERIAL_RULES = [`,
-            `    // Exact part names — generated by Material Mapper`,
-            ...ruleLines,
-            ``,
-            `    // Catch-all (must be last)`,
-            `    { match: /.*/, mat: housingMat },`,
-            `];`,
-        ].join('\n');
-
-        // Derive LED_MAX_INTENSITY from the ledMat emissiveIntensity value
-        const ledIntensity = matProps.ledMat?.emissiveIntensity ?? 7.7;
-
-        return [
-            `// materials.js — material definitions for Pipit's 3D viewer`,
-            `//`,
-            `// Generated by tools/material-mapper.html — do not edit the section`,
-            `// between the ▼▼▼ / ▲▲▲ markers by hand; re-export from the mapper instead.`,
-            ``,
-            `import * as THREE from 'three';`,
-            ``,
-            `// Max emissive intensity — keep in sync with KHR_materials_emissive_strength in Uguisu.glb.`,
-            `export const LED_MAX_INTENSITY = ${ledIntensity};`,
-            ``,
-            `// ▼▼▼ START — generated by Material Mapper ▼▼▼`,
-            matSection,
-            ``,
-            rulesSection,
-            `// ▲▲▲ END ▲▲▲`,
-            ``,
-            `export { MATERIAL_RULES };`,
-            ``,
-        ].join('\n');
-    }
+    
 
     document.getElementById('save-materials-btn').addEventListener('click', () => {
         if (partMap.size === 0) { showToast('Load a model first'); return; }
@@ -1258,7 +673,8 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
             loadedModel = model;
 
             fitCameraToModel();
-            hudFovInput.value = Math.round(camera.fov);
+            const hudFovEl = document.getElementById('hud-fov');
+            if (hudFovEl) hudFovEl.value = Math.round(camera.fov);
 
             // Enable shadows on all loaded meshes + snap ground to model bottom
             model.traverse(c => {
@@ -1278,12 +694,29 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
             loadedFileName = fileName;
             saveLastFileToDB(fileName, buffer);
 
-            const didRestore = restoreState(fileName);
-            applyMaterials();
-            buildPartsUI();
+            const didRestore = restoreState(fileName, {
+                applyMaterials,
+                buildPartsUI,
+                buildEditor,
+                syncShowAllBtn,
+                setIsOrtho: (nextIsOrtho) => {
+                    if (typeof nextIsOrtho !== 'boolean' || nextIsOrtho === isOrtho) return;
+                    cameraModule?.toggleOrtho?.();
+                },
+                setHudXYZ: cameraModule?.setHudXYZ,
+                applyModelRotationDeg: cameraModule?.applyModelRotationDeg,
+                syncOrbitTarget: cameraModule?.syncOrbitTarget,
+                mergeSceneState: sceneModule?.mergeState,
+                applySceneState: sceneModule?.applyAll,
+                syncScenePanel: sceneModule?.syncScenePanel,
+            });
+            if (!didRestore) {
+                applyMaterials();
+                buildPartsUI();
+                syncShowAllBtn();
+                buildEditor(null);
+            }
             if (didRestore) showToast('Session restored');
-            syncShowAllBtn();
-            buildEditor(null);
 
         }, (err) => {
             console.error('[Material Mapper] GLTF parse error:', err);
@@ -1605,32 +1038,11 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     const IDB_NAME  = 'material-mapper-files';
     const IDB_STORE = 'files';
 
-    function openIDB() {
-        return new Promise((res, rej) => {
-            const req = indexedDB.open(IDB_NAME, 1);
-            req.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE);
-            req.onsuccess = e => res(e.target.result);
-            req.onerror   = e => rej(e.target.error);
-        });
-    }
+    
 
-    function saveLastFileToDB(fileName, buffer) {
-        openIDB().then(db => {
-            const tx = db.transaction(IDB_STORE, 'readwrite');
-            tx.objectStore(IDB_STORE).put({ name: fileName, buffer: buffer.slice(0) }, 'last');
-        }).catch(e => console.warn('[IDB] save failed', e));
-    }
+    
 
-    function loadLastFileFromDB() {
-        openIDB().then(db => {
-            const tx  = db.transaction(IDB_STORE, 'readonly');
-            const req = tx.objectStore(IDB_STORE).get('last');
-            req.onsuccess = e => {
-                const data = e.target.result;
-                if (data?.buffer && data?.name) loadBuffer(data.buffer, data.name);
-            };
-        }).catch(e => console.warn('[IDB] load failed', e));
-    }
+    
 
     function saveState() {
         if (!loadedFileName || partMap.size === 0) return;
@@ -1655,6 +1067,12 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
                 y: THREE.MathUtils.radToDeg(loadedModel.rotation.y),
                 z: THREE.MathUtils.radToDeg(loadedModel.rotation.z),
             } : null,
+            modelPosition: loadedModel ? {
+                x: loadedModel.position.x,
+                y: loadedModel.position.y,
+                z: loadedModel.position.z,
+            } : null,
+            sceneState:    JSON.parse(JSON.stringify(sceneState)),
         };
         try {
             const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
@@ -1666,88 +1084,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     // ─────────────────────────────────────────────────────────────
     // Import from code — parse generated code and restore state
     // ─────────────────────────────────────────────────────────────
-    function importFromCode(text) {
-        let matCount = 0, ruleCount = 0;
-
-        // Parse material definition blocks
-        // Matches: const housingMat = new THREE.MeshPhysicalMaterial({ ... });
-        const matBlockRe = /const\s+(\w+)\s*=\s*new\s+THREE\.MeshPhysicalMaterial\s*\(\s*\{([\s\S]*?)\}\s*\)/g;
-        let m;
-        while ((m = matBlockRe.exec(text)) !== null) {
-            const matKey = m[1];
-            const body   = m[2];
-            if (!(matKey in matProps)) continue;
-
-            const propRe = /(\w+)\s*:\s*([^,\n]+)/g;
-            let pm;
-            while ((pm = propRe.exec(body)) !== null) {
-                const propKey = pm[1].trim();
-                const rawVal  = pm[2].trim().replace(/,\s*$/, '');
-                if (!(propKey in matProps[matKey])) continue;
-
-                let value;
-                if (/^0x[0-9a-fA-F]+$/.test(rawVal)) {
-                    value = '#' + rawVal.slice(2).toLowerCase().padStart(6, '0');
-                } else if (rawVal === 'true')             { value = true;
-                } else if (rawVal === 'false')            { value = false;
-                } else if (rawVal === 'THREE.DoubleSide') { value = 'Double';
-                } else if (rawVal === 'THREE.FrontSide')  { value = 'Front';
-                } else {
-                    const n = parseFloat(rawVal);
-                    if (!isNaN(n)) value = n; else continue;
-                }
-                matProps[matKey][propKey] = value;
-            }
-
-            // Rebuild live Three.js material object
-            const mat = MAT_OBJ[matKey];
-            if (mat) {
-                const p = matProps[matKey];
-                mat.color.set(p.color);
-                mat.emissive.set(p.emissive);
-                mat.emissiveIntensity = p.emissiveIntensity;
-                mat.roughness         = p.roughness;
-                mat.metalness         = p.metalness;
-                mat.transmission      = p.transmission;
-                mat.thickness         = p.thickness;
-                mat.ior               = p.ior;
-                mat.opacity           = p.opacity;
-                mat.transparent          = p.transparent;
-                mat.toneMapped           = p.toneMapped;
-                mat.side                 = p.side === 'Double' ? THREE.DoubleSide : THREE.FrontSide;
-                mat.polygonOffset        = p.polygonOffset        ?? false;
-                mat.polygonOffsetFactor  = p.polygonOffsetFactor  ?? 0;
-                mat.polygonOffsetUnits   = p.polygonOffsetUnits   ?? 0;
-                mat.needsUpdate          = true;
-            }
-            matCount++;
-        }
-
-        // Parse MATERIAL_RULES assignment lines
-        // Matches: { match: 'Part Name',  mat: housingMat },
-        const ruleRe = /\{\s*match\s*:\s*'((?:[^'\\]|\\.)*)'\s*,\s*mat\s*:\s*(\w+)\s*\}/g;
-        while ((m = ruleRe.exec(text)) !== null) {
-            const partName = m[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\');
-            const matKey   = m[2];
-            const entry    = partMap.get(partName);
-            if (entry && matKey in matProps) {
-                entry.assignedKey = matKey;
-                ruleCount++;
-            }
-        }
-
-        // Refresh UI
-        if (partMap.size > 0) {
-            applyMaterials();
-            buildPartsUI();
-            syncShowAllBtn();
-            const pEntry = primarySelected ? partMap.get(primarySelected) : null;
-            buildEditor(pEntry?.assignedKey ?? null, selectedParts.size);
-        }
-        updateCode();
-        saveState();
-        return { matCount, ruleCount };
-    }
+    
 
     const importModal     = document.getElementById('import-modal');
     const importCodeBtn   = document.getElementById('import-code-btn');
@@ -1771,224 +1108,89 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         showToast(`Imported: ${matCount} material${matCount !== 1 ? 's' : ''}, ${ruleCount} rule${ruleCount !== 1 ? 's' : ''}`);
     });
 
-    function restoreState(fileName) {
-        try {
-            const all   = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-            const saved = all[fileName];
-            if (!saved) return false;
+    
 
-            // Restore matProps + rebuild live Three.js material objects
-            for (const [key, props] of Object.entries(saved.matProps ?? {})) {
-                if (!(key in matProps)) continue;
-                Object.assign(matProps[key], props);
-                const mat = MAT_OBJ[key];
-                if (!mat) continue;
-                const p = matProps[key];
-                mat.color.set(p.color);
-                mat.emissive.set(p.emissive);
-                mat.emissiveIntensity = p.emissiveIntensity;
-                mat.roughness         = p.roughness;
-                mat.metalness         = p.metalness;
-                mat.transmission      = p.transmission;
-                mat.thickness         = p.thickness;
-                mat.ior               = p.ior;
-                mat.opacity           = p.opacity;
-                mat.transparent          = p.transparent;
-                mat.toneMapped           = p.toneMapped;
-                mat.side                 = p.side === 'Double' ? THREE.DoubleSide : THREE.FrontSide;
-                mat.polygonOffset        = p.polygonOffset        ?? false;
-                mat.polygonOffsetFactor  = p.polygonOffsetFactor  ?? 0;
-                mat.polygonOffsetUnits   = p.polygonOffsetUnits   ?? 0;
-                mat.needsUpdate          = true;
-            }
+    cameraModule = window.MaterialMapperCameraModule({
+        THREE,
+        camera,
+        orthoCamera,
+        controls,
+        groundMesh,
+        saveState,
+        showToast,
+        generateCameraCode,
+        getLoadedModel: () => loadedModel,
+        getIsOrtho: () => isOrtho,
+        setIsOrtho: (value) => { isOrtho = !!value; },
+    });
+    cameraModule.init();
 
-            // Restore per-part assignments + visibility
-            for (const [name, entry] of partMap) {
-                const key = saved.assignments?.[name];
-                if (key) entry.assignedKey = key;
-                if (saved.visibility && name in saved.visibility) {
-                    entry.visible = saved.visibility[name];
-                    entry.meshes.forEach(m => { m.visible = saved.visibility[name]; });
-                }
-            }
-            if (saved.camera) {
-                const c = saved.camera;
-                if (c.position) camera.position.set(c.position.x, c.position.y, c.position.z);
-                if (c.target)   controls.target.set(c.target.x, c.target.y, c.target.z);
-                if (c.fov)      { camera.fov = c.fov; camera.updateProjectionMatrix(); }
-                controls.update();
-                const hudFov = document.getElementById('hud-fov');
-                if (hudFov) hudFov.value = Math.round(camera.fov);
-                setHudXYZ('hud-pos-x', 'hud-pos-y', 'hud-pos-z', camera.position);
-                setHudXYZ('hud-tgt-x', 'hud-tgt-y', 'hud-tgt-z', controls.target);
-                if (c.isOrtho !== undefined && c.isOrtho !== isOrtho) toggleOrtho();
-            }
-            if (saved.modelRotation && loadedModel) {
-                const r = saved.modelRotation;
-                loadedModel.rotation.set(
-                    THREE.MathUtils.degToRad(r.x),
-                    THREE.MathUtils.degToRad(r.y),
-                    THREE.MathUtils.degToRad(r.z)
-                );
-                setHudXYZDeg('hud-rot-x', 'hud-rot-y', 'hud-rot-z', loadedModel.rotation);
-            }
-            return true;
-        } catch (e) {
-            console.warn('[State] restore failed', e);
-            return false;
-        }
+    // Scene settings panel moved to material-mapper-scene.js
+    sceneModule = window.MaterialMapperSceneModule({
+        THREE,
+        renderer,
+        scene,
+        keyLight,
+        fillLight,
+        rimLight,
+        ambientLight,
+        groundMesh,
+        envTexture: _envTex,
+        bloomPass,
+        ssaoPass,
+        postGradePass,
+        saveState,
+    });
+    sceneState = sceneModule.getState();
+    try {
+        sceneModule.init();
+    } catch (error) {
+        console.warn('[Material Mapper] Scene module init failed; continuing without full scene controls.', error);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Scene settings panel — state + apply functions
-    // ─────────────────────────────────────────────────────────────
-    const sceneState = {
-        bg:     { style: 'gradient', color1: '#1c1e28', color2: '#09090c', gradType: 'radial', solidColor: '#070910' },
-        env:    { enabled: true, intensity: 1.0 },
-        tm:     { exposure: 0.95 },
-        key:    { color: '#fff8f0', intensity: 2.0, px: 1.5, py: 2.5, pz: 2.0, shadows: true },
-        fill:   { color: '#b0c8ff', intensity: 0.55 },
-        rim:    { color: '#dde8ff', intensity: 0.45 },
-        amb:    { color: '#ffffff', intensity: 0.1 },
-        ground: { visible: true, opacity: 0.38 },
+    // Materials management
+    materialsModule = window.MaterialMapperMaterialsModule({
+        THREE,
+        partMap,
+        loadedModel: () => loadedModel,
+        selectedParts,
+        primarySelected: () => primarySelected,
+        setPrimarySelected: (value) => { primarySelected = value; },
+        saveState: () => saveState(),
+        showToast,
+        updatePartCount: () => updatePartCount(),
+        generateCameraCode: () => generateCameraCode(),
+    });
+
+    // Persistence (state save/load + IDB caching)
+    persistenceModule = window.MaterialMapperPersistenceModule({
+        loadBuffer,
+        partMap,
+        matProps: () => materialsModule.getMatProps(),
+        MAT_OBJ: () => materialsModule.getMAT_OBJ(),
+        loadedFileName: () => loadedFileName,
+        loadedModel: () => loadedModel,
+        camera,
+        controls,
+        sceneState: () => sceneState,
+        THREE,
+        showToast,
+        importFromCode: (text) => importFromCode(text),
+    });
+
+    // Extract and bind module methods
+    matProps = materialsModule.getMatProps();
+    MAT_OBJ = materialsModule.getMAT_OBJ();
+    MAT_SCHEMA = materialsModule.getMAT_SCHEMA();
+    ({ setProp, selectPart, setVisibility, syncShowAllBtn, buildEditor, buildPartsUI, applyMaterials, guessKey, updateCode } = materialsModule);
+    ({ saveLastFileToDB, loadLastFileFromDB, saveState: persistSaveState, restoreState } = persistenceModule);
+
+    // Override app-level saveState to also call persistence module
+    const originalSaveState = saveState;
+    saveState = function() {
+        originalSaveState();
+        persistSaveState?.();
     };
-
-    function applyBackground() {
-        const s  = sceneState.bg;
-        const vp = document.getElementById('viewer-pane');
-        if (s.style === 'gradient') {
-            vp.style.background = s.gradType === 'radial'
-                ? `radial-gradient(ellipse at 50% 38%, ${s.color1} 0%, ${s.color2} 100%)`
-                : `linear-gradient(180deg, ${s.color1} 0%, ${s.color2} 100%)`;
-        } else {
-            vp.style.background = s.solidColor;
-        }
-        const g = s.style === 'gradient';
-        document.getElementById('sp-bg-color1-row').style.display = g ? '' : 'none';
-        document.getElementById('sp-bg-color2-row').style.display = g ? '' : 'none';
-        document.getElementById('sp-bg-type-row').style.display   = g ? '' : 'none';
-        document.getElementById('sp-bg-solid-row').style.display  = g ? 'none' : '';
-    }
-
-    function applyEnv() {
-        scene.environment          = sceneState.env.enabled ? _envTex : null;
-        scene.environmentIntensity = sceneState.env.intensity;
-    }
-
-    function applyToneMapping() {
-        renderer.toneMappingExposure = sceneState.tm.exposure;
-    }
-
-    function applyKeyLight() {
-        const s = sceneState.key;
-        keyLight.color.set(s.color);
-        keyLight.intensity = s.intensity;
-        keyLight.position.set(s.px, s.py, s.pz);
-        keyLight.castShadow = s.shadows;
-        keyLight.shadow.needsUpdate = true;
-    }
-
-    function applyFillLight() {
-        fillLight.color.set(sceneState.fill.color);
-        fillLight.intensity = sceneState.fill.intensity;
-    }
-
-    function applyRimLight() {
-        rimLight.color.set(sceneState.rim.color);
-        rimLight.intensity = sceneState.rim.intensity;
-    }
-
-    function applyAmbient() {
-        ambientLight.color.set(sceneState.amb.color);
-        ambientLight.intensity = sceneState.amb.intensity;
-    }
-
-    function applyGround() {
-        groundMesh.visible = sceneState.ground.visible;
-        groundMesh.material.opacity = sceneState.ground.opacity;
-        groundMesh.material.needsUpdate = true;
-    }
-
-    // Apply initial background on page load
-    applyBackground();
-
-    // Helper: bind a slider+number pair to a sceneState field
-    function spNum(sliderId, numId, stateKey, field, applyFn) {
-        const sl = document.getElementById(sliderId);
-        const nm = document.getElementById(numId);
-        const set = v => {
-            const n = parseFloat(v) || 0;
-            sl.value = n; nm.value = n;
-            sceneState[stateKey][field] = n;
-            applyFn();
-        };
-        sl.addEventListener('input',  () => set(sl.value));
-        nm.addEventListener('change', () => set(nm.value));
-    }
-
-    // Helper: bind a color picker to a sceneState field
-    function spColor(pickerId, hexId, stateKey, field, applyFn) {
-        const pk = document.getElementById(pickerId);
-        const hx = document.getElementById(hexId);
-        pk.addEventListener('input', () => {
-            hx.textContent = pk.value;
-            sceneState[stateKey][field] = pk.value;
-            applyFn();
-        });
-    }
-
-    // Background
-    document.getElementById('sp-bg-style').addEventListener('change', e => {
-        sceneState.bg.style = e.target.value; applyBackground();
-    });
-    document.getElementById('sp-bg-grad-type').addEventListener('change', e => {
-        sceneState.bg.gradType = e.target.value; applyBackground();
-    });
-    spColor('sp-bg-color1', 'sp-bg-color1-hex', 'bg', 'color1',     applyBackground);
-    spColor('sp-bg-color2', 'sp-bg-color2-hex', 'bg', 'color2',     applyBackground);
-    spColor('sp-bg-solid',  'sp-bg-solid-hex',  'bg', 'solidColor', applyBackground);
-
-    // Environment
-    document.getElementById('sp-env-enabled').addEventListener('change', e => {
-        sceneState.env.enabled = e.target.checked; applyEnv();
-    });
-    spNum('sp-env-intensity', 'sp-env-intensity-num', 'env', 'intensity', applyEnv);
-
-    // Tone mapping
-    spNum('sp-tm-exposure', 'sp-tm-exposure-num', 'tm', 'exposure', applyToneMapping);
-
-    // Key light
-    spColor('sp-key-color', 'sp-key-color-hex', 'key', 'color', applyKeyLight);
-    spNum('sp-key-intensity', 'sp-key-intensity-num', 'key', 'intensity', applyKeyLight);
-    document.getElementById('sp-key-shadows').addEventListener('change', e => {
-        sceneState.key.shadows = e.target.checked; applyKeyLight();
-    });
-    ['sp-key-pos-x', 'sp-key-pos-y', 'sp-key-pos-z'].forEach(id => {
-        document.getElementById(id).addEventListener('change', () => {
-            sceneState.key.px = parseFloat(document.getElementById('sp-key-pos-x').value) || 1.5;
-            sceneState.key.py = parseFloat(document.getElementById('sp-key-pos-y').value) || 2.5;
-            sceneState.key.pz = parseFloat(document.getElementById('sp-key-pos-z').value) || 2.0;
-            applyKeyLight();
-        });
-    });
-
-    // Fill light
-    spColor('sp-fill-color', 'sp-fill-color-hex', 'fill', 'color',     applyFillLight);
-    spNum('sp-fill-intensity', 'sp-fill-intensity-num', 'fill', 'intensity', applyFillLight);
-
-    // Rim light
-    spColor('sp-rim-color', 'sp-rim-color-hex', 'rim', 'color',     applyRimLight);
-    spNum('sp-rim-intensity', 'sp-rim-intensity-num', 'rim', 'intensity', applyRimLight);
-
-    // Ambient
-    spColor('sp-amb-color', 'sp-amb-color-hex', 'amb', 'color',     applyAmbient);
-    spNum('sp-amb-intensity', 'sp-amb-intensity-num', 'amb', 'intensity', applyAmbient);
-
-    // Shadow catcher
-    document.getElementById('sp-ground-visible').addEventListener('change', e => {
-        sceneState.ground.visible = e.target.checked; applyGround();
-    });
-    spNum('sp-ground-opacity', 'sp-ground-opacity-num', 'ground', 'opacity', applyGround);
 
     // Tab switching
     document.getElementById('tab-parts-btn').addEventListener('click', () => {
@@ -2012,76 +1214,8 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         document.getElementById('part-count').style.display   = 'none';
     });
 
-    // Copy scene code for viewer.html
-    function generateSceneCode() {
-        const s = sceneState;
-        const x = h => '0x' + h.replace('#', '');
-        const f = n => (Math.round(n * 1000) / 1000).toString();
-        const bgCss = s.bg.style === 'gradient'
-            ? (s.bg.gradType === 'radial'
-                ? `radial-gradient(ellipse at 50% 38%, ${s.bg.color1} 0%, ${s.bg.color2} 100%)`
-                : `linear-gradient(180deg, ${s.bg.color1} 0%, ${s.bg.color2} 100%)`)
-            : s.bg.solidColor;
-        return [
-            `// ─── CSS ────────────────────────────────────────────────────────────────────`,
-            `// html, body { background: ${bgCss}; }`,
-            `// (renderer setClearColor 0 alpha already keeps canvas transparent)`,
-            ``,
-            `// ─── Renderer ────────────────────────────────────────────────────────────────`,
-            `renderer.toneMapping         = THREE.ACESFilmicToneMapping;`,
-            `renderer.toneMappingExposure = ${f(s.tm.exposure)};`,
-            `renderer.setClearColor(0x000000, 0);`,
-            `renderer.shadowMap.enabled = true;`,
-            `renderer.shadowMap.type    = THREE.PCFSoftShadowMap;`,
-            ``,
-            `// ─── IBL ─────────────────────────────────────────────────────────────────────`,
-            `import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';`,
-            `const pmremGenerator = new THREE.PMREMGenerator(renderer);`,
-            `const roomEnv    = new RoomEnvironment();`,
-            `const envTexture = pmremGenerator.fromScene(roomEnv, 0.04).texture;`,
-            `scene.environment          = ${s.env.enabled ? 'envTexture' : 'null'};`,
-            `scene.environmentIntensity = ${f(s.env.intensity)};`,
-            `roomEnv.dispose(); pmremGenerator.dispose();`,
-            ``,
-            `// ─── Lights ──────────────────────────────────────────────────────────────────`,
-            `const keyLight = new THREE.DirectionalLight(${x(s.key.color)}, ${f(s.key.intensity)});`,
-            `keyLight.position.set(${f(s.key.px)}, ${f(s.key.py)}, ${f(s.key.pz)});`,
-            `keyLight.castShadow = ${s.key.shadows};`,
-            `keyLight.shadow.mapSize.setScalar(2048);`,
-            `keyLight.shadow.camera.near = 0.1; keyLight.shadow.camera.far = 10;`,
-            `keyLight.shadow.camera.left = -2;  keyLight.shadow.camera.right = 2;`,
-            `keyLight.shadow.camera.top  =  2;  keyLight.shadow.camera.bottom = -2;`,
-            `keyLight.shadow.radius = 4; keyLight.shadow.bias = -0.0005;`,
-            `scene.add(keyLight);`,
-            `const fillLight = new THREE.DirectionalLight(${x(s.fill.color)}, ${f(s.fill.intensity)});`,
-            `fillLight.position.set(-2, 1, -1.5);`,
-            `scene.add(fillLight);`,
-            `const rimLight = new THREE.DirectionalLight(${x(s.rim.color)}, ${f(s.rim.intensity)});`,
-            `rimLight.position.set(0, -1, -2);`,
-            `scene.add(rimLight);`,
-            `scene.add(new THREE.AmbientLight(${x(s.amb.color)}, ${f(s.amb.intensity)}));`,
-            ``,
-            `// ─── Shadow-catcher floor ────────────────────────────────────────────────────`,
-            `const groundPlane = new THREE.Mesh(`,
-            `    new THREE.CircleGeometry(1.4, 64),`,
-            `    new THREE.ShadowMaterial({ opacity: ${f(s.ground.opacity)}, transparent: true })`,
-            `);`,
-            `groundPlane.rotation.x = -Math.PI / 2;`,
-            `groundPlane.position.y = -0.52;   // snapped to model bottom after load`,
-            `groundPlane.receiveShadow = true;`,
-            `${s.ground.visible ? '' : '// '}scene.add(groundPlane);`,
-            ``,
-            `// ─── In GLB load callback ────────────────────────────────────────────────────`,
-            `rootModel.traverse(obj => {`,
-            `    if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; }`,
-            `});`,
-            `const modelBox = new THREE.Box3().setFromObject(modelPivot);`,
-            `groundPlane.position.y = modelBox.min.y - 0.008;`,
-        ].join('\n');
-    }
-
     document.getElementById('sp-copy-code-btn').addEventListener('click', () => {
-        navigator.clipboard.writeText(generateSceneCode()).then(() => showToast('Scene code copied!'));
+        navigator.clipboard.writeText(sceneModule.generateSceneCode()).then(() => showToast('Scene code copied!'));
     });
 
     // Auto-reload last opened file on page open
