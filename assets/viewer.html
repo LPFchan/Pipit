@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <style>
     * { margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: radial-gradient(ellipse at 50% 38%, #1c1e28 0%, #09090c 100%); }
     canvas { display: block; }
     #status { position: absolute; top: 80px; left: 10px; color: white; z-index: 999; font-size: 11px; pointer-events: none; }
   </style>
@@ -36,22 +36,35 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MATERIAL_RULES, LED_MAX_INTENSITY } from './materials.js';
 
 const statusEl = document.getElementById('status');
 statusEl.innerText = 'Initializing...';
 
 // ─── Renderer ────────────────────────────────────────────────────────────────
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
-renderer.setClearColor(0xffffff, 1);
+renderer.toneMappingExposure = 0.95;
+renderer.setClearColor(0x000000, 0); // transparent — CSS gradient shows through
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // ─── Scene / Camera ──────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
+
+// ─── Environment (IBL) ───────────────────────────────────────────────────────
+// Procedural RoomEnvironment gives physically-based reflections and diffuse
+// lighting on PBR materials without requiring an external HDR file.
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+const roomEnv = new RoomEnvironment();
+const envTexture = pmremGenerator.fromScene(roomEnv, 0.04).texture;
+scene.environment = envTexture;
+roomEnv.dispose();
+pmremGenerator.dispose();
 
 // Seed camera at final position so OrbitControls has a non-zero spherical
 // offset from frame 1 (prevents a degenerate ortho frustum at startup).
@@ -123,16 +136,39 @@ function _scheduleReturn() {
 }
 
 // ─── Lights ──────────────────────────────────────────────────────────────────
-const keyLight = new THREE.DirectionalLight(0xfff4e0, 2.8);
+// IBL handles ambient diffuse; directional lights add specular highlights and
+// cast shadows. Intensities are lower than without IBL to avoid overexposure.
+const keyLight = new THREE.DirectionalLight(0xfff8f0, 2.0);
 keyLight.position.set(1.5, 2.5, 2);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.setScalar(2048);
+keyLight.shadow.camera.near = 0.1;
+keyLight.shadow.camera.far = 10;
+keyLight.shadow.camera.left   = -2;
+keyLight.shadow.camera.right  =  2;
+keyLight.shadow.camera.top    =  2;
+keyLight.shadow.camera.bottom = -2;
+keyLight.shadow.radius = 4;        // soft penumbra
+keyLight.shadow.bias   = -0.0005;
 scene.add(keyLight);
-const fillLight = new THREE.DirectionalLight(0xc8d8ff, 0.9);
+const fillLight = new THREE.DirectionalLight(0xb0c8ff, 0.55);
 fillLight.position.set(-2, 1, -1.5);
 scene.add(fillLight);
-const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
+const rimLight = new THREE.DirectionalLight(0xdde8ff, 0.45);
 rimLight.position.set(0, -1, -2);
 scene.add(rimLight);
-scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+scene.add(new THREE.AmbientLight(0xffffff, 0.1));
+
+// ─── Shadow-catcher floor ─────────────────────────────────────────────────────
+// Receives the key-light shadow only; transparent so the gradient BG shows.
+const groundPlane = new THREE.Mesh(
+    new THREE.CircleGeometry(1.4, 64),
+    new THREE.ShadowMaterial({ opacity: 0.38, transparent: true })
+);
+groundPlane.rotation.x = -Math.PI / 2;
+groundPlane.position.y = -0.52;   // updated to exact model bottom after load
+groundPlane.receiveShadow = true;
+scene.add(groundPlane);
 
 // ─── Placeholder cube (removed once GLB loads) ───────────────────────────────
 const cubeGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
@@ -229,6 +265,14 @@ loader.load(
 
         // Ensure LED starts OFF; Swift drives state via setLedState after modelReady.
         _applyLedState(0, 0, 0, false, 1.0);
+
+        // ── Enable shadows on all meshes ─────────────────────────────────────
+        rootModel.traverse((obj) => {
+            if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; }
+        });
+        // Snap shadow-catcher floor to the exact bottom of the normalised model.
+        const modelBox = new THREE.Box3().setFromObject(modelPivot);
+        groundPlane.position.y = modelBox.min.y - 0.008;
 
         // ── Find button object ────────────────────────────────────────────────
         // KiCAD reference designator for the ALPS SKQGABE010 tactile switch is KEY1.

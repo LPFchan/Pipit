@@ -5,14 +5,13 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     // Renderer
     // ─────────────────────────────────────────────────────────────
     const container = document.getElementById('canvas-container');
-    const renderer  = new THREE.WebGPURenderer({ antialias: true, alpha: true });
+    const renderer  = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping         = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.95;
     renderer.shadowMap.enabled   = true;
     renderer.shadowMap.type      = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
-    await renderer.init();
 
     const scene  = new THREE.Scene();
     scene.background = null; // backdrop controlled by CSS on viewer-pane
@@ -169,7 +168,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
             orthoCamera.updateProjectionMatrix();
         }
         updateCameraHUD();
-        renderer.renderAsync(scene, isOrtho ? orthoCamera : camera);
+        renderer.render(scene, isOrtho ? orthoCamera : camera);
     });
 
     // ── Lights (photorealistic — matches viewer.html setup) ─────────────────────
