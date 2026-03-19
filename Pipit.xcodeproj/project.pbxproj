@@ -18,6 +18,7 @@
 		334B126D0019CFDF3242F1C4 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F638B17924132D4F9F1F324 /* SettingsViewModel.swift */; };
 		466711AFAA47BB3A68977FB8 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C13591F313A09BE1F331F35 /* OnboardingViewModel.swift */; };
 		4912430888E05D76E48189D9 /* viewer.html in Resources */ = {isa = PBXBuildFile; fileRef = 0DCFF6B0C28D38943E8BC133 /* viewer.html */; };
+		AA000001AA000001AA000001 /* materials.js in Resources */ = {isa = PBXBuildFile; fileRef = AA000002AA000002AA000002 /* materials.js */; };
 		4BE956AA5346573BEAD9950D /* LocalSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25217FD2B46FCF95A8107E9D /* LocalSchemeHandler.swift */; };
 		5B5FB53EA0FE324361F1B3D5 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 938B9032C51C3B32C7E7CF76 /* SettingsViewModel.swift */; };
 		617A3D4B178645BD3678B1EC /* Uguisu.glb in Resources */ = {isa = PBXBuildFile; fileRef = 3489C231E77B7432929A5B93 /* Uguisu.glb */; };
@@ -33,6 +34,7 @@
 /* Begin PBXFileReference section */
 		09132914ACF970D6CD2BAF35 /* DisconnectOverlaySwiftUIView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DisconnectOverlaySwiftUIView.swift; path = iosApp/iosApp/UI/DisconnectOverlaySwiftUIView.swift; sourceTree = "<group>"; };
 		0DCFF6B0C28D38943E8BC133 /* viewer.html */ = {isa = PBXFileReference; includeInIndex = 1; name = viewer.html; path = iosApp/iosApp/Resources/viewer.html; sourceTree = "<group>"; };
+		AA000002AA000002AA000002 /* materials.js */ = {isa = PBXFileReference; includeInIndex = 1; name = materials.js; path = assets/materials.js; sourceTree = "<group>"; };
 		0F638B17924132D4F9F1F324 /* SettingsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsViewModel.swift; path = iosApp/iosApp/UI/SettingsViewModel.swift; sourceTree = "<group>"; };
 		15ACB021A0EB535077F4F0FA /* HomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = iosApp/iosApp/UI/HomeView.swift; sourceTree = "<group>"; };
 		191C008F6EC4425923F30345 /* SettingsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsViewModel.swift; path = iosApp/iosApp/UI/SettingsViewModel.swift; sourceTree = "<group>"; };
@@ -89,6 +91,7 @@
 				938B9032C51C3B32C7E7CF76 /* SettingsViewModel.swift */,
 				13BEF07458054461059A0076 /* iosApp */,
 				0DCFF6B0C28D38943E8BC133 /* viewer.html */,
+				AA000002AA000002AA000002 /* materials.js */,
 				3489C231E77B7432929A5B93 /* Uguisu.glb */,
 			);
 			sourceTree = "<group>";
@@ -203,6 +206,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4912430888E05D76E48189D9 /* viewer.html in Resources */,
+				AA000001AA000001AA000001 /* materials.js in Resources */,
 				617A3D4B178645BD3678B1EC /* Uguisu.glb in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
