@@ -7,7 +7,7 @@ struct PipitApp: App {
     init() {
         #if targetEnvironment(simulator)
         // During simulator runs, start in a connected state so the disconnect overlay does not block the UI.
-        bleService.simulatorSetConnectionState(.connectedUnlocked)
+        bleService.simulatorSetConnectionState(.connected)
         #endif
     }
     

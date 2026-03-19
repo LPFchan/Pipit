@@ -271,12 +271,13 @@ window.addEventListener('resize', () => {
 
 // ── Scene / camera / controls ──────────────────────────────
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(24, window.innerWidth / window.innerHeight, 0.0001, 1000);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.0001, 1000);
+camera.position.set(-0.0000, -1.8538, -2.9860); // seed position so OrbitControls has a non-zero offset at startup
 // Orthographic camera — mirrors perspective camera; toggled by USE_ORTHO
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.0001, 1000);
 let USE_ORTHO = true;
 function syncOrthoCamera() {
-    const dist = camera.position.distanceTo(controls.target);
+    const dist = Math.max(0.001, camera.position.distanceTo(controls.target));
     const halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * dist;
     const asp   = window.innerWidth / window.innerHeight;
     orthoCamera.left   = -halfH * asp;
@@ -306,6 +307,13 @@ rimLight.position.set(0, -1, -2);
 scene.add(rimLight);
 scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
+// ── API state ─────────────────────────────────────────────
+let buttonGroup    = null;          // 'Button' group node from GLB
+let buttonRestPos  = new THREE.Vector3();
+let modelPivot     = null;          // outer wrapper for setModelTransform
+const BUTTON_TRAVEL     = 0.005515; // 0.3 mm physical travel (model 54.4 mm tall, normalised to unit cube)
+const LED_MAX_INTENSITY = 7.7;      // matches ledMat initial emissiveIntensity
+
 // ── Load GLB ──────────────────────────────────────────────
 const loader = new GLTFLoader();
 loader.load(
@@ -325,6 +333,7 @@ loader.load(
         scene.add(model);
 
         // ── Camera ──
+        USE_ORTHO = true;
         camera.fov = 60;
         camera.updateProjectionMatrix();
         camera.position.set(-0.0000, -1.8538, -2.9860);
@@ -334,6 +343,25 @@ loader.load(
 
         // ── Model rotation ──
         model.rotation.set(0.000000, 0.000000, 3.141593); // 0° 0° 180°
+
+        // ── Wrap in pivot for setModelTransform ──
+        modelPivot = new THREE.Group();
+        scene.remove(model);
+        modelPivot.add(model);
+        scene.add(modelPivot);
+
+        // ── Find button group ──
+        buttonGroup = model.getObjectByName('Button');
+        if (buttonGroup) {
+            buttonRestPos.copy(buttonGroup.position);
+        } else {
+            console.warn('[Pipit] Button group not found in GLB');
+        }
+
+        // ── Notify Swift: model is ready, APIs will now work ──
+        if (window.webkit?.messageHandlers?.modelReady) {
+            window.webkit.messageHandlers.modelReady.postMessage(null);
+        }
     },
     undefined,
     (error) => {
@@ -347,6 +375,36 @@ renderer.setAnimationLoop(() => {
     if (USE_ORTHO) syncOrthoCamera();
     renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
 });
+
+// ── Public JS API ─────────────────────────────────────────
+// Called from Swift via WKWebView.evaluateJavaScript after modelReady fires.
+
+window.setLedState = (r, g, b, active, brightness) => {
+    ledMat.emissive.setRGB(r / 255, g / 255, b / 255);
+    ledMat.color.setRGB(r / 255, g / 255, b / 255);
+    ledMat.emissiveIntensity = active ? brightness * LED_MAX_INTENSITY : 0.0;
+    ledMat.needsUpdate = true;
+};
+
+window.setButtonDepth = (depth) => {
+    if (!buttonGroup) return;
+    const travel = Math.max(0, Math.min(1, depth)) * BUTTON_TRAVEL;
+    // KiCAD button cap travels in +Z (away from PCB surface toward user)
+    // After model 180° Z-rotation the cap is on the -Z face facing the camera;
+    // pressing it moves in -Z (toward camera = INTO the enclosure visually)
+    buttonGroup.position.set(
+        buttonRestPos.x,
+        buttonRestPos.y,
+        buttonRestPos.z + travel
+    );
+};
+
+window.setModelTransform = (px, py, pz, scale, rx, ry, rz) => {
+    if (!modelPivot) return;
+    modelPivot.position.set(px, py, pz);
+    modelPivot.scale.setScalar(scale);
+    modelPivot.rotation.set(rx, ry, rz);
+};
 
 } catch(e) {
     document.body.innerHTML += '<div style="position:absolute;top:0;z-index:999;background:white;color:red;padding:10px;">Crash: ' + e.message + '</div>';

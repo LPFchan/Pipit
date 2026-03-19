@@ -23,7 +23,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 fun Fob3DView(
     onTap: () -> Unit,
     onLongPress: () -> Unit,
-    isUnlocked: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
@@ -54,8 +53,8 @@ fun Fob3DView(
             }
     ) {
         FobViewer(
-            ledColor = if (isUnlocked) Color.Green else Color.Blue, // Adjust colors as desired
-            isActive = true, // Set depending on connection or animation needs
+            ledColor = Color.Green,
+            isActive = true, // Always active — vehicle in range
             ledBrightness = 1.0f,
             buttonDepth = depressTarget,
             // Slight model rotation to show best angle by default

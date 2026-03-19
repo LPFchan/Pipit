@@ -13,8 +13,6 @@
 		0B0EFB064183963EECD196A0 /* DisconnectOverlaySwiftUIView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09132914ACF970D6CD2BAF35 /* DisconnectOverlaySwiftUIView.swift */; };
 		108E3B3EF6B40A33BCB5AA40 /* PipitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32FD3699F89E455D1702042B /* PipitApp.swift */; };
 		1B01D085685AE81CCAE9F675 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDE64444413036E71036E2F /* OnboardingView.swift */; };
-		1D6058A40D05DD3D006BFB54 /* FobPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FobPlaceholderView.swift /* FobPlaceholderView.swift */; };
-		1D6058A60D05DD3D006BFB54 /* FobRealityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FobRealityView.swift /* FobRealityView.swift */; };
 		1D6058A70D05DD3D006BFB54 /* IosBleProximityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = IosBleProximityService.swift /* IosBleProximityService.swift */; };
 		24F137BEB7C0C3BC6E6024BA /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFC81CD531991F87389F5AF2 /* RootView.swift */; };
 		334B126D0019CFDF3242F1C4 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F638B17924132D4F9F1F324 /* SettingsViewModel.swift */; };
@@ -54,8 +52,6 @@
 		DDDE64444413036E71036E2F /* OnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = iosApp/iosApp/UI/OnboardingView.swift; sourceTree = "<group>"; };
 		DFC81CD531991F87389F5AF2 /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RootView.swift; path = iosApp/iosApp/RootView.swift; sourceTree = "<group>"; };
 		E327DC64CD9FAA9B49CBD0D0 /* SettingsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsViewModel.swift; path = iosApp/iosApp/UI/SettingsViewModel.swift; sourceTree = "<group>"; };
-		FobPlaceholderView.swift /* FobPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FobPlaceholderView.swift; path = iosApp/iosApp/UI/FobPlaceholderView.swift; sourceTree = "<group>"; };
-		FobRealityView.swift /* FobRealityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FobRealityView.swift; path = iosApp/iosApp/UI/FobRealityView.swift; sourceTree = "<group>"; };
 		Info_plist /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = iosApp/iosApp/Info.plist; sourceTree = "<group>"; };
 		IosBleProximityService.swift /* IosBleProximityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IosBleProximityService.swift; path = iosApp/iosApp/BLE/IosBleProximityService.swift; sourceTree = "<group>"; };
 		Resources /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Resources; path = iosApp/iosApp/Resources; sourceTree = "<group>"; };
@@ -131,9 +127,7 @@
 		};
 		A1C1A9010D05DD3D006BFB54 /* Sources */ = {
 			isa = PBXGroup;
-			children = (
-				FobPlaceholderView.swift /* FobPlaceholderView.swift */,
-				FobRealityView.swift /* FobRealityView.swift */,
+				children = (
 				IosBleProximityService.swift /* IosBleProximityService.swift */,
 			);
 			name = Sources;
@@ -242,8 +236,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1D6058A40D05DD3D006BFB54 /* FobPlaceholderView.swift in Sources */,
-				1D6058A60D05DD3D006BFB54 /* FobRealityView.swift in Sources */,
 				1D6058A70D05DD3D006BFB54 /* IosBleProximityService.swift in Sources */,
 				0B0EFB064183963EECD196A0 /* DisconnectOverlaySwiftUIView.swift in Sources */,
 				058637AE5E8D8958E83182AC /* HomeView.swift in Sources */,

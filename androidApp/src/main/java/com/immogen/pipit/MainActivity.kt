@@ -53,7 +53,7 @@ class MainActivity : ComponentActivity() {
         // If running a debug build, provide a mocked connected BLE state so the UI can be previewed
         if (BuildConfig.DEBUG) {
             _bleStateFallback.value = com.immogen.pipit.ble.BleState(
-                connectionState = com.immogen.pipit.ble.ConnectionState.CONNECTED_UNLOCKED
+                connectionState = com.immogen.pipit.ble.ConnectionState.CONNECTED
             )
         }
         setContent {

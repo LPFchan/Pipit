@@ -66,7 +66,6 @@ class AndroidBleProximityService : Service() {
     private val RSSI_HISTORY_SIZE = 5
 
     // Cached state to prevent rapid reconnects
-    private var lastKnownState: ConnectionState = ConnectionState.DISCONNECTED
     private var isGattConnecting = false
     private var lastStandardDevice: BluetoothDevice? = null
     private var lastWindowOpenDevice: BluetoothDevice? = null
@@ -177,14 +176,12 @@ class AndroidBleProximityService : Service() {
                 val avgRssi = currentRssiHistory.average().toInt()
                 
                 if (uuids.contains(ParcelUuid(UUID.fromString(ImmogenBleConfig.SERVICE_PROXIMITY_LOCKED)))) {
-                    lastKnownState = ConnectionState.CONNECTED_LOCKED
                     // Approach scenario
                     if (avgRssi >= appSettings.unlockRssi && !isGattConnecting && !bleManagementTransport.isActive()) {
                         Log.d(TAG, "Unlock threshold met ($avgRssi >= ${appSettings.unlockRssi}), connecting...")
                         connectGatt(device, true)
                     }
                 } else if (uuids.contains(ParcelUuid(UUID.fromString(ImmogenBleConfig.SERVICE_PROXIMITY_UNLOCKED)))) {
-                    lastKnownState = ConnectionState.CONNECTED_UNLOCKED
                     // Walk-away scenario
                     if (avgRssi <= appSettings.lockRssi && !isGattConnecting && !bleManagementTransport.isActive()) {
                         Log.d(TAG, "Lock threshold met ($avgRssi <= ${appSettings.lockRssi}), connecting...")
@@ -238,7 +235,7 @@ class AndroidBleProximityService : Service() {
                         sendPayload(gatt, isUnlock)
                     } else {
                         // Just connected for management (Window open)
-                        bleStateService.updateConnectionState(lastKnownState)
+                        bleStateService.updateConnectionState(ConnectionState.CONNECTED)
                     }
                 }
             }

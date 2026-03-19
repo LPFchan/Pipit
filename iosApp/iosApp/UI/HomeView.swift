@@ -10,7 +10,6 @@ struct HomeView: View {
             Color.clear.edgesIgnoringSafeArea(.all)
 
             FobInteractiveViewer(
-                isUnlocked: bleService.connectionState == .connectedUnlocked,
                 onTap: {
                     interactedThisSession = true
                     Task { await bleService.sendUnlockCommand() }

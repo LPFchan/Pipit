@@ -11,8 +11,7 @@ import shared
     case disconnected = 0
     case scanning
     case connecting
-    case connectedLocked
-    case connectedUnlocked
+    case connected
 }
 
 public enum BleManagementConnectMode: Equatable {
@@ -188,7 +187,6 @@ public enum IosBleProximityServiceError: LocalizedError {
     private var managementPeripheral: CBPeripheral?
     private var lastStandardPeripheral: CBPeripheral?
     private var lastWindowOpenPeripheral: CBPeripheral?
-    private var lastAdvertisedConnectionState: ConnectionState = .disconnected
 
     private var proximityService: CBService?
     private var unlockLockCharacteristic: CBCharacteristic?
@@ -416,11 +414,11 @@ public enum IosBleProximityServiceError: LocalizedError {
     }
 
     @MainActor public func sendUnlockCommand() async {
-        await performSharedProximityCommand(command: .unlock, targetState: .connectedUnlocked)
+        await performSharedProximityCommand(command: .unlock)
     }
 
     @MainActor public func sendLockCommand() async {
-        await performSharedProximityCommand(command: .lock, targetState: .connectedLocked)
+        await performSharedProximityCommand(command: .lock)
     }
 
     public func requestAlwaysLocationAuthorization() {
@@ -563,7 +561,6 @@ public enum IosBleProximityServiceError: LocalizedError {
             Task { @MainActor [weak self] in
                 await self?.performSharedProximityCommand(
                     command: .unlock,
-                    targetState: .connectedUnlocked,
                     preferredPeripheral: peripheral,
                     pendingAlreadySet: true
                 )
@@ -573,7 +570,6 @@ public enum IosBleProximityServiceError: LocalizedError {
             Task { @MainActor [weak self] in
                 await self?.performSharedProximityCommand(
                     command: .lock,
-                    targetState: .connectedLocked,
                     preferredPeripheral: peripheral,
                     pendingAlreadySet: true
                 )
@@ -1061,7 +1057,6 @@ public enum IosBleProximityServiceError: LocalizedError {
     @MainActor
     private func performSharedProximityCommand(
         command: ImmoCrypto.Command,
-        targetState: ConnectionState,
         preferredPeripheral: CBPeripheral? = nil,
         pendingAlreadySet: Bool = false
     ) async {
@@ -1084,7 +1079,7 @@ public enum IosBleProximityServiceError: LocalizedError {
                connectedPeripheral.state == .connected {
                 try await writeValue(payload, to: unlockCharacteristic, on: connectedPeripheral)
                 persistSharedPayloadCounter(preparedPayload)
-                connectionState = targetState
+                connectionState = .connected
                 return
             }
 
@@ -1103,7 +1098,7 @@ public enum IosBleProximityServiceError: LocalizedError {
                 disconnectCurrentPeripheral(expectReconnect: true)
             }
 
-            activeOperation = .proximityCommand(targetState)
+            activeOperation = .proximityCommand
             connectionState = .connecting
 
             try await withTimeout(seconds: Self.connectTimeout, error: IosBleProximityServiceError.connectTimedOut) {
@@ -1121,13 +1116,13 @@ public enum IosBleProximityServiceError: LocalizedError {
             }
 
             guard let unlockLockCharacteristic, let connectedPeripheral else {
-                connectionState = targetState
+                connectionState = .connected
                 return
             }
 
             try await writeValue(payload, to: unlockLockCharacteristic, on: connectedPeripheral)
             persistSharedPayloadCounter(preparedPayload)
-            connectionState = targetState
+            connectionState = .connected
             disconnectCurrentPeripheral(expectReconnect: false)
         } catch {
             connectionState = passiveScanMode == .none ? .disconnected : .scanning
@@ -1177,7 +1172,7 @@ public enum IosBleProximityServiceError: LocalizedError {
 
     private enum ActivePeripheralOperation {
         case management(BleManagementConnectMode)
-        case proximityCommand(ConnectionState)
+        case proximityCommand
     }
 }
 
@@ -1261,17 +1256,8 @@ extension IosBleProximityService: CBCentralManagerDelegate {
             isWindowOpen = true
         }
 
-        if uuidSet.contains(Self.serviceLocked) {
+        if uuidSet.contains(Self.serviceLocked) || uuidSet.contains(Self.serviceUnlocked) {
             lastStandardPeripheral = peripheral
-            lastAdvertisedConnectionState = .connectedLocked
-            if passiveScanMode != .windowOpen {
-                isWindowOpen = false
-            }
-        }
-
-        if uuidSet.contains(Self.serviceUnlocked) {
-            lastStandardPeripheral = peripheral
-            lastAdvertisedConnectionState = .connectedUnlocked
             if passiveScanMode != .windowOpen {
                 isWindowOpen = false
             }
@@ -1433,7 +1419,7 @@ extension IosBleProximityService: CBPeripheralDelegate {
             peripheral: peripheral,
             lastError: nil
         )
-        connectionState = lastAdvertisedConnectionState == .disconnected ? connectionState : lastAdvertisedConnectionState
+        connectionState = .connected
         completePendingConnectionReady()
     }
 
@@ -1674,6 +1660,7 @@ extension IosBleProximityService: CBPeripheralDelegate {
     /// Simulator-only helper: directly override the connection state for UI testing.
     public func simulatorSetConnectionState(_ state: ConnectionState) {
         connectionState = state
+
     }
     #endif
 }

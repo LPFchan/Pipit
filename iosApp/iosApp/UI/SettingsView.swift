@@ -288,8 +288,7 @@ struct SettingsView: View {
             footer: "Simulator-only. Overrides BLE connection state for UI testing."
         ) {
             VStack(spacing: 12) {
-                let isConnected = bleService.connectionState == .connectedUnlocked
-                    || bleService.connectionState == .connectedLocked
+                let isConnected = bleService.connectionState == .connected
 
                 secondaryActionButton(
                     title: isConnected ? "Simulate Disconnect" : "Simulate Connected",
@@ -301,21 +300,8 @@ struct SettingsView: View {
                         bleService.simulatorSetConnectionState(.disconnected)
                         UserDefaults.standard.set(false, forKey: "DEV_BYPASS_OVERLAY")
                     } else {
-                        bleService.simulatorSetConnectionState(.connectedUnlocked)
+                        bleService.simulatorSetConnectionState(.connected)
                         UserDefaults.standard.set(true, forKey: "DEV_BYPASS_OVERLAY")
-                    }
-                }
-
-                if isConnected {
-                    secondaryActionButton(
-                        title: bleService.connectionState == .connectedUnlocked ? "Switch to Locked" : "Switch to Unlocked",
-                        systemImage: bleService.connectionState == .connectedUnlocked ? "lock.fill" : "lock.open.fill",
-                        tint: Color.yellow.opacity(0.7),
-                        foreground: .black
-                    ) {
-                        bleService.simulatorSetConnectionState(
-                            bleService.connectionState == .connectedUnlocked ? .connectedLocked : .connectedUnlocked
-                        )
                     }
                 }
 

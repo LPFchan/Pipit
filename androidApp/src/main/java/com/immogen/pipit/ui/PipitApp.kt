@@ -201,7 +201,6 @@ private fun HomeScreen(
         Fob3DView(
             onTap = onTapFob,
             onLongPress = onLongPressFob,
-            isUnlocked = bleState.connectionState == ConnectionState.CONNECTED_UNLOCKED,
             modifier = Modifier
                 .weight(2f)
                 .fillMaxWidth()

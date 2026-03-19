@@ -132,7 +132,7 @@ struct DisconnectOverlayModifier: ViewModifier {
         #endif
         
         switch connectionState {
-        case .connectedLocked, .connectedUnlocked:
+        case .connected:
             return false
         default:
             return true

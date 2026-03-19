@@ -8,8 +8,7 @@ enum class ConnectionState {
     DISCONNECTED,
     SCANNING,
     CONNECTING,
-    CONNECTED_LOCKED,
-    CONNECTED_UNLOCKED
+    CONNECTED
 }
 
 data class BleState(

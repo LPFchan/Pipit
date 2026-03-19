@@ -4,50 +4,53 @@ import WebKit
 // MARK: – FobViewer
 
 /// Embedded Three.js fob viewer backed by WKWebView.
-///
-/// **Bundle requirement** — `viewer.html` must be present in the app bundle.
-/// It is already at `iosApp/iosApp/Resources/viewer.html`; make sure Xcode
-/// includes the Resources folder in the "Copy Bundle Resources" build phase
-/// (it should be if Resources is already a folder reference in the project).
-///
-/// **Three.js / CDN** — The viewer loads Three.js from CDN at runtime.
-/// This works because `loadHTMLString(_:baseURL:)` is called with a CDN base
-/// URL, which lets the importmap ES-module imports resolve over HTTPS.
-///
-/// For fully-offline / production use, bundle Three.js locally and switch to
-/// `loadFileURL(_:allowingReadAccessTo:)` — see the inline TODO below.
 struct FobViewer: UIViewRepresentable {
 
     // ── LED ────────────────────────────────────────────────────
-    /// Colour of the LED die.
     var ledColor: Color
-    /// Whether the LED is lit at all.
     var isActive: Bool
-    /// Perceived brightness, 0.0 (dim) → 1.0 (full). Default: 1.
     var ledBrightness: Double = 1.0
 
     // ── Button actuation ───────────────────────────────────────
-    /// Physical press depth: 0.0 = resting, 1.0 = fully depressed.
     var buttonDepth: Double = 0.0
 
     // ── Model transform ────────────────────────────────────────
-    /// Position offset from centre (metres). Default: (0, 0, 0).
     var modelPosition: SIMD3<Float> = .zero
-    /// Uniform scale multiplier. Default: 1 (no change).
     var modelScale: Float = 1.0
-    /// Euler rotation angles in radians, XYZ order. Default: (0, 0, 0).
     var modelRotation: SIMD3<Float> = .zero
+
+    // MARK: Coordinator
+
+    /// Holds the latest FobViewer value and listens for the JS `modelReady`
+    /// message so it can push the initial LED / button state after the GLB loads.
+    class Coordinator: NSObject, WKScriptMessageHandler {
+        var parent: FobViewer
+        weak var webView: WKWebView?
+
+        init(_ parent: FobViewer) { self.parent = parent }
+
+        func userContentController(
+            _ userContentController: WKUserContentController,
+            didReceive message: WKScriptMessage
+        ) {
+            guard message.name == "modelReady", let wv = webView else { return }
+            parent.applyState(to: wv)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     // MARK: UIViewRepresentable
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        // Custom scheme handler so GLTFLoader's fetch() can reach bundle resources.
-        // WKWebView blocks file:// sub-resource fetches even with loadFileURL(allowingReadAccessTo:).
         config.setURLSchemeHandler(LocalSchemeHandler(), forURLScheme: "local")
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         config.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
+        // Use a weak proxy so WKUserContentController doesn't retain Coordinator forever.
+        config.userContentController.add(
+            WeakScriptHandler(context.coordinator), name: "modelReady")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.isOpaque                   = false
@@ -58,33 +61,42 @@ struct FobViewer: UIViewRepresentable {
         webView.scrollView.bounces         = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
 
+        context.coordinator.webView = webView
         loadViewer(in: webView)
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        // Keep coordinator up-to-date so modelReady replay uses current values.
+        context.coordinator.parent = self
+        applyState(to: webView)
+    }
+
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.configuration.userContentController
+            .removeScriptMessageHandler(forName: "modelReady")
+    }
+
+    // MARK: – Apply state
+
+    /// Pushes the current LED, button-depth, and model-transform into the WebView.
+    /// Safe to call before the page has loaded — the JS guards with `if (window.setX)`.
+    /// The meaningful call happens via Coordinator.userContentController after `modelReady`.
+    func applyState(to webView: WKWebView) {
         let (r, g, b) = ledColor.rgbComponents
         let active    = isActive ? "true" : "false"
 
-        // LED colour + active + brightness
         webView.evaluateJavaScript(
             "if (window.setLedState) window.setLedState(\(r), \(g), \(b), \(active), \(ledBrightness));",
-            completionHandler: nil
-        )
-
-        // Button actuation depth
+            completionHandler: nil)
         webView.evaluateJavaScript(
             "if (window.setButtonDepth) window.setButtonDepth(\(buttonDepth));",
-            completionHandler: nil
-        )
-
-        // Model transform
+            completionHandler: nil)
         let p = modelPosition
         let rot = modelRotation
         webView.evaluateJavaScript(
             "if (window.setModelTransform) window.setModelTransform(\(p.x), \(p.y), \(p.z), \(modelScale), \(rot.x), \(rot.y), \(rot.z));",
-            completionHandler: nil
-        )
+            completionHandler: nil)
     }
 
     // MARK: – Private helpers
@@ -94,18 +106,25 @@ struct FobViewer: UIViewRepresentable {
             assertionFailure(
                 "[FobViewer] viewer.html not found in bundle. " +
                 "Add iosApp/iosApp/Resources/viewer.html to Xcode's " +
-                "Copy Bundle Resources build phase."
-            )
+                "Copy Bundle Resources build phase.")
             return
         }
-
-        // Load from the bundle file system so that relative paths (GLB, textures)
-        // resolve against the Resources/ directory.
-        // allowingReadAccessTo grants the WebView read access to the whole
-        // Resources/ folder — Three.js CDN imports still work because WKWebView
-        // can make outbound HTTPS requests even from a file:// origin.
         let resourceDir = url.deletingLastPathComponent()
         webView.loadFileURL(url, allowingReadAccessTo: resourceDir)
+    }
+}
+
+// MARK: – Weak script-handler proxy
+
+/// Breaks the WKUserContentController → Coordinator retain cycle.
+private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
+    private weak var target: FobViewer.Coordinator?
+    init(_ target: FobViewer.Coordinator) { self.target = target }
+    func userContentController(
+        _ uc: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        target?.userContentController(uc, didReceive: message)
     }
 }
 
@@ -125,7 +144,6 @@ private extension Color {
 /// A SwiftUI wrapper around FobViewer that adds tap and long-press gestures
 /// and animates the button depression.
 struct FobInteractiveViewer: View {
-    var isUnlocked: Bool
     var onTap: () -> Void
     var onLongPress: () -> Void
 
@@ -133,13 +151,13 @@ struct FobInteractiveViewer: View {
 
     var body: some View {
         FobViewer(
-            ledColor: isUnlocked ? .green : .blue,
+            ledColor: .green,
             isActive: true,
             ledBrightness: 1.0,
             buttonDepth: isPressed ? 1.0 : 0.0,
             modelPosition: .zero,
             modelScale: 1.0,
-            modelRotation: SIMD3<Float>(0, -0.4, 0)
+            modelRotation: .zero
         )
         // A transparent overlay to capture touch events over the WebView
         .overlay(
