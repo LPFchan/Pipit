@@ -7,7 +7,18 @@
     * { margin: 0; padding: 0; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
     canvas { display: block; }
+    #status { position: absolute; top: 80px; left: 10px; color: white; z-index: 999; font-size: 11px; pointer-events: none; }
   </style>
+
+  <script>
+    window.onerror = function(msg, url, line, col, error) {
+      document.body.innerHTML += '<div style="position:absolute;top:0;z-index:999;background:rgba(200,0,0,.85);color:white;padding:8px;font-size:11px;">Err: ' + msg + '</div>';
+      return false;
+    };
+    window.addEventListener("unhandledrejection", function(e) {
+      document.body.innerHTML += '<div style="position:absolute;top:36px;z-index:999;background:rgba(100,0,120,.85);color:white;padding:8px;font-size:11px;">Promise: ' + (e.reason ? e.reason.message : "?") + '</div>';
+    });
+  </script>
 
   <script type="importmap">
   {
@@ -19,263 +30,38 @@
   </script>
 </head>
 <body>
+<div id="status">Loading...</div>
+
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MATERIAL_RULES, LED_MAX_INTENSITY } from './materials.js';
 
-try {
+const statusEl = document.getElementById('status');
+statusEl.innerText = 'Initializing...';
 
-// ── Material definitions ───────────────────────────────────
-const ledCapMat = new THREE.MeshPhysicalMaterial({
-    color:                 0xffffff,
-    roughness:             0.6,
-    transmission:          0.8,
-    thickness:             0.001,
-    opacity:               0.88,
-    transparent:           true,
-    toneMapped:            false,
-});
-
-const housingMat = new THREE.MeshPhysicalMaterial({
-    color:                 0xffffff,
-    roughness:             0.51,
-    thickness:             0.009,
-    ior:                   1.49,
-    transparent:           true,
-    side:                  THREE.DoubleSide,
-    polygonOffset:         true,
-    polygonOffsetFactor:   -2.0,
-    polygonOffsetUnits:    -2.0,
-});
-
-const metalMat = new THREE.MeshPhysicalMaterial({
-    color:                 0xb8a870,
-    roughness:             0.22,
-    metalness:             0.92,
-    polygonOffset:         true,
-    polygonOffsetFactor:   -2.0,
-    polygonOffsetUnits:    -2.0,
-});
-
-const buttonMat = new THREE.MeshPhysicalMaterial({
-    color:                 0xffffff,
-    roughness:             0.29,
-    metalness:             0.04,
-    transmission:          0.76,
-    transparent:           true,
-    polygonOffset:         true,
-    polygonOffsetFactor:   -2.0,
-    polygonOffsetUnits:    -2.0,
-});
-
-const rubberMat = new THREE.MeshPhysicalMaterial({
-    color:                 0x101010,
-    roughness:             0.96,
-    polygonOffset:         true,
-    polygonOffsetFactor:   -2.0,
-    polygonOffsetUnits:    -2.0,
-});
-
-const ledMat = new THREE.MeshPhysicalMaterial({
-    color:                 0x00ff45,
-    emissive:              0x00ff45,
-    emissiveIntensity:     7.7,
-    roughness:             0.1,
-    toneMapped:            false,
-    polygonOffset:         true,
-    polygonOffsetFactor:   -2.0,
-    polygonOffsetUnits:    -2.0,
-});
-
-const pcbMat = new THREE.MeshPhysicalMaterial({
-    color:                 0xbfbfbf,
-    roughness:             0.88,
-    metalness:             0.08,
-    polygonOffset:         true,
-    polygonOffsetFactor:   -2.0,
-    polygonOffsetUnits:    -2.0,
-});
-
-// ── MATERIAL_RULES ─────────────────────────────────────────
-const MATERIAL_RULES = [
-    { match: 'Battery',                      mat: ledCapMat },
-    { match: 'Uguisu_via',                   mat: housingMat },
-    { match: 'Uguisu_pad',                   mat: metalMat },
-    { match: 'Uguisu_pad_1',                 mat: metalMat },
-    { match: 'Uguisu_pad_2',                 mat: metalMat },
-    { match: 'Lid',                          mat: buttonMat },
-    { match: 'Uguisu_via_1',                 mat: housingMat },
-    { match: 'Uguisu_pad_3',                 mat: metalMat },
-    { match: 'Body',                         mat: rubberMat },
-    { match: 'KEY-SMD_4P-L52-W52-H15-LS64-P370', mat: housingMat },
-    { match: 'COMPOUND',                     mat: housingMat },
-    { match: 'LED',                          mat: ledMat },
-    { match: 'Uguisu_via_2',                 mat: housingMat },
-    { match: 'Uguisu_pad_4',                 mat: metalMat },
-    { match: 'Uguisu_pad_5',                 mat: metalMat },
-    { match: 'Uguisu_pad_6',                 mat: metalMat },
-    { match: 'COMPOUND_1',                   mat: housingMat },
-    { match: 'CAP_1',                        mat: rubberMat },
-    { match: 'Body_1',                       mat: housingMat },
-    { match: 'ANT1',                         mat: housingMat },
-    { match: 'CHAMFER9',                     mat: metalMat },
-    { match: 'Uguisu_pad_7',                 mat: metalMat },
-    { match: 'COMPOUND_2',                   mat: housingMat },
-    { match: 'Uguisu_PCB',                   mat: pcbMat },
-    { match: 'Button',                       mat: buttonMat },
-    { match: 'Pins',                         mat: metalMat },
-    { match: 'KEY-SMD_4P-L52-W52-H15-LS64-P370_1', mat: housingMat },
-    { match: 'COMPOUND_3',                   mat: housingMat },
-    { match: 'LED_1',                        mat: ledMat },
-    { match: 'Uguisu_via_3',                 mat: housingMat },
-    { match: 'Uguisu_pad_8',                 mat: metalMat },
-    { match: 'Uguisu_pad_9',                 mat: metalMat },
-    { match: 'Uguisu_pad_10',                mat: metalMat },
-    { match: 'COMPOUND_4',                   mat: housingMat },
-    { match: 'COMPOUND_5',                   mat: housingMat },
-    { match: 'CAP_1_1',                      mat: rubberMat },
-    { match: 'ANT1_1',                       mat: housingMat },
-    { match: 'BOSS-EXTRUDE14_1_',            mat: housingMat },
-    { match: 'Uguisu_pad_11',                mat: metalMat },
-    { match: 'Uguisu_pad_12',                mat: metalMat },
-    { match: 'COMPOUND_6',                   mat: housingMat },
-    { match: 'COMPOUND_7',                   mat: housingMat },
-    { match: 'Uguisu_via_4',                 mat: housingMat },
-    { match: 'Uguisu_via_5',                 mat: housingMat },
-    { match: 'Uguisu_pad_13',                mat: metalMat },
-    { match: 'Uguisu_pad_14',                mat: metalMat },
-    { match: 'CUT-EXTRUDE5',                 mat: rubberMat },
-    { match: 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08', mat: pcbMat },
-    { match: 'COMPOUND_8',                   mat: housingMat },
-    { match: 'CAP_3',                        mat: rubberMat },
-    { match: 'Uguisu_via_6',                 mat: housingMat },
-    { match: 'Uguisu_pad_15',                mat: metalMat },
-    { match: 'Uguisu_pad_16',                mat: metalMat },
-    { match: 'Uguisu_pad_17',                mat: metalMat },
-    { match: 'COMPOUND_9',                   mat: housingMat },
-    { match: 'BOSS-EXTRUDE7_9_',             mat: housingMat },
-    { match: 'Uguisu_pad_18',                mat: metalMat },
-    { match: 'COMPOUND_10',                  mat: housingMat },
-    { match: 'Uguisu_via_7',                 mat: housingMat },
-    { match: 'Uguisu_pad_19',                mat: metalMat },
-    { match: 'BOSS-EXTRUDE14_10_',           mat: housingMat },
-    { match: 'Pins_1',                       mat: metalMat },
-    { match: 'BOSS-EXTRUDE7_8_',             mat: housingMat },
-    { match: 'KEY-SMD_4P-L52-W52-H15-LS64-P370_2', mat: housingMat },
-    { match: 'COMPOUND_11',                  mat: housingMat },
-    { match: 'USR',                          mat: rubberMat },
-    { match: 'BOSS-EXTRUDE7_1_',             mat: housingMat },
-    { match: 'Uguisu_pad_20',                mat: metalMat },
-    { match: 'Uguisu_pad_21',                mat: metalMat },
-    { match: 'Uguisu_pad_22',                mat: metalMat },
-    { match: 'BOSS-EXTRUDE7_5_',             mat: housingMat },
-    { match: 'BOSS-EXTRUDE14_8_',            mat: housingMat },
-    { match: 'BOSS-EXTRUDE7_4_',             mat: housingMat },
-    { match: 'BOSS-EXTRUDE7_3_',             mat: housingMat },
-    { match: 'BOSS-EXTRUDE14_4_',            mat: housingMat },
-    { match: 'BOSS-EXTRUDE14_2_',            mat: housingMat },
-    { match: 'COMPOUND_12',                  mat: housingMat },
-    { match: 'COMPOUND_13',                  mat: housingMat },
-    { match: 'CAP_3_1',                      mat: rubberMat },
-    { match: 'Pins_2',                       mat: metalMat },
-    { match: 'BOSS-EXTRUDE7_6_',             mat: housingMat },
-    { match: 'BOSS-EXTRUDE14_11_',           mat: housingMat },
-    { match: 'Uguisu_pad_23',                mat: metalMat },
-    { match: 'Uguisu_pad_24',                mat: metalMat },
-    { match: 'KEY-SMD_4P-L52-W52-H15-LS64-P370_3', mat: metalMat },
-    { match: 'COMPOUND_14',                  mat: housingMat },
-    { match: 'R_0603_1608Metric',            mat: rubberMat },
-    { match: 'Uguisu_pad_25',                mat: metalMat },
-    { match: 'Uguisu_via_8',                 mat: housingMat },
-    { match: 'Uguisu_pad_26',                mat: metalMat },
-    { match: 'Uguisu_pad_27',                mat: metalMat },
-    { match: 'BOSS-EXTRUDE7_7_',             mat: housingMat },
-    { match: 'BOSS-EXTRUDE14_9_',            mat: housingMat },
-    { match: 'BOSS-EXTRUDE14_3_',            mat: housingMat },
-    { match: 'BOSS-EXTRUDE14_7_',            mat: housingMat },
-    { match: 'MIRROR2',                      mat: metalMat },
-    { match: 'BOSS-EXTRUDE14_5_',            mat: housingMat },
-    { match: 'BOSS-EXTRUDE14_12_',           mat: housingMat },
-    { match: 'COMPOUND_15',                  mat: housingMat },
-    { match: 'LED_2',                        mat: ledMat },
-    { match: 'Uguisu_via_9',                 mat: housingMat },
-    { match: 'Uguisu_pad_28',                mat: metalMat },
-    { match: 'Uguisu_pad_29',                mat: metalMat },
-    { match: 'Uguisu_pad_30',                mat: metalMat },
-    { match: 'Uguisu_pad_31',                mat: metalMat },
-    { match: 'COMPOUND_16',                  mat: housingMat },
-    { match: 'Uguisu_via_10',                mat: housingMat },
-    { match: 'Uguisu_pad_32',                mat: metalMat },
-    { match: 'Pins_3',                       mat: metalMat },
-    { match: 'KEY-SMD_4P-L52-W52-H15-LS64-P370_4', mat: metalMat },
-    { match: 'COMPOUND_17',                  mat: rubberMat },
-    { match: 'COMPOUND_18',                  mat: housingMat },
-    { match: 'Uguisu_pad_33',                mat: metalMat },
-    { match: 'Uguisu_pad_34',                mat: metalMat },
-    { match: 'Uguisu_pad_35',                mat: metalMat },
-    { match: 'Shield',                       mat: metalMat },
-    { match: 'COMPOUND_19',                  mat: housingMat },
-    { match: 'LED_3',                        mat: ledMat },
-    { match: 'COMPOUND_20',                  mat: housingMat },
-    { match: 'COMPOUND_21',                  mat: housingMat },
-    { match: 'CAP_3_2',                      mat: rubberMat },
-    { match: 'CAP',                          mat: rubberMat },
-    { match: 'BOSS-EXTRUDE7_2_',             mat: housingMat },
-    { match: 'Uguisu_pad_36',                mat: metalMat },
-    { match: 'Uguisu_pad_37',                mat: metalMat },
-    { match: 'Uguisu_pad_38',                mat: metalMat },
-    { match: 'KEY-SMD_4P-L52-W52-H15-LS64-P370_5', mat: housingMat },
-    { match: 'COMPOUND_22',                  mat: housingMat },
-    { match: 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08_1', mat: ledMat },
-    { match: 'Uguisu_pad_39',                mat: metalMat },
-    { match: 'Uguisu_via_11',                mat: housingMat },
-    { match: 'Uguisu_pad_40',                mat: metalMat },
-    { match: 'Uguisu_pad_41',                mat: metalMat },
-    { match: 'COMPOUND_23',                  mat: housingMat },
-    { match: 'ANT1_2',                       mat: rubberMat },
-    { match: 'BOSS-EXTRUDE14_6_',            mat: housingMat },
-    // Catch-all (must be last)
-    { match: /.*/, mat: housingMat },
-];
-
-function applyMaterials(model) {
-    model.traverse(child => {
-        if (!child.isMesh) return;
-        // Try parent group name first (Layout A: named parent), then mesh name (Layout B: flat)
-        const candidates = [child.parent?.name, child.name].filter(Boolean);
-        for (const name of candidates) {
-            const rule = MATERIAL_RULES.find(r =>
-                r.match instanceof RegExp ? r.match.test(name) : r.match === name
-            );
-            if (rule) { child.material = rule.mat; return; }
-        }
-    });
-}
-
-// ── Renderer ───────────────────────────────────────────────
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+// ─── Renderer ────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
-renderer.setClearColor(0x000000, 0);
+renderer.setClearColor(0xffffff, 1);
 document.body.appendChild(renderer.domElement);
 
-window.addEventListener('resize', () => {
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    if (USE_ORTHO) syncOrthoCamera();
-});
-
-// ── Scene / camera / controls ──────────────────────────────
+// ─── Scene / Camera ──────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
+
+// Seed camera at final position so OrbitControls has a non-zero spherical
+// offset from frame 1 (prevents a degenerate ortho frustum at startup).
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.0001, 1000);
-camera.position.set(-0.0000, -1.8538, -2.9860); // seed position so OrbitControls has a non-zero offset at startup
-// Orthographic camera — mirrors perspective camera; toggled by USE_ORTHO
+camera.position.set(-0.0000, -1.8538, -2.9860);
+
+// Orthographic camera — mirrors perspective camera; toggled by USE_ORTHO.
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.0001, 1000);
 let USE_ORTHO = true;
+
 function syncOrthoCamera() {
     const dist = Math.max(0.001, camera.position.distanceTo(controls.target));
     const halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * dist;
@@ -295,7 +81,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
 
-// ── Lighting (matches material-mapper) ────────────────────
+// ─── Lights ──────────────────────────────────────────────────────────────────
 const keyLight = new THREE.DirectionalLight(0xfff4e0, 2.8);
 keyLight.position.set(1.5, 2.5, 2);
 scene.add(keyLight);
@@ -307,98 +93,348 @@ rimLight.position.set(0, -1, -2);
 scene.add(rimLight);
 scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
-// ── API state ─────────────────────────────────────────────
-let buttonGroup    = null;          // 'Button' group node from GLB
-let buttonRestPos  = new THREE.Vector3();
-let modelPivot     = null;          // outer wrapper for setModelTransform
-const BUTTON_TRAVEL     = 0.005515; // 0.3 mm physical travel (model 54.4 mm tall, normalised to unit cube)
-const LED_MAX_INTENSITY = 7.7;      // matches ledMat initial emissiveIntensity
+// ─── Placeholder cube (removed once GLB loads) ───────────────────────────────
+const cubeGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+const cubeMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const cube    = new THREE.Mesh(cubeGeo, cubeMat);
+scene.add(cube);
+statusEl.innerText = 'WebGL ready, loading model...';
 
-// ── Load GLB ──────────────────────────────────────────────
+// ─── API state ────────────────────────────────────────────────────────────────
+let modelPivot      = null;   // Wrapper Group — setModelTransform acts on this
+let rootModel       = null;   // The raw GLTF scene (centred + scaled inside modelPivot)
+let ledMeshes       = [];     // Mesh objects whose material carries an emissive component
+let buttonObject    = null;   // Object3D for the physical button cap (KEY1)
+let buttonRestPos   = new THREE.Vector3();
+// Button travel axis in rootModel local space.
+// KiCAD +Z points up (out of PCB surface toward user); pressing the cap moves in +Z.
+// After the 180° Z-rotation applied to rootModel, +Z local still maps to +Z world
+// (Z-rotation preserves the Z axis), which is "away from camera" = into the device. ✓
+let buttonPressAxis = new THREE.Vector3(0, 0, 1);
+
+
+// Button physical travel calibrated from GLB bounding box:
+//   model longest dim (Y) = 54.4 mm (raw GLB metres), normalised to unit cube.
+//   0.3 mm physical travel → 0.3 / 54.4 = 0.005515 normalised units.
+const BUTTON_TRAVEL = 0.005515;
+
+
+// ─── GLB loader ──────────────────────────────────────────────────────────────
 const loader = new GLTFLoader();
 loader.load(
     'local://app/Uguisu.glb',
     (gltf) => {
-        const model = gltf.scene;
+        scene.remove(cube);
+        rootModel = gltf.scene;
 
-        // Normalise to unit cube — same convention as material-mapper
-        const box    = new THREE.Box3().setFromObject(model);
-        const size   = box.getSize(new THREE.Vector3());
+        // Normalise to unit cube — same convention as material-mapper.
+        // This guarantees the calibrated camera parameters are valid regardless of export units.
+        const box    = new THREE.Box3().setFromObject(rootModel);
         const center = box.getCenter(new THREE.Vector3());
+        const size   = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z) || 1;
-        model.scale.setScalar(1.0 / maxDim);
-        model.position.sub(center.multiplyScalar(1.0 / maxDim));
+        rootModel.scale.setScalar(1.0 / maxDim);
+        rootModel.position.sub(center.multiplyScalar(1.0 / maxDim));
 
-        applyMaterials(model);
-        scene.add(model);
+        // Wrap in pivot so setModelTransform can freely reposition / rotate the model
+        // without overwriting the centring offset stored in rootModel.position.
+        modelPivot = new THREE.Group();
+        modelPivot.add(rootModel);
+        scene.add(modelPivot);
 
-        // ── Camera ──
-        USE_ORTHO = true;
-        camera.fov = 60;
+        // ── Camera (exported from material-mapper) ────────────────────────────
+        USE_ORTHO = false;
+        camera.fov = 50;
         camera.updateProjectionMatrix();
-        camera.position.set(-0.0000, -1.8538, -2.9860);
+        camera.position.set(-0.0000, -1.2865, -2.6566);
         controls.target.set(0.0000, 0.0000, 0.0000);
         controls.update();
         if (USE_ORTHO) syncOrthoCamera();
 
-        // ── Model rotation ──
-        model.rotation.set(0.000000, 0.000000, 3.141593); // 0° 0° 180°
+        // ── Model rotation (exported from material-mapper) ────────────────────
+        rootModel.rotation.set(0.000000, 0.000000, 0.000000); // 0° 0° 0°
 
-        // ── Wrap in pivot for setModelTransform ──
-        modelPivot = new THREE.Group();
-        scene.remove(model);
-        modelPivot.add(model);
-        scene.add(modelPivot);
+        // ── Apply materials ───────────────────────────────────────────────────
+        rootModel.traverse((obj) => {
+            if (!obj.isMesh) return;
+            // Material mapper groups by parent Group name (Onshape/KiCAD Layout A) or by the
+            // mesh's own name (Layout B / flat).  Mirror that same name-selection here so the
+            // MATERIAL_RULES keys always resolve to the right mesh.
+            const isParentRoot = !obj.parent || obj.parent === rootModel;
+            const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
+            const rule = MATERIAL_RULES.find(r =>
+                typeof r.match === 'string' ? nameToMatch === r.match : r.match.test(nameToMatch));
+            if (rule) { obj.material = rule.mat; obj.material.needsUpdate = true; }
+        });
 
-        // ── Find button group ──
-        buttonGroup = model.getObjectByName('Button');
-        if (buttonGroup) {
-            buttonRestPos.copy(buttonGroup.position);
+        // ── Find LED meshes (by name, after material application) ─────────────
+        const LED_NAMES = new Set(['LED', 'LED_1', 'LED_2', 'LED_3', 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08_1']);
+        rootModel.traverse((obj) => {
+            if (!obj.isMesh) return;
+            const isParentRoot = !obj.parent || obj.parent === rootModel;
+            const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
+            if (LED_NAMES.has(nameToMatch)) {
+                ledMeshes.push(obj);
+                console.log('[Pipit] LED mesh:', nameToMatch);
+            }
+        });
+
+        // Ensure LED starts OFF; Swift drives state via setLedState after modelReady.
+        _applyLedState(0, 0, 0, false, 1.0);
+
+        // ── Find button object ────────────────────────────────────────────────
+        // KiCAD reference designator for the ALPS SKQGABE010 tactile switch is KEY1.
+        const candidateNames = [
+            'KEY1', 'SW1', 'SKQGABE010',
+            'KEY-SMD_4P-L5.2-W5.2-H1.5-LS6.4-P3.70',
+            'button', 'Button', 'KEY_SMD',
+        ];
+        for (const name of candidateNames) {
+            buttonObject = rootModel.getObjectByName(name);
+            if (buttonObject) {
+                console.log('[Pipit] Button node found:', name);
+                break;
+            }
+        }
+        if (!buttonObject) {
+            console.warn('[Pipit] Button node not found. Available named nodes:');
+            rootModel.traverse((obj) => { if (obj.name) console.log('  •', obj.name); });
         } else {
-            console.warn('[Pipit] Button group not found in GLB');
+            buttonRestPos.copy(buttonObject.position);
         }
 
-        // ── Notify Swift: model is ready, APIs will now work ──
+        statusEl.style.display = 'none';
+        console.log('[Pipit] Model loaded. LED meshes:', ledMeshes.length,
+            '| Button:', buttonObject ? buttonObject.name : 'NOT FOUND');
+
+        // Notify Swift: model is ready, APIs will now work.
         if (window.webkit?.messageHandlers?.modelReady) {
             window.webkit.messageHandlers.modelReady.postMessage(null);
         }
     },
     undefined,
-    (error) => {
-        console.error('GLB_ERROR', error);
-        document.body.innerHTML += '<div style="position:absolute;top:0;z-index:999;background:white;color:orange;padding:10px;">GLB Load Error: ' + error.message + '</div>';
+    (err) => {
+        statusEl.innerText = 'Load error: ' + err.message;
+        statusEl.style.color = 'orange';
+        console.error('[Pipit] GLB load error', err);
     }
 );
 
-renderer.setAnimationLoop(() => {
-    controls.update();
-    if (USE_ORTHO) syncOrthoCamera();
-    renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
-});
+// ─── Internal helpers ─────────────────────────────────────────────────────────
 
-// ── Public JS API ─────────────────────────────────────────
-// Called from Swift via WKWebView.evaluateJavaScript after modelReady fires.
+function _applyLedState(r, g, b, active, brightness) {
+    const color     = new THREE.Color(r / 255, g / 255, b / 255);
+    const intensity = active ? brightness * LED_MAX_INTENSITY : 0.0;
+    for (const mesh of ledMeshes) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of mats) {
+            if (!mat || mat.emissive === undefined) continue;
+            mat.emissive.copy(color);
+            mat.emissiveIntensity = intensity;
+            mat.needsUpdate = true;
+        }
+    }
+}
 
+// ─── LED animation engine (mirrors firmware led_effects.h) ─────────────────────
+// Generation counter invalidates stale RAF callbacks on cancel.
+let _ledGeneration = 0;
+let _ledRafId      = null;
+
+function _cancelLedAnim() {
+    _ledGeneration++;
+    if (_ledRafId !== null) { cancelAnimationFrame(_ledRafId); _ledRafId = null; }
+}
+
+// Run an array of phase objects: { type:'fade_in'|'hold'|'fade_out'|'off', r, g, b, ms }
+// Calls onDone when all phases complete. Cancels any previously running animation.
+function _playPhases(phases, onDone) {
+    _cancelLedAnim();
+    const gen = _ledGeneration;
+    let i = 0, phaseStart = null;
+    function frame(ts) {
+        if (_ledGeneration !== gen) return;
+        if (i >= phases.length) {
+            _applyLedState(0, 0, 0, false, 1.0);
+            _ledRafId = null;
+            if (onDone) onDone();
+            return;
+        }
+        const p  = phases[i];
+        if (phaseStart === null) phaseStart = ts;
+        const t  = Math.min((ts - phaseStart) / p.ms, 1.0);
+        const br = p.type === 'fade_in'  ? t
+                 : p.type === 'hold'     ? 1.0
+                 : p.type === 'fade_out' ? 1.0 - t
+                 :                         0.0;
+        if (br > 0) _applyLedState(p.r, p.g, p.b, true, br);
+        else        _applyLedState(0, 0, 0, false, 1.0);
+        if (t >= 1.0) { i++; phaseStart = null; }
+        _ledRafId = requestAnimationFrame(frame);
+    }
+    _ledRafId = requestAnimationFrame(frame);
+}
+
+// Mirrors led::flash_once(pin, rise_ms, hold_ms, fall_ms)
+function _flashOnce(r, g, b, riseMs, holdMs, fallMs, onDone) {
+    _playPhases([
+        { type: 'fade_in',  r, g, b, ms: riseMs  },
+        { type: 'hold',     r, g, b, ms: holdMs  },
+        { type: 'fade_out', r, g, b, ms: fallMs  },
+    ], onDone);
+}
+
+// Mirrors led::pulse_blink(pin, rise, hold, fall, off, total_ms)
+function _pulseBlink(r, g, b, riseMs, holdMs, fallMs, offMs, totalMs, onDone) {
+    const deadline = performance.now() + totalMs;
+    function iteration() {
+        if (performance.now() >= deadline) {
+            _applyLedState(0, 0, 0, false, 1.0);
+            if (onDone) onDone();
+            return;
+        }
+        _playPhases([
+            { type: 'fade_in',  r, g, b, ms: riseMs },
+            { type: 'hold',     r, g, b, ms: holdMs },
+            { type: 'fade_out', r, g, b, ms: fallMs },
+            { type: 'off',      r: 0, g: 0, b: 0,   ms: offMs  },
+        ], iteration);
+    }
+    iteration();
+}
+
+// Mirrors led::rainbow_sweep(total_ms, fade_ms) — full HSV hue rotation with
+// a fade-in / fade-out brightness envelope matching the firmware.
+function _rainbowSweep(totalMs, fadeMs, onDone) {
+    fadeMs = (fadeMs !== undefined) ? fadeMs : 200;
+    _cancelLedAnim();
+    const gen = _ledGeneration;
+    let startTs = null;
+    function frame(ts) {
+        if (_ledGeneration !== gen) return;
+        if (startTs === null) startTs = ts;
+        const elapsed = ts - startTs;
+        if (elapsed >= totalMs) {
+            _applyLedState(0, 0, 0, false, 1.0);
+            _ledRafId = null;
+            if (onDone) onDone();
+            return;
+        }
+        // Brightness envelope: fade in, hold, fade out.
+        let brightness;
+        if (elapsed < fadeMs) {
+            brightness = elapsed / fadeMs;
+        } else if (elapsed > totalMs - fadeMs) {
+            brightness = (totalMs - elapsed) / fadeMs;
+        } else {
+            brightness = 1.0;
+        }
+        // Hue advances linearly over totalMs.
+        const hue    = (elapsed / totalMs) * 360;
+        const sector = Math.floor(hue / 60);
+        const frac   = Math.floor((hue % 60) * 255 / 60);
+        let r, g, b;
+        switch (sector) {
+            case 0: r=255;       g=frac;      b=0;        break; // R→Y
+            case 1: r=255-frac;  g=255;       b=0;        break; // Y→G
+            case 2: r=0;         g=255;       b=frac;     break; // G→C
+            case 3: r=0;         g=255-frac;  b=255;      break; // C→B
+            case 4: r=frac;      g=0;         b=255;      break; // B→M
+            default:r=255;       g=0;         b=255-frac; break; // M→R
+        }
+        _applyLedState(r, g, b, true, brightness);
+        _ledRafId = requestAnimationFrame(frame);
+    }
+    _ledRafId = requestAnimationFrame(frame);
+}
+
+// ─── Public JS API (called from Swift via WKWebView.evaluateJavaScript) ───────
+
+/**
+ * Set the RGB LED emissive state instantly (no animation).
+ * @param {number}  r          0–255
+ * @param {number}  g          0–255
+ * @param {number}  b          0–255
+ * @param {boolean} active     true = LED lit, false = LED off
+ * @param {number}  brightness 0.0–1.0
+ */
 window.setLedState = (r, g, b, active, brightness) => {
-    ledMat.emissive.setRGB(r / 255, g / 255, b / 255);
-    ledMat.color.setRGB(r / 255, g / 255, b / 255);
-    ledMat.emissiveIntensity = active ? brightness * LED_MAX_INTENSITY : 0.0;
-    ledMat.needsUpdate = true;
+    _cancelLedAnim();
+    _applyLedState(r, g, b, active, brightness);
 };
 
+/**
+ * Play the Unlock green flash — mirrors firmware led::flash_unlock().
+ * Green (0,255,0): fade-in 300 ms → hold 150 ms → fade-out 300 ms.
+ */
+window.playLedUnlock = () => _flashOnce(0, 255, 0, 300, 150, 300);
+
+/**
+ * Play the Lock red flash — mirrors firmware led::flash_lock().
+ * Red (255,0,0): fade-in 300 ms → hold 150 ms → fade-out 300 ms.
+ */
+window.playLedLock = () => _flashOnce(255, 0, 0, 300, 150, 300);
+
+/**
+ * Play the Window / triple-click rainbow sweep — mirrors firmware led::rainbow_sweep().
+ * Full HSV hue rotation over 1500 ms.
+ */
+window.playLedWindow = () => _rainbowSweep(1500, 200);
+
+/**
+ * Start the provisioning pulsed-blue blink loop — mirrors firmware led::prov_pulse().
+ * Blue (0,0,255): rise 500 ms → hold 200 ms → fall 500 ms → off 50 ms, repeating.
+ * Call stopLedAnim() to cancel.
+ */
+window.startLedProv = () => {
+    _cancelLedAnim();
+    function loop() {
+        _playPhases([
+            { type: 'fade_in',  r:0, g:0, b:255, ms:500 },
+            { type: 'hold',     r:0, g:0, b:255, ms:200 },
+            { type: 'fade_out', r:0, g:0, b:255, ms:500 },
+            { type: 'off',      r:0, g:0, b:0,   ms:50  },
+        ], loop);
+    }
+    loop();
+};
+
+/**
+ * Play a low-battery pulsed flash — mirrors firmware led::flash_low_battery().
+ * timing: rise 120 ms → hold 100 ms → fall 120 ms → off 170 ms, for 2000 ms total.
+ * @param {number} r  0–255 (default 255 = red; pass 0,255,0 for unlock+low-bat)
+ * @param {number} g  0–255 (default 0)
+ * @param {number} b  0–255 (default 0)
+ */
+window.playLedLowBat = (r = 255, g = 0, b = 0) => _pulseBlink(r, g, b, 120, 100, 120, 170, 2000);
+
+/**
+ * Cancel any running LED animation and turn the LED off immediately.
+ */
+window.stopLedAnim = () => {
+    _cancelLedAnim();
+    _applyLedState(0, 0, 0, false, 1.0);
+};
+
+/**
+ * Physically depress the button geometry on the 3D model.
+ * Maps to the ALPS SKQGABE010 (KEY1) tactile switch cap travel.
+ * @param {number} depth  0.0 = resting / 1.0 = fully depressed (0.3 mm physical)
+ */
 window.setButtonDepth = (depth) => {
-    if (!buttonGroup) return;
+    if (!buttonObject) return;
     const travel = Math.max(0, Math.min(1, depth)) * BUTTON_TRAVEL;
-    // KiCAD button cap travels in +Z (away from PCB surface toward user)
-    // After model 180° Z-rotation the cap is on the -Z face facing the camera;
-    // pressing it moves in -Z (toward camera = INTO the enclosure visually)
-    buttonGroup.position.set(
-        buttonRestPos.x,
-        buttonRestPos.y,
-        buttonRestPos.z + travel
+    buttonObject.position.set(
+        buttonRestPos.x + buttonPressAxis.x * travel,
+        buttonRestPos.y + buttonPressAxis.y * travel,
+        buttonRestPos.z + buttonPressAxis.z * travel
     );
 };
 
+/**
+ * Apply position / scale / rotation to the model pivot.
+ * Operates on the outer pivot group so the centring offset in rootModel stays intact.
+ */
 window.setModelTransform = (px, py, pz, scale, rx, ry, rz) => {
     if (!modelPivot) return;
     modelPivot.position.set(px, py, pz);
@@ -406,9 +442,24 @@ window.setModelTransform = (px, py, pz, scale, rx, ry, rz) => {
     modelPivot.rotation.set(rx, ry, rz);
 };
 
-} catch(e) {
-    document.body.innerHTML += '<div style="position:absolute;top:0;z-index:999;background:white;color:red;padding:10px;">Crash: ' + e.message + '</div>';
-}
+// ─── Resize ───────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    if (USE_ORTHO) syncOrthoCamera();
+});
+
+// ─── Render loop ──────────────────────────────────────────────────────────────
+renderer.setAnimationLoop(() => {
+    if (cube.parent) {
+        cube.rotation.x += 0.01;
+        cube.rotation.y += 0.01;
+    }
+    controls.update();
+    if (USE_ORTHO) syncOrthoCamera();
+    renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
+});
 </script>
 </body>
 </html>

@@ -960,8 +960,11 @@ function generateApplyLoop() {
     return [
         `rootModel.traverse((obj) => {`,
         `    if (!obj.isMesh) return;`,
+        `    // Layout A (named parent group) or Layout B (flat mesh) — mirror mapper's name selection.`,
+        `    const isParentRoot = !obj.parent || obj.parent === rootModel;`,
+        `    const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;`,
         `    const rule = MATERIAL_RULES.find(r =>`,
-        `        typeof r.match === 'string' ? obj.name === r.match : r.match.test(obj.name));`,
+        `        typeof r.match === 'string' ? nameToMatch === r.match : r.match.test(nameToMatch));`,
         `    if (rule) { obj.material = rule.mat; obj.material.needsUpdate = true; }`,
         `});`,
     ].join('\n');
@@ -976,7 +979,10 @@ function generateLedDetection() {
     return [
         `const LED_NAMES = new Set([${setLiteral}]);`,
         `rootModel.traverse((obj) => {`,
-        `    if (obj.isMesh && LED_NAMES.has(obj.name)) ledMeshes.push(obj);`,
+        `    if (!obj.isMesh) return;`,
+        `    const isParentRoot = !obj.parent || obj.parent === rootModel;`,
+        `    const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;`,
+        `    if (LED_NAMES.has(nameToMatch)) ledMeshes.push(obj);`,
         `});`,
     ].join('\n');
 }
