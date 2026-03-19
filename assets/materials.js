@@ -30,21 +30,31 @@ const metalMat = new THREE.MeshPhysicalMaterial({
     polygonOffsetUnits:    -2.0,
 });
 
-const pcbMat = new THREE.MeshPhysicalMaterial({
-    color:                 0xbfbfbf,
-    roughness:             0.88,
-    metalness:             0.08,
+const ledCapMat = new THREE.MeshPhysicalMaterial({
+    color:                 0xffffff,
+    roughness:             0.6,
+    transmission:          0.8,
+    thickness:             0.001,
+    opacity:               0.88,
+    transparent:           true,
+    toneMapped:            false,
+});
+
+const buttonMat = new THREE.MeshPhysicalMaterial({
+    color:                 0xffffff,
+    roughness:             0.4,
+    metalness:             0.04,
+    transmission:          0.73,
+    transparent:           true,
     polygonOffset:         true,
     polygonOffsetFactor:   -2.0,
     polygonOffsetUnits:    -2.0,
 });
 
-const buttonMat = new THREE.MeshPhysicalMaterial({
-    color:                 0xffffff,
-    roughness:             0.29,
-    metalness:             0.04,
-    transmission:          0.76,
-    transparent:           true,
+const pcbMat = new THREE.MeshPhysicalMaterial({
+    color:                 0xbfbfbf,
+    roughness:             0.88,
+    metalness:             0.08,
     polygonOffset:         true,
     polygonOffsetFactor:   -2.0,
     polygonOffsetUnits:    -2.0,
@@ -71,7 +81,7 @@ const MATERIAL_RULES = [
     { match: 'Uguisu_pad_2',                 mat: metalMat },
     { match: 'Uguisu_copper_1',              mat: housingMat },
     { match: 'Uguisu_via_1',                 mat: housingMat },
-    { match: 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08', mat: pcbMat },
+    { match: 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08', mat: ledCapMat },
     { match: 'Uguisu_pad_3',                 mat: metalMat },
     { match: 'Uguisu_pad_4',                 mat: metalMat },
     { match: 'Uguisu_pad_5',                 mat: metalMat },
@@ -95,7 +105,7 @@ const MATERIAL_RULES = [
     { match: 'Uguisu_via_5',                 mat: housingMat },
     { match: 'Uguisu_pad_13',                mat: metalMat },
     { match: 'Uguisu_copper_6',              mat: housingMat },
-    { match: 'KEY-SMD_4P-L52-W52-H15-LS64-P370', mat: housingMat },
+    { match: 'KEY-SMD_4P-L52-W52-H15-LS64-P370', mat: metalMat },
     { match: 'Uguisu_copper_7',              mat: housingMat },
     { match: 'KEY-SMD_4P-L52-W52-H15-LS64-P370_1', mat: housingMat },
     { match: 'Uguisu_pad_14',                mat: metalMat },
@@ -128,7 +138,7 @@ const MATERIAL_RULES = [
     { match: 'Uguisu_pad_30',                mat: metalMat },
     { match: 'Uguisu_copper_13',             mat: housingMat },
     { match: 'Uguisu_copper_14',             mat: housingMat },
-    { match: 'KEY-SMD_4P-L52-W52-H15-LS64-P370_5', mat: housingMat },
+    { match: 'KEY-SMD_4P-L52-W52-H15-LS64-P370_5', mat: metalMat },
     { match: 'Uguisu_copper_15',             mat: housingMat },
     { match: 'Uguisu_pad_31',                mat: metalMat },
     { match: 'Uguisu_via_8',                 mat: housingMat },

@@ -27,6 +27,25 @@ struct LedCommand: Equatable {
     static let idle = LedCommand(kind: .off, id: 0)
 }
 
+// MARK: – CameraController
+
+/// Holds a weak WKWebView reference so FobInteractiveViewer gesture handlers
+/// can evaluate JS camera commands (panCamera / zoomCamera) without retaining
+/// the web view through the SwiftUI state graph.
+fileprivate final class CameraController {
+    weak var webView: WKWebView?
+    func orbit(dTheta: CGFloat, dPhi: CGFloat) {
+        webView?.evaluateJavaScript(
+            "if(window.orbitCamera)window.orbitCamera(\(dTheta),\(dPhi));",
+            completionHandler: nil)
+    }
+    func zoom(factor: CGFloat) {
+        webView?.evaluateJavaScript(
+            "if(window.zoomCamera)window.zoomCamera(\(factor));",
+            completionHandler: nil)
+    }
+}
+
 // MARK: – FobViewer
 
 /// Embedded Three.js fob viewer backed by WKWebView.
@@ -44,6 +63,9 @@ struct FobViewer: UIViewRepresentable {
     var modelPosition: SIMD3<Float> = .zero
     var modelScale: Float = 1.0
     var modelRotation: SIMD3<Float> = .zero
+
+    // ── Camera controller (JS bridge for pan / zoom) ────────────
+    fileprivate var cameraController: CameraController?
 
     // MARK: Coordinator
 
@@ -92,6 +114,7 @@ struct FobViewer: UIViewRepresentable {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
 
         context.coordinator.webView = webView
+        cameraController?.webView   = webView
         loadViewer(in: webView)
         return webView
     }
@@ -194,13 +217,26 @@ struct FobInteractiveViewer: View {
     // the TapGesture.onEnded that fires on the subsequent finger-lift is ignored.
     @State private var longPressFired: Bool = false
 
+    // True when the touch started inside the button exclusion zone (centre ±70 pt).
+    // Tap / long-press actions only fire when this is true; orbit only fires when false.
+    @State private var inButtonZone: Bool = false
+
+    // Camera orbit / zoom — driven by SwiftUI gestures, forwarded to JS.
+    @State private var cameraController      = CameraController()
+    @State private var lastOrbitTranslation: CGSize = .zero
+    @State private var lastMagScale: CGFloat         = 1.0
+    @State private var isPanning: Bool               = false
+    @State private var orbitSuppressed: Bool         = false
+
     var body: some View {
+        GeometryReader { geo in
         FobViewer(
             ledCommand: ledCommand,
             buttonDepth: isPressed ? 1.0 : 0.0,
             modelPosition: .zero,
             modelScale: 1.0,
-            modelRotation: .zero
+            modelRotation: .zero,
+            cameraController: cameraController
         )
         // A transparent overlay to capture touch events over the WebView
         .overlay(
@@ -211,15 +247,27 @@ struct FobInteractiveViewer: View {
                 // whether a tap or long-press, and releases only when the finger leaves.
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 0)
-                        .onChanged { _ in
-                            withAnimation(.easeOut(duration: 0.08)) { isPressed = true }
+                        .onChanged { value in
+                            // Determine button zone on first event of each touch.
+                            if !isPanning && !inButtonZone && !isPressed {
+                                let center = CGPoint(x: geo.size.width / 2,
+                                                     y: geo.size.height / 2)
+                                let s = value.startLocation
+                                inButtonZone = hypot(s.x - center.x, s.y - center.y) < 70
+                            }
+                            // Only depress button visual when touch is in button zone.
+                            if inButtonZone && !isPanning {
+                                withAnimation(.easeOut(duration: 0.08)) { isPressed = true }
+                            }
                         }
                         .onEnded { _ in
                             withAnimation(.easeIn(duration: 0.15)) { isPressed = false }
-                            // Defer the flag reset so TapGesture.onEnded (which may fire on
-                            // the same lift) sees longPressFired = true and suppresses the
-                            // spurious post-long-press tap before the flag is cleared.
-                            DispatchQueue.main.async { longPressFired = false }
+                            // Defer flag resets so TapGesture.onEnded (same lift) runs first.
+                            DispatchQueue.main.async {
+                                longPressFired = false
+                                isPanning      = false
+                                inButtonZone   = false
+                            }
                         }
                 )
                 .gesture(
@@ -228,6 +276,7 @@ struct FobInteractiveViewer: View {
                             // isPressed is managed by DragGesture; nothing to do here.
                         }
                         .onEnded { _ in
+                            guard inButtonZone && !isPanning else { return }
                             // Long press confirmed — now cancel any pending tap decision.
                             tapDebounceItem?.cancel()
                             tapDebounceItem = nil
@@ -243,9 +292,8 @@ struct FobInteractiveViewer: View {
                 .simultaneousGesture(
                     TapGesture()
                         .onEnded {
-                            // If a long press already fired this touch, swallow the
-                            // spurious finger-lift tap. The flag is cleared by DragGesture.onEnded.
-                            guard !longPressFired else { return }
+                            // Only act when touch started in the button zone; swallow otherwise.
+                            guard inButtonZone && !longPressFired && !isPanning else { return }
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             // isPressed is driven by DragGesture; no manual flash needed.
 
@@ -272,7 +320,50 @@ struct FobInteractiveViewer: View {
                                 deadline: .now() + UGUISU_MULTI_CLICK_WINDOW_MS, execute: item)
                         }
                 )
+                // ── Orbit: drag > 15 pt rotates camera around the model. ──────────────
+                // Suppressed when the gesture's start location is within the
+                // button exclusion zone (centre ± 70 pt) to avoid accidental orbit
+                // when the user is trying to tap or long-press the button.
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 15)
+                        .onChanged { value in
+                            if !isPanning {
+                                // First activation: suppress orbit when touch started in button zone.
+                                orbitSuppressed = inButtonZone
+                                if !orbitSuppressed {
+                                    withAnimation(.easeIn(duration: 0.1)) { isPressed = false }
+                                }
+                            }
+                            guard !orbitSuppressed else { return }
+                            isPanning = true
+                            let rawDX = value.translation.width  - lastOrbitTranslation.width
+                            let rawDY = value.translation.height - lastOrbitTranslation.height
+                            lastOrbitTranslation = value.translation
+                            let sensitivity: CGFloat = 0.006
+                            // Negate so drag direction matches intuitive finger-follows-model feel.
+                            cameraController.orbit(dTheta: -rawDX * sensitivity,
+                                                   dPhi:   -rawDY * sensitivity)
+                        }
+                        .onEnded { _ in
+                            lastOrbitTranslation = .zero
+                            orbitSuppressed = false
+                            isPanning = false
+                        }
+                )
+                // ── Pinch: two-finger scale zooms the Three.js camera in / out. ───────
+                .simultaneousGesture(
+                    MagnificationGesture()
+                        .onChanged { scale in
+                            let delta = scale / lastMagScale
+                            lastMagScale = scale
+                            cameraController.zoom(factor: delta)
+                        }
+                        .onEnded { _ in
+                            lastMagScale = 1.0
+                        }
+                )
         )
+        } // GeometryReader
     }
 }
 
