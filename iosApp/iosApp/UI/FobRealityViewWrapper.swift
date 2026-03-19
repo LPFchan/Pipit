@@ -190,6 +190,10 @@ struct FobInteractiveViewer: View {
     @State private var pendingTapCount: Int = 0
     @State private var tapDebounceItem: DispatchWorkItem?
 
+    // Set to true when a long press fires (while finger is still down) so that
+    // the TapGesture.onEnded that fires on the subsequent finger-lift is ignored.
+    @State private var longPressFired: Bool = false
+
     var body: some View {
         FobViewer(
             ledCommand: ledCommand,
@@ -201,12 +205,27 @@ struct FobInteractiveViewer: View {
         // A transparent overlay to capture touch events over the WebView
         .overlay(
             Color.white.opacity(0.001)
+                // DragGesture(minimumDistance: 0) is the authoritative isPressed source:
+                // onChanged fires immediately on finger-down; onEnded fires on finger-lift.
+                // This keeps the button visually depressed for the full duration of the hold,
+                // whether a tap or long-press, and releases only when the finger leaves.
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in
+                            withAnimation(.easeOut(duration: 0.08)) { isPressed = true }
+                        }
+                        .onEnded { _ in
+                            withAnimation(.easeIn(duration: 0.15)) { isPressed = false }
+                            // Defer the flag reset so TapGesture.onEnded (which may fire on
+                            // the same lift) sees longPressFired = true and suppresses the
+                            // spurious post-long-press tap before the flag is cleared.
+                            DispatchQueue.main.async { longPressFired = false }
+                        }
+                )
                 .gesture(
                     LongPressGesture(minimumDuration: 0.5)
                         .onChanged { _ in
-                            // onChanged fires on every finger-down, including during
-                            // multi-tap sequences — do NOT reset tap state here.
-                            withAnimation(.easeOut(duration: 0.1)) { isPressed = true }
+                            // isPressed is managed by DragGesture; nothing to do here.
                         }
                         .onEnded { _ in
                             // Long press confirmed — now cancel any pending tap decision.
@@ -214,21 +233,21 @@ struct FobInteractiveViewer: View {
                             tapDebounceItem = nil
                             pendingTapCount = 0
                             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                            longPressFired = true
                             cmdCounter += 1
                             ledCommand = LedCommand(kind: .lock, id: cmdCounter)
-                            withAnimation(.easeIn(duration: 0.2)) { isPressed = false }
+                            // isPressed stays true until DragGesture.onEnded (finger-lift).
                             onLongPress()
                         }
                 )
                 .simultaneousGesture(
                     TapGesture()
                         .onEnded {
+                            // If a long press already fired this touch, swallow the
+                            // spurious finger-lift tap. The flag is cleared by DragGesture.onEnded.
+                            guard !longPressFired else { return }
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            // Animate button depression for tactile feedback.
-                            withAnimation(.easeOut(duration: 0.05)) { isPressed = true }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation(.easeIn(duration: 0.1)) { isPressed = false }
-                            }
+                            // isPressed is driven by DragGesture; no manual flash needed.
 
                             // Accumulate tap count and restart the 400 ms decision window,
                             // mirroring firmware multi_click_deadline behaviour.

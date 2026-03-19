@@ -21,7 +21,7 @@
 		AA000001AA000001AA000001 /* materials.js in Resources */ = {isa = PBXBuildFile; fileRef = AA000002AA000002AA000002 /* materials.js */; };
 		4BE956AA5346573BEAD9950D /* LocalSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25217FD2B46FCF95A8107E9D /* LocalSchemeHandler.swift */; };
 		5B5FB53EA0FE324361F1B3D5 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 938B9032C51C3B32C7E7CF76 /* SettingsViewModel.swift */; };
-		617A3D4B178645BD3678B1EC /* Uguisu.glb in Resources */ = {isa = PBXBuildFile; fileRef = 3489C231E77B7432929A5B93 /* Uguisu.glb */; };
+		617A3D4B178645BD3678B1EC /* UguisuApp.gltf in Resources */ = {isa = PBXBuildFile; fileRef = 3489C231E77B7432929A5B93 /* UguisuApp.gltf */; };
 		78DAA08901C9BB75BA1F0119 /* FobRealityViewWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3B8377B1B54FE1337652D92 /* FobRealityViewWrapper.swift */; };
 		88EB1FBD6019F467D71A2FC9 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90D58F7CA649FECE310D05B /* SettingsViewModel.swift */; };
 		A2F440D7770F2F69059FCF85 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F22D762CBFAB40F2BA4C127 /* OnboardingView.swift */; };
@@ -42,7 +42,7 @@
 		25217FD2B46FCF95A8107E9D /* LocalSchemeHandler.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LocalSchemeHandler.swift; path = iosApp/iosApp/UI/LocalSchemeHandler.swift; sourceTree = "<group>"; };
 		32FD3699F89E455D1702042B /* PipitApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PipitApp.swift; path = iosApp/iosApp/PipitApp.swift; sourceTree = "<group>"; };
 		33D8A3FD14E75BB885FBAED5 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingViewModel.swift; path = iosApp/iosApp/UI/OnboardingViewModel.swift; sourceTree = "<group>"; };
-		3489C231E77B7432929A5B93 /* Uguisu.glb */ = {isa = PBXFileReference; includeInIndex = 1; name = Uguisu.glb; path = iosApp/iosApp/Resources/Uguisu.glb; sourceTree = "<group>"; };
+		3489C231E77B7432929A5B93 /* UguisuApp.gltf */ = {isa = PBXFileReference; includeInIndex = 1; name = UguisuApp.gltf; path = iosApp/iosApp/Resources/UguisuApp.gltf; sourceTree = "<group>"; };
 		50B099269BCB3B184DAEB651 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingViewModel.swift; path = iosApp/iosApp/UI/OnboardingViewModel.swift; sourceTree = "<group>"; };
 		5F22D762CBFAB40F2BA4C127 /* OnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = iosApp/iosApp/UI/OnboardingView.swift; sourceTree = "<group>"; };
 		6C13591F313A09BE1F331F35 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingViewModel.swift; path = iosApp/iosApp/UI/OnboardingViewModel.swift; sourceTree = "<group>"; };
@@ -92,7 +92,7 @@
 				13BEF07458054461059A0076 /* iosApp */,
 				0DCFF6B0C28D38943E8BC133 /* viewer.html */,
 				AA000002AA000002AA000002 /* materials.js */,
-				3489C231E77B7432929A5B93 /* Uguisu.glb */,
+				3489C231E77B7432929A5B93 /* UguisuApp.gltf */,
 			);
 			sourceTree = "<group>";
 		};
@@ -207,7 +207,7 @@
 			files = (
 				4912430888E05D76E48189D9 /* viewer.html in Resources */,
 				AA000001AA000001AA000001 /* materials.js in Resources */,
-				617A3D4B178645BD3678B1EC /* Uguisu.glb in Resources */,
+				617A3D4B178645BD3678B1EC /* UguisuApp.gltf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
