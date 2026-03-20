@@ -32,11 +32,13 @@ window.MaterialMapperPersistenceModule = function ({
     camera,
     controls,
     sceneState,
+    groundMesh,
     THREE,
     showToast,
     importFromCode,
 }) {
     const resolve = (valueOrGetter) => (typeof valueOrGetter === 'function' ? valueOrGetter() : valueOrGetter);
+    let writesSuspended = false;
 
     // ─────────────────────────────────────────────────────────────
     // IndexedDB: store last-opened file (no size limit)
@@ -77,6 +79,8 @@ window.MaterialMapperPersistenceModule = function ({
     const STORAGE_KEY = 'material-mapper-v1';
 
     function saveState() {
+        if (writesSuspended) return;
+
         const currentFileName = resolve(loadedFileName);
         const currentMatProps = resolve(matProps);
         const currentLoadedModel = resolve(loadedModel);
@@ -121,6 +125,14 @@ window.MaterialMapperPersistenceModule = function ({
             all[currentFileName] = state;
             localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
         } catch (e) { console.warn('[State] save failed', e); }
+    }
+
+    function suspendWrites() {
+        writesSuspended = true;
+    }
+
+    function resumeWrites() {
+        writesSuspended = false;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -231,10 +243,13 @@ window.MaterialMapperPersistenceModule = function ({
                 currentLoadedModel.position.set(p.x ?? currentLoadedModel.position.x, p.y ?? currentLoadedModel.position.y, p.z ?? currentLoadedModel.position.z);
                 currentLoadedModel.updateMatrixWorld(true);
                 const modelBox = new THREE.Box3().setFromObject(currentLoadedModel);
-                // Update ground position if available
-                const groundMesh = document.getElementById('ground-mesh');
                 if (groundMesh) groundMesh.position.y = modelBox.min.y - 0.008;
                 if (syncOrbitTarget) syncOrbitTarget();
+            }
+
+            if (currentLoadedModel && groundMesh) {
+                currentLoadedModel.updateMatrixWorld(true);
+                groundMesh.position.y = new THREE.Box3().setFromObject(currentLoadedModel).min.y - 0.008;
             }
 
             // Restore scene state if callback provided
@@ -275,6 +290,8 @@ window.MaterialMapperPersistenceModule = function ({
         // Local storage state
         saveState,
         restoreState,
+        suspendWrites,
+        resumeWrites,
 
         // Import/export
         importFromCode: _importFromCode,

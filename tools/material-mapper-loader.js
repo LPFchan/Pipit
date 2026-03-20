@@ -23,6 +23,8 @@ window.MaterialMapperLoaderModule = function ({
     getMAT_OBJ,
     saveLastFileToDB,
     restoreState,
+    suspendPersistence,
+    resumePersistence,
     getRestoreCallbacks,
     onModelLoaded,
     saveState,
@@ -139,6 +141,7 @@ window.MaterialMapperLoaderModule = function ({
 
     function loadBuffer(buffer, fileName) {
         loader.parse(buffer, '', (gltf) => {
+            suspendPersistence?.();
             const previousModel = getLoadedModel?.();
             if (previousModel) scene.remove(previousModel);
 
@@ -206,7 +209,7 @@ window.MaterialMapperLoaderModule = function ({
             setLoadedModel(model);
             setLoadedFileName(fileName);
 
-            fitCameraToModel();
+            fitCameraToModel(false);
             const hudFovEl = document.getElementById('hud-fov');
             if (hudFovEl) hudFovEl.value = Math.round(camera.fov);
 
@@ -232,7 +235,9 @@ window.MaterialMapperLoaderModule = function ({
             } else {
                 showToast('Session restored');
             }
+            resumePersistence?.();
         }, (error) => {
+            resumePersistence?.();
             console.error('[Material Mapper] GLTF parse error:', error);
             alert('Could not load model:\n' + (error?.message ?? String(error)));
         });

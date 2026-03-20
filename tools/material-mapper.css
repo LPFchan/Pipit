@@ -325,6 +325,21 @@
     .prop-num::-webkit-inner-spin-button,
     .prop-num::-webkit-outer-spin-button { appearance: none; }
     .prop-num:focus { border-color: var(--accent); }
+    .hud-fov-input,
+    .hud-xyz-input,
+    .prop-num {
+      cursor: ew-resize;
+    }
+    .hud-fov-input:focus,
+    .hud-xyz-input:focus,
+    .prop-num:focus {
+      cursor: text;
+    }
+    body.num-dragging,
+    body.num-dragging * {
+      cursor: ew-resize !important;
+      user-select: none;
+    }
 
     /* Color picker */
     .prop-color-wrap { display: flex; align-items: center; gap: 6px; }
@@ -537,6 +552,11 @@
     .hud-fov-input:focus { border-color: var(--accent); }
     .hud-fov-label { font-size: 10px; color: var(--text-dim); }
     .hud-xyz-wrap { display: flex; gap: 3px; }
+    .hud-rot-control {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
     .hud-xyz-input {
       width: 52px;
       background: var(--surface2); border: 1px solid var(--border);
@@ -550,10 +570,26 @@
     .hud-xyz-input::-webkit-inner-spin-button,
     .hud-xyz-input::-webkit-outer-spin-button { appearance: none; }
     .hud-xyz-input:focus { border-color: var(--accent); }
+    .hud-step-btn {
+      min-width: 42px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-dim);
+      padding: 2px 6px;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color .12s, border-color .12s;
+    }
+    .hud-step-btn:hover {
+      color: var(--text);
+      border-color: var(--accent);
+    }
     .hud-divider   { height: 1px; background: var(--border); }
-    .hud-actions   { display: flex; gap: 6px; }
+    .hud-actions   { display: flex; flex-wrap: wrap; gap: 6px; }
     .hud-btn {
-      flex: 1;
+      flex: 1 1 calc(50% - 3px);
       background: var(--surface2); border: 1px solid var(--border);
       border-radius: 5px; color: var(--text-dim);
       font-size: 10px; font-weight: 600;

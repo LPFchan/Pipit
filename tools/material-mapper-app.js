@@ -384,7 +384,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     let setProp = () => {}, selectMesh = () => false, clearSelection = () => {}, selectAllVisible = () => {}, syncSelectionEditor = () => {}, setVisibility = () => {}, syncShowAllBtn = () => {}, buildEditor = () => {}, buildPartsUI = () => {}, applyMaterials = () => {}, generateMaterialsJs = () => '', guessKey = fallbackGuessKey, updateCode = () => {};
     let loadBuffer = () => {};
     let importFromCode = () => ({ matCount: 0, ruleCount: 0 });
-    let saveLastFileToDB = () => {}, loadLastFileFromDB = () => {}, persistSaveState = () => {}, restoreState = () => false;
+    let saveLastFileToDB = () => {}, loadLastFileFromDB = () => {}, persistSaveState = () => {}, restoreState = () => false, suspendPersistence = () => {}, resumePersistence = () => {};
 
     function saveState() {
         persistSaveState?.();
@@ -553,6 +553,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         camera,
         controls,
         sceneState: () => sceneState,
+        groundMesh,
         THREE,
         showToast,
         importFromCode: (text) => importFromCode(text),
@@ -581,6 +582,8 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         getMAT_OBJ: () => MAT_OBJ,
         saveLastFileToDB: (...args) => saveLastFileToDB(...args),
         restoreState: (...args) => restoreState(...args),
+        suspendPersistence: () => suspendPersistence(),
+        resumePersistence: () => resumePersistence(),
         getRestoreCallbacks: () => ({
             applyMaterials,
             buildPartsUI,
@@ -610,7 +613,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     MAT_SCHEMA = materialsModule.getMAT_SCHEMA();
     ({ setProp, selectMesh, clearSelection, selectAllVisible, syncSelectionEditor, setVisibility, syncShowAllBtn, buildEditor, buildPartsUI, applyMaterials, generateMaterialsJs, guessKey, updateCode } = materialsModule);
     ({ loadBuffer, importFromCode } = loaderModule);
-    ({ saveLastFileToDB, loadLastFileFromDB, saveState: persistSaveState, restoreState } = persistenceModule);
+    ({ saveLastFileToDB, loadLastFileFromDB, saveState: persistSaveState, restoreState, suspendWrites: suspendPersistence, resumeWrites: resumePersistence } = persistenceModule);
 
     toolsModule = window.MaterialMapperToolsModule({
         THREE,

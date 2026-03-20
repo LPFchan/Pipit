@@ -91,7 +91,18 @@ window.MaterialMapperShellModule = function ({
         const importCodeBtn = document.getElementById('import-code-btn');
         const importModalClose = document.getElementById('import-modal-close');
         const importApplyBtn = document.getElementById('import-apply-btn');
+        const importFileBtn = document.getElementById('import-file-btn');
+        const importFileInput = document.getElementById('import-file-input');
         const importTextarea = document.getElementById('import-textarea');
+
+        const applyImportText = (text) => {
+            const source = text.trim();
+            if (!source) return;
+            importTextarea.value = source;
+            const { matCount, ruleCount } = importFromCode(source);
+            importModal.classList.add('hidden');
+            showToast(`Imported: ${matCount} material${matCount !== 1 ? 's' : ''}, ${ruleCount} rule${ruleCount !== 1 ? 's' : ''}`);
+        };
 
         showCodeBtn.addEventListener('click', () => codeModal.classList.remove('hidden'));
         codeModalClose.addEventListener('click', () => codeModal.classList.add('hidden'));
@@ -110,11 +121,27 @@ window.MaterialMapperShellModule = function ({
         });
 
         importApplyBtn.addEventListener('click', () => {
-            const text = importTextarea.value.trim();
-            if (!text) return;
-            const { matCount, ruleCount } = importFromCode(text);
-            importModal.classList.add('hidden');
-            showToast(`Imported: ${matCount} material${matCount !== 1 ? 's' : ''}, ${ruleCount} rule${ruleCount !== 1 ? 's' : ''}`);
+            applyImportText(importTextarea.value);
+        });
+
+        importFileBtn.addEventListener('click', () => {
+            importFileInput.value = '';
+            importFileInput.click();
+        });
+
+        importFileInput.addEventListener('change', async (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                applyImportText(text);
+            } catch (error) {
+                console.error('[Material Mapper] File import failed:', error);
+                showToast(`Import failed: ${error?.message ?? String(error)}`);
+            } finally {
+                importFileInput.value = '';
+            }
         });
 
         document.addEventListener('keydown', (event) => {

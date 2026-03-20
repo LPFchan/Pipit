@@ -78,11 +78,27 @@
           </div>
         </div>
         <div class="hud-row">
-          <span class="hud-label">rot °</span>
-          <div class="hud-xyz-wrap">
+          <span class="hud-label">rot x</span>
+          <div class="hud-rot-control">
+            <button class="hud-step-btn hud-rot-step-btn" type="button" data-axis="x" data-step="-90">-90°</button>
             <input class="hud-xyz-input" id="hud-rot-x" type="number" step="1" placeholder="x">
+            <button class="hud-step-btn hud-rot-step-btn" type="button" data-axis="x" data-step="90">+90°</button>
+          </div>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">rot y</span>
+          <div class="hud-rot-control">
+            <button class="hud-step-btn hud-rot-step-btn" type="button" data-axis="y" data-step="-90">-90°</button>
             <input class="hud-xyz-input" id="hud-rot-y" type="number" step="1" placeholder="y">
+            <button class="hud-step-btn hud-rot-step-btn" type="button" data-axis="y" data-step="90">+90°</button>
+          </div>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">rot z</span>
+          <div class="hud-rot-control">
+            <button class="hud-step-btn hud-rot-step-btn" type="button" data-axis="z" data-step="-90">-90°</button>
             <input class="hud-xyz-input" id="hud-rot-z" type="number" step="1" placeholder="z">
+            <button class="hud-step-btn hud-rot-step-btn" type="button" data-axis="z" data-step="90">+90°</button>
           </div>
         </div>
         <div class="hud-row">
@@ -95,6 +111,8 @@
         <div class="hud-divider"></div>
         <div class="hud-actions">
           <button class="hud-btn" id="hud-fit-btn">⊡ Fit</button>
+          <button class="hud-btn" id="hud-center-orbit-btn">◎ Orbit</button>
+          <button class="hud-btn" id="hud-snap-btn">⇵ Floor</button>
           <button class="hud-btn" id="hud-ortho-btn">⊞ Ortho</button>
           <button class="hud-btn" id="hud-copy-cam-btn">⎘ Copy camera</button>
         </div>
@@ -325,6 +343,8 @@
     <div class="code-modal-hdr">
       <span class="sec-label">Import from Code</span>
       <span style="font-size:11px;color:var(--text-dim);flex:1;padding:0 10px">Paste generated code — material properties + MATERIAL_RULES will be restored</span>
+      <input type="file" id="import-file-input" accept=".js,text/javascript,application/javascript" style="display:none">
+      <button class="btn btn-ghost" id="import-file-btn" style="padding:3px 12px;font-size:11px">materials.js</button>
       <button class="btn btn-accent" id="import-apply-btn" style="padding:3px 12px;font-size:11px">Apply</button>
       <button class="code-modal-close" id="import-modal-close" title="Close">✕</button>
     </div>

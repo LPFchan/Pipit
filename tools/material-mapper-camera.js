@@ -15,6 +15,7 @@ window.MaterialMapperCameraModule = function ({
 }) {
     let initialized = false;
     let hudCollapsed = false;
+    const FLOOR_EPSILON = 0.008;
 
     function getHudElements() {
         return {
@@ -71,19 +72,40 @@ window.MaterialMapperCameraModule = function ({
         if (loadedModel) setHudXYZDeg('hud-rot-x', 'hud-rot-y', 'hud-rot-z', loadedModel.rotation);
     }
 
-    function syncOrbitTarget() {
+    function getModelBounds() {
         const loadedModel = getLoadedModel();
-        if (!loadedModel) return;
+        if (!loadedModel) return null;
         loadedModel.updateMatrixWorld(true);
-        const center = new THREE.Box3().setFromObject(loadedModel).getCenter(new THREE.Vector3());
-        controls.target.copy(center);
-        controls.update();
+        return new THREE.Box3().setFromObject(loadedModel);
     }
 
-    function fitCameraToModel() {
+    function syncGroundToModel() {
+        const box = getModelBounds();
+        if (!box) return null;
+        groundMesh.position.y = box.min.y - FLOOR_EPSILON;
+        return box;
+    }
+
+    function syncOrbitTarget(options = {}) {
+        const { preserveView = true, persist = false } = options;
+        const box = getModelBounds();
+        if (!box) return;
+        const center = box.getCenter(new THREE.Vector3());
+        if (preserveView) {
+            const delta = center.clone().sub(controls.target);
+            if (delta.lengthSq() > 0) camera.position.add(delta);
+        }
+        controls.target.copy(center);
+        controls.update();
+        updateCameraHUD();
+        if (persist) saveState();
+    }
+
+    function fitCameraToModel(persist = true) {
         const loadedModel = getLoadedModel();
         if (!loadedModel) return;
-        const box = new THREE.Box3().setFromObject(loadedModel);
+        const box = getModelBounds();
+        if (!box) return;
         const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z) || 1;
         const fov = camera.fov;
@@ -92,6 +114,8 @@ window.MaterialMapperCameraModule = function ({
         controls.target.copy(center);
         camera.position.set(center.x, center.y + maxDim * 0.08, center.z + dist);
         controls.update();
+        updateCameraHUD();
+        if (persist) saveState();
     }
 
     function parseHudXYZ(idX, idY, idZ) {
@@ -111,7 +135,7 @@ window.MaterialMapperCameraModule = function ({
             THREE.MathUtils.degToRad(z)
         );
         setHudXYZDeg('hud-rot-x', 'hud-rot-y', 'hud-rot-z', loadedModel.rotation);
-        syncOrbitTarget();
+        syncOrbitTarget({ preserveView: true, persist: false });
         if (persist) saveState();
     }
 
@@ -131,20 +155,19 @@ window.MaterialMapperCameraModule = function ({
     function snapToFloor() {
         const loadedModel = getLoadedModel();
         if (!loadedModel) return;
-        loadedModel.updateMatrixWorld(true);
-        const box = new THREE.Box3().setFromObject(loadedModel);
+
+        let box = getModelBounds();
+        if (!box) return;
         const center = box.getCenter(new THREE.Vector3());
         loadedModel.position.x -= center.x;
         loadedModel.position.z -= center.z;
 
-        loadedModel.updateMatrixWorld(true);
-        const box2 = new THREE.Box3().setFromObject(loadedModel);
-        loadedModel.position.y += (groundMesh.position.y - box2.min.y) + 0.008;
+        box = getModelBounds();
+        if (!box) return;
+        loadedModel.position.y -= box.min.y;
 
-        loadedModel.updateMatrixWorld(true);
-        const box3 = new THREE.Box3().setFromObject(loadedModel);
-        groundMesh.position.y = box3.min.y - 0.008;
-        syncOrbitTarget();
+        syncGroundToModel();
+        syncOrbitTarget({ preserveView: true, persist: false });
         saveState();
         showToast('Snapped to floor & centered');
     }
@@ -279,6 +302,7 @@ window.MaterialMapperCameraModule = function ({
         }
 
         bindIfPresent('hud-fit-btn', 'click', fitCameraToModel);
+        bindIfPresent('hud-center-orbit-btn', 'click', () => syncOrbitTarget({ preserveView: true, persist: true }));
         bindIfPresent('hud-snap-btn', 'click', snapToFloor);
         bindIfPresent('hud-ortho-btn', 'click', toggleOrtho);
         bindIfPresent('hud-copy-cam-btn', 'click', () => {
@@ -363,6 +387,7 @@ window.MaterialMapperCameraModule = function ({
         if (initialized) return;
         bindHudControls();
         bindNumberDrag();
+        controls.addEventListener('end', saveState);
         syncHudCollapsed();
         initialized = true;
     }
@@ -375,6 +400,7 @@ window.MaterialMapperCameraModule = function ({
         syncOrbitTarget,
         fitCameraToModel,
         applyModelRotationDeg,
+        syncGroundToModel,
         toggleOrtho,
         getHudState: () => ({ collapsed: hudCollapsed }),
         restoreHudState: (savedHudState) => {
