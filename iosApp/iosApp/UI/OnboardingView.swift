@@ -423,6 +423,9 @@ struct QRDecryptionAnimationView: View {
 struct OnboardingView: View {
     @State private var viewModel: OnboardingViewModel
     @StateObject private var recoveryFobPool = RecoveryFobWebViewPool()
+    /// After the sheet dismisses, wait for the slide animation before moving the WKWebView back to the prewarm slot (otherwise the 3D view vanishes instantly).
+    @State private var recoveryFobMayRehomeToPrewarm = true
+    @State private var recoveryFobRehomeTask: Task<Void, Never>?
 
     init(bleService: IosBleProximityService, onProvisioned: @escaping () -> Void) {
         _viewModel = State(initialValue: OnboardingViewModel(bleService: bleService, onProvisioned: onProvisioned))
@@ -460,8 +463,29 @@ struct OnboardingView: View {
         }
         .animation(.easeInOut(duration: 0.24), value: viewModel.onboardingState)
         .animation(.easeInOut(duration: 0.24), value: viewModel.recoveryState)
+        .onChange(of: isRecoverySheetPresented) { _, presented in
+            handleRecoverySheetPresentationChange(presented)
+        }
         .onDisappear {
+            recoveryFobRehomeTask?.cancel()
+            recoveryFobRehomeTask = nil
             viewModel.onDisappear()
+        }
+    }
+
+    private func handleRecoverySheetPresentationChange(_ presented: Bool) {
+        recoveryFobRehomeTask?.cancel()
+        recoveryFobRehomeTask = nil
+        if presented {
+            recoveryFobMayRehomeToPrewarm = false
+        } else {
+            recoveryFobMayRehomeToPrewarm = false
+            recoveryFobRehomeTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard !Task.isCancelled else { return }
+                recoveryFobMayRehomeToPrewarm = true
+                recoveryFobRehomeTask = nil
+            }
         }
     }
 
@@ -522,7 +546,7 @@ struct OnboardingView: View {
                 if viewModel.onboardingState == .camera || viewModel.onboardingState == .recovery {
                     RecoveryFobAnchor(
                         pool: recoveryFobPool,
-                        shouldAttach: !isRecoverySheetPresented
+                        shouldAttach: !isRecoverySheetPresented && recoveryFobMayRehomeToPrewarm
                     )
                     .frame(width: 340, height: OnboardingMockup.recoveryFobDemoHeight)
                     .opacity(0.004)

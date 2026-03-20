@@ -85,6 +85,17 @@ const RECOVERY_EMBED = typeof window !== 'undefined' && !!window.__pipitRecovery
 /** Skips radial page background while recovery sheet (or embed) is active. */
 let _recoveryDemoChromeActive = RECOVERY_EMBED;
 
+/** CSS-pixel layout of the WebGL canvas; `useInset` reserved if a future embed needs letterboxing. */
+let _vpLayout = {
+    fullW: 0,
+    fullH: 0,
+    offX: 0,
+    offY: 0,
+    vpW: 0,
+    vpH: 0,
+    useInset: false,
+};
+
 /** @returns {{ presetKey: 'light' | 'dark', sceneCfg: object }} */
 function viewerSceneForColorScheme() {
     const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -102,7 +113,6 @@ document.documentElement.dataset.viewerTheme = initialAppearance.presetKey;
 // ─── Renderer ────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
-renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.domElement.style.background = 'transparent';
 renderer.domElement.style.position = 'relative';
 renderer.domElement.style.zIndex = '1';
@@ -121,7 +131,7 @@ pmremGenerator.dispose();
 
 const camera = new THREE.PerspectiveCamera(
     VIEWER_CAMERA.fov,
-    window.innerWidth / window.innerHeight,
+    1,
     VIEWER_CAMERA.near,
     VIEWER_CAMERA.far
 );
@@ -137,7 +147,7 @@ let USE_ORTHO = VIEWER_CAMERA.useOrtho;
 function syncOrthoCamera() {
     const dist = Math.max(0.001, camera.position.distanceTo(controls.target));
     const halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * dist;
-    const asp   = window.innerWidth / window.innerHeight;
+    const asp   = camera.aspect;
     orthoCamera.left   = -halfH * asp;
     orthoCamera.right  =  halfH * asp;
     orthoCamera.top    =  halfH;
@@ -159,6 +169,59 @@ controls.enabled = false;
 // OrbitControls.update() is a no-op when disabled — still apply VIEWER_CAMERA orientation.
 camera.lookAt(controls.target);
 if (USE_ORTHO) syncOrthoCamera();
+
+/** WKWebView `innerWidth`/`innerHeight` can disagree with laid-out CSS pixels — use layout box for recovery. */
+function embedLayoutPixels() {
+    const el = document.documentElement;
+    const body = document.body;
+    const w = Math.max(1, el.clientWidth || body?.clientWidth || window.innerWidth || 1);
+    const h = Math.max(1, el.clientHeight || body?.clientHeight || window.innerHeight || 1);
+    return { fullW: w, fullH: h };
+}
+
+function configureViewerLayout() {
+    const { fullW, fullH } = RECOVERY_EMBED
+        ? embedLayoutPixels()
+        : {
+              fullW: Math.max(window.innerWidth, 1),
+              fullH: Math.max(window.innerHeight, 1),
+          };
+    const safeH = Math.max(fullH, 1e-6);
+    _vpLayout = { fullW, fullH, offX: 0, offY: 0, vpW: fullW, vpH: fullH, useInset: false };
+    camera.aspect = fullW / safeH;
+    camera.updateProjectionMatrix();
+    renderer.setSize(fullW, fullH);
+    applyPreRenderViewport();
+    if (USE_ORTHO) syncOrthoCamera();
+}
+
+/**
+ * Call each frame before render — setSize() resets the GL viewport to full canvas.
+ * Three.js setViewport uses CSS pixels and multiplies by pixelRatio internally.
+ */
+function applyPreRenderViewport() {
+    const { fullW, fullH } = _vpLayout;
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, fullW, fullH);
+}
+
+configureViewerLayout();
+
+if (RECOVERY_EMBED && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => {
+        configureViewerLayout();
+        if (modelPivot) recalculateHorizontalPan();
+        requestRender();
+    }).observe(document.documentElement);
+}
+
+if (RECOVERY_EMBED) {
+    requestAnimationFrame(() => {
+        configureViewerLayout();
+        if (modelPivot) recalculateHorizontalPan();
+        requestRender();
+    });
+}
 
 // ─── Pan / Zoom / Auto-return ─────────────────────────────────────────────────
 // Camera is driven entirely from Swift gesture recognizers via orbitCamera() /
@@ -364,6 +427,13 @@ function _applyLightsFromTilt() {
 // ─── API state ────────────────────────────────────────────────────────────────
 let modelPivot      = null;   // Wrapper Group — setModelTransform acts on this
 let rootModel       = null;   // The raw GLTF scene (centred + scaled inside modelPivot)
+/** Swift `setModelTransform` position before horizontal auto-pan (world-space pivot). */
+const _swiftModelPos = new THREE.Vector3();
+/** World offset along baseline camera right so projected mesh AABB is centred in NDC X. */
+let _horizontalPanWorld = 0;
+const _projCamForPan = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+const _panRight = new THREE.Vector3();
+const _panCorner = new THREE.Vector3();
 let ledMeshes       = [];     // Mesh objects whose material carries an emissive component
 let buttonObject    = null;   // Object3D for the physical button cap (KEY1)
 let buttonRestPos   = new THREE.Vector3();
@@ -389,6 +459,83 @@ function getMatchName(obj) {
 
 function getActiveCamera() {
     return USE_ORTHO ? orthoCamera : camera;
+}
+
+/** Matches main camera frustum but uses orbit baseline (no tilt parallax) for stable pan math. */
+function syncBaselineProjectionCamera() {
+    const pc = _projCamForPan;
+    pc.fov = camera.fov;
+    pc.aspect = camera.aspect;
+    pc.near = camera.near;
+    pc.far = camera.far;
+    pc.updateProjectionMatrix();
+    pc.position.copy(_orbitCamPos);
+    pc.lookAt(controls.target);
+    pc.updateMatrixWorld(true);
+    return pc;
+}
+
+/** Horizontal midpoint of modelPivot AABB in NDC X (−1…1); 0 = screen centre. */
+function projectedHorizontalMidNdc(projCam) {
+    modelPivot.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(modelPivot);
+    if (box.isEmpty()) return 0;
+    const { min, max } = box;
+    const corners = [
+        [min.x, min.y, min.z],
+        [min.x, min.y, max.z],
+        [min.x, max.y, min.z],
+        [min.x, max.y, max.z],
+        [max.x, min.y, min.z],
+        [max.x, min.y, max.z],
+        [max.x, max.y, min.z],
+        [max.x, max.y, max.z],
+    ];
+    let minPx = Infinity;
+    let maxPx = -Infinity;
+    for (const c of corners) {
+        _panCorner.set(c[0], c[1], c[2]);
+        _panCorner.project(projCam);
+        if (![_panCorner.x, _panCorner.y, _panCorner.z].every(Number.isFinite)) continue;
+        minPx = Math.min(minPx, _panCorner.x);
+        maxPx = Math.max(maxPx, _panCorner.x);
+    }
+    if (!Number.isFinite(minPx) || !Number.isFinite(maxPx)) return 0;
+    return (minPx + maxPx) * 0.5;
+}
+
+function _applyModelPivotWorldPosition() {
+    if (!modelPivot) return;
+    syncBaselineProjectionCamera();
+    _panRight.setFromMatrixColumn(_projCamForPan.matrixWorld, 0).normalize();
+    modelPivot.position.copy(_swiftModelPos).addScaledVector(_panRight, _horizontalPanWorld);
+}
+
+/**
+ * Pan the pivot along baseline camera right so the projected bounding box is centred horizontally.
+ * Uses orbit pose without parallax; re-run after layout or Swift transform changes.
+ */
+function recalculateHorizontalPan() {
+    if (!modelPivot || USE_ORTHO) return;
+    syncBaselineProjectionCamera();
+    const projCam = _projCamForPan;
+    _horizontalPanWorld = 0;
+
+    for (let iter = 0; iter < 22; iter++) {
+        _applyModelPivotWorldPosition();
+        modelPivot.updateMatrixWorld(true);
+        const mid = projectedHorizontalMidNdc(projCam);
+        if (Math.abs(mid) < 0.0009) break;
+
+        const box = new THREE.Box3().setFromObject(modelPivot);
+        const ctr = box.getCenter(_panCorner);
+        const dist = Math.max(0.001, ctr.distanceTo(projCam.position));
+        const vFovRad = THREE.MathUtils.degToRad(projCam.fov);
+        const halfWidthWorld = dist * Math.tan(vFovRad / 2) * projCam.aspect;
+        _horizontalPanWorld += -mid * halfWidthWorld * 0.9;
+    }
+    _applyModelPivotWorldPosition();
+    _applyModelPivotScale();
 }
 
 function computeButtonHitRegion() {
@@ -432,10 +579,22 @@ function computeButtonHitRegion() {
     const rect = renderer.domElement.getBoundingClientRect();
     const padX = BUTTON_HIT_REGION_PADDING_PX / Math.max(rect.width, 1);
     const padY = BUTTON_HIT_REGION_PADDING_PX / Math.max(rect.height, 1);
-    const x = THREE.MathUtils.clamp((minX + 1) * 0.5 - padX, 0, 1);
-    const right = THREE.MathUtils.clamp((maxX + 1) * 0.5 + padX, 0, 1);
-    const y = THREE.MathUtils.clamp((1 - maxY) * 0.5 - padY, 0, 1);
-    const bottom = THREE.MathUtils.clamp((1 - minY) * 0.5 + padY, 0, 1);
+    let x = THREE.MathUtils.clamp((minX + 1) * 0.5 - padX, 0, 1);
+    let right = THREE.MathUtils.clamp((maxX + 1) * 0.5 + padX, 0, 1);
+    let y = THREE.MathUtils.clamp((1 - maxY) * 0.5 - padY, 0, 1);
+    let bottom = THREE.MathUtils.clamp((1 - minY) * 0.5 + padY, 0, 1);
+
+    if (_vpLayout.useInset) {
+        const { fullW, fullH, offX, offY, vpW, vpH } = _vpLayout;
+        const sx = fullW > 0 ? vpW / fullW : 1;
+        const sy = fullH > 0 ? vpH / fullH : 1;
+        const ox = fullW > 0 ? offX / fullW : 0;
+        const oy = fullH > 0 ? offY / fullH : 0;
+        x = THREE.MathUtils.clamp(ox + x * sx, 0, 1);
+        right = THREE.MathUtils.clamp(ox + right * sx, 0, 1);
+        y = THREE.MathUtils.clamp(oy + y * sy, 0, 1);
+        bottom = THREE.MathUtils.clamp(oy + bottom * sy, 0, 1);
+    }
 
     return {
         x,
@@ -530,6 +689,8 @@ let _renderQueued = false;
 
 function renderFrame() {
     _renderQueued = false;
+
+    applyPreRenderViewport();
 
     const introContinues = _tickModelIntroFade();
     const squishContinues = _tickPressSquishAnimation();
@@ -999,7 +1160,7 @@ function _recoveryDemoRunCycle(gen) {
     const pressHoldMs = 90;
     const interPressGapMs = 145;
     const multiClickWindowMs = 420;
-    const pauseAfterRainbowMs = 900;
+    const pauseAfterRainbowMs = 1300;
 
     function afterThirdRelease() {
         if (gen !== _recoveryDemoGen) return;
@@ -1094,9 +1255,10 @@ window.setButtonDepth = (depth) => {
 window.setModelTransform = (px, py, pz, scale, rx, ry, rz) => {
     if (!modelPivot) return;
     _modelBaseScale = scale;
-    modelPivot.position.set(px, py, pz);
+    _swiftModelPos.set(px, py, pz);
     modelPivot.rotation.set(rx, ry, rz);
     _applyModelPivotScale();
+    recalculateHorizontalPan();
     requestRender();
 };
 
@@ -1108,8 +1270,18 @@ window.fobInteractableAtNormalized = (nx, ny) => {
     if (!rootModel) return false;
     const u = Math.max(0, Math.min(1, Number(nx)));
     const v = Math.max(0, Math.min(1, Number(ny)));
-    _surfaceNdc.x = u * 2 - 1;
-    _surfaceNdc.y = -(v * 2 - 1);
+    let uVp = u;
+    let vVp = v;
+    if (_vpLayout.useInset) {
+        const { fullW, fullH, offX, offY, vpW, vpH } = _vpLayout;
+        const px = u * fullW;
+        const py = v * fullH;
+        if (px < offX || px > offX + vpW || py < offY || py > offY + vpH) return false;
+        uVp = (px - offX) / Math.max(vpW, 1e-6);
+        vVp = (py - offY) / Math.max(vpH, 1e-6);
+    }
+    _surfaceNdc.x = uVp * 2 - 1;
+    _surfaceNdc.y = -(vVp * 2 - 1);
     surfaceRaycaster.setFromCamera(_surfaceNdc, getActiveCamera());
     const hits = surfaceRaycaster.intersectObject(rootModel, true);
     if (hits.length === 0) return false;
@@ -1158,10 +1330,8 @@ window.zoomCamera = (factor) => {
 
 // ─── Resize ───────────────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    if (USE_ORTHO) syncOrthoCamera();
+    configureViewerLayout();
+    if (modelPivot) recalculateHorizontalPan();
     requestRender();
 });
 </script>

@@ -374,7 +374,7 @@ extension FobViewer {
 /// then moves into the sheet and starts the triple-press demo only when the sheet is shown.
 final class RecoveryFobWebViewPool: ObservableObject {
     private static let uguisuDisplayScale: Double = 1.4
-    /// Pivot-space X (normalised model units); counters wide-sheet perspective so the fob sits visually centred.
+    /// Optional pivot-space X tweak (viewer also auto-centres the projected bbox horizontally).
     private static let uguisuPivotOffsetX: Double = -0.00
 
     @Published private(set) var isModelReady = false
