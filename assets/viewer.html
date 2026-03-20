@@ -232,6 +232,103 @@ let buttonRestPos   = new THREE.Vector3();
 // (Z-rotation preserves the Z axis), which is "away from camera" = into the device. ✓
 let buttonPressAxis = new THREE.Vector3(0, 0, 1);
 
+// Meshes whose projected bounds define the Swift tap target (see postButtonHitRegionIfNeeded).
+const BUTTON_TRIGGER_PART_NAMES = new Set(['Uguisu_PCB']);
+const BUTTON_HIT_REGION_PADDING_PX = 12;
+const buttonHitObjects = [];
+let lastPostedButtonHitRegionKey = '';
+const surfaceRaycaster = new THREE.Raycaster();
+const _surfaceNdc = new THREE.Vector2();
+
+function getMatchName(obj) {
+    if (!obj) return '';
+    const isParentRoot = !obj.parent || obj.parent === rootModel;
+    return (!isParentRoot && obj.parent?.name) ? obj.parent.name : obj.name;
+}
+
+function getActiveCamera() {
+    return USE_ORTHO ? orthoCamera : camera;
+}
+
+function computeButtonHitRegion() {
+    const targetObjects = buttonHitObjects.length > 0
+        ? buttonHitObjects
+        : (buttonObject ? [buttonObject] : []);
+    if (targetObjects.length === 0) return null;
+
+    const box = new THREE.Box3().makeEmpty();
+    for (const obj of targetObjects) box.expandByObject(obj);
+    if (box.isEmpty()) return null;
+
+    const activeCamera = getActiveCamera();
+    const { min, max } = box;
+    const corners = [
+        new THREE.Vector3(min.x, min.y, min.z),
+        new THREE.Vector3(min.x, min.y, max.z),
+        new THREE.Vector3(min.x, max.y, min.z),
+        new THREE.Vector3(min.x, max.y, max.z),
+        new THREE.Vector3(max.x, min.y, min.z),
+        new THREE.Vector3(max.x, min.y, max.z),
+        new THREE.Vector3(max.x, max.y, min.z),
+        new THREE.Vector3(max.x, max.y, max.z),
+    ];
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const corner of corners) {
+        const projected = corner.project(activeCamera);
+        if (![projected.x, projected.y, projected.z].every(Number.isFinite)) continue;
+        minX = Math.min(minX, projected.x);
+        maxX = Math.max(maxX, projected.x);
+        minY = Math.min(minY, projected.y);
+        maxY = Math.max(maxY, projected.y);
+    }
+
+    if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    const padX = BUTTON_HIT_REGION_PADDING_PX / Math.max(rect.width, 1);
+    const padY = BUTTON_HIT_REGION_PADDING_PX / Math.max(rect.height, 1);
+    const x = THREE.MathUtils.clamp((minX + 1) * 0.5 - padX, 0, 1);
+    const right = THREE.MathUtils.clamp((maxX + 1) * 0.5 + padX, 0, 1);
+    const y = THREE.MathUtils.clamp((1 - maxY) * 0.5 - padY, 0, 1);
+    const bottom = THREE.MathUtils.clamp((1 - minY) * 0.5 + padY, 0, 1);
+
+    return {
+        x,
+        y,
+        width: Math.max(0, right - x),
+        height: Math.max(0, bottom - y),
+    };
+}
+
+function postButtonHitRegionIfNeeded(force = false) {
+    const handler = window.webkit?.messageHandlers?.buttonHitRegion;
+    if (!handler) return;
+    // Pivot press-scale tweens every frame; skip posts until idle to avoid WK spam.
+    if (!force && _pressSquishStartTs !== null) return;
+    const region = computeButtonHitRegion();
+    const key = region
+        ? [region.x, region.y, region.width, region.height].map((v) => v.toFixed(4)).join(',')
+        : 'null';
+    if (!force && key === lastPostedButtonHitRegionKey) return;
+    lastPostedButtonHitRegionKey = key;
+    handler.postMessage(region);
+}
+
+/** True if `obj` or an ancestor is the KEY1 button or a PCB trigger mesh (front-most hit only). */
+function isFobInteractableSurfaceObject(obj) {
+    for (let o = obj; o != null; o = o.parent) {
+        if (buttonObject && o === buttonObject) return true;
+        if (o.isMesh) {
+            const n = getMatchName(o);
+            if (BUTTON_TRIGGER_PART_NAMES.has(n)) return true;
+        }
+    }
+    return false;
+}
 
 // Button physical travel calibrated from GLB bounding box:
 //   model longest dim (Y) = 54.4 mm (raw GLB metres), normalised to unit cube.
@@ -296,6 +393,20 @@ loader.load(
         rootModel.scale.setScalar(1.0 / maxDim);
         rootModel.position.sub(center.multiplyScalar(1.0 / maxDim));
 
+        // Material-mapper export: final root pose in normalised space (replaces centring offset).
+        const exportedModelPosition = Array.isArray(VIEWER_CAMERA.modelPosition)
+            && VIEWER_CAMERA.modelPosition.length === 3
+            && VIEWER_CAMERA.modelPosition.every(Number.isFinite)
+            ? VIEWER_CAMERA.modelPosition
+            : null;
+        if (exportedModelPosition) {
+            rootModel.position.set(
+                exportedModelPosition[0],
+                exportedModelPosition[1],
+                exportedModelPosition[2]
+            );
+        }
+
         // Wrap in pivot so setModelTransform can freely reposition / rotate the model
         // without overwriting the centring offset stored in rootModel.position.
         modelPivot = new THREE.Group();
@@ -340,19 +451,23 @@ loader.load(
             // Material mapper groups by parent Group name (Onshape/KiCAD Layout A) or by the
             // mesh's own name (Layout B / flat).  Mirror that same name-selection here so the
             // MATERIAL_RULES keys always resolve to the right mesh.
-            const isParentRoot = !obj.parent || obj.parent === rootModel;
-            const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
+            const nameToMatch = getMatchName(obj);
             const rule = MATERIAL_RULES.find(r =>
                 typeof r.match === 'string' ? nameToMatch === r.match : r.match.test(nameToMatch));
             if (rule) { obj.material = rule.mat; obj.material.needsUpdate = true; }
+        });
+
+        buttonHitObjects.length = 0;
+        rootModel.traverse((obj) => {
+            if (!obj.isMesh) return;
+            if (BUTTON_TRIGGER_PART_NAMES.has(getMatchName(obj))) buttonHitObjects.push(obj);
         });
 
         // ── Find LED meshes (by name, after material application) ─────────────
         const LED_NAMES = new Set(['LED', 'LED_1', 'LED_2', 'LED_3', 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08_1']);
         rootModel.traverse((obj) => {
             if (!obj.isMesh) return;
-            const isParentRoot = !obj.parent || obj.parent === rootModel;
-            const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
+            const nameToMatch = getMatchName(obj);
             if (LED_NAMES.has(nameToMatch)) {
                 ledMeshes.push(obj);
                 console.log('[Pipit] LED mesh:', nameToMatch);
@@ -399,6 +514,7 @@ loader.load(
         if (window.webkit?.messageHandlers?.modelReady) {
             window.webkit.messageHandlers.modelReady.postMessage(null);
         }
+        postButtonHitRegionIfNeeded(true);
     },
     undefined,
     (err) => {
@@ -635,6 +751,22 @@ window.setModelTransform = (px, py, pz, scale, rx, ry, rz) => {
 };
 
 /**
+ * Depth-aware hit test for Swift overlay (same coords as buttonHitRegion: normalized [0,1], origin top-left).
+ * Returns true only if the closest ray hit is the button cap or PCB — not enclosure in front.
+ */
+window.fobInteractableAtNormalized = (nx, ny) => {
+    if (!rootModel) return false;
+    const u = Math.max(0, Math.min(1, Number(nx)));
+    const v = Math.max(0, Math.min(1, Number(ny)));
+    _surfaceNdc.x = u * 2 - 1;
+    _surfaceNdc.y = -(v * 2 - 1);
+    surfaceRaycaster.setFromCamera(_surfaceNdc, getActiveCamera());
+    const hits = surfaceRaycaster.intersectObject(rootModel, true);
+    if (hits.length === 0) return false;
+    return isFobInteractableSurfaceObject(hits[0].object);
+};
+
+/**
  * Orbit the camera around the target by azimuth and polar angle deltas.
  * dTheta: horizontal rotation (radians); dPhi: vertical rotation (radians).
  * Called from Swift DragGesture with pixel deltas converted to radians.
@@ -710,6 +842,7 @@ renderer.setAnimationLoop(() => {
     }
     if (USE_ORTHO) syncOrthoCamera();
     renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
+    postButtonHitRegionIfNeeded();
 });
 </script>
 </body>

@@ -34,15 +34,41 @@ struct LedCommand: Equatable {
 /// the web view through the SwiftUI state graph.
 fileprivate final class CameraController {
     weak var webView: WKWebView?
+
     func orbit(dTheta: CGFloat, dPhi: CGFloat) {
         webView?.evaluateJavaScript(
             "if(window.orbitCamera)window.orbitCamera(\(dTheta),\(dPhi));",
             completionHandler: nil)
     }
+
     func zoom(factor: CGFloat) {
         webView?.evaluateJavaScript(
             "if(window.zoomCamera)window.zoomCamera(\(factor));",
             completionHandler: nil)
+    }
+
+    /// Raycast in Three.js: true if the front-most surface at (nx, ny) is PCB or button, not enclosure.
+    func queryFobInteractableAtNormalized(nx: CGFloat, ny: CGFloat, completion: @escaping (Bool) -> Void) {
+        guard let wv = webView else {
+            DispatchQueue.main.async { completion(false) }
+            return
+        }
+        let nxD = Double(nx)
+        let nyD = Double(ny)
+        let js = "(typeof window.fobInteractableAtNormalized==='function')?!!window.fobInteractableAtNormalized(\(nxD),\(nyD)):false"
+        wv.evaluateJavaScript(js) { result, _ in
+            let ok: Bool
+            if let b = result as? Bool {
+                ok = b
+            } else if let n = result as? NSNumber {
+                ok = n.boolValue
+            } else {
+                ok = false
+            }
+            DispatchQueue.main.async {
+                completion(ok)
+            }
+        }
     }
 }
 
@@ -67,9 +93,6 @@ struct FobViewer: UIViewRepresentable {
     // ── Camera controller (JS bridge for pan / zoom) ────────────
     fileprivate var cameraController: CameraController?
 
-    // ── Mesh-projected button hit region ───────────────────────
-    var onButtonHitRegionChange: ((CGRect?) -> Void)? = nil
-
     // MARK: Coordinator
 
     /// Holds the latest FobViewer value and listens for the JS `modelReady`
@@ -92,31 +115,9 @@ struct FobViewer: UIViewRepresentable {
                 // Reset so the current command fires again after a page reload.
                 lastLedCommandId = -1
                 parent.applyState(to: wv, coordinator: self)
-            case "buttonHitRegion":
-                DispatchQueue.main.async {
-                    self.parent.onButtonHitRegionChange?(Self.parseNormalizedRect(from: message.body))
-                }
             default:
                 break
             }
-        }
-
-        private static func parseNormalizedRect(from body: Any) -> CGRect? {
-            guard let dict = body as? [String: Any] else { return nil }
-
-            func numberValue(for key: String) -> Double? {
-                if let value = dict[key] as? NSNumber { return value.doubleValue }
-                return dict[key] as? Double
-            }
-
-            guard
-                let x = numberValue(for: "x"),
-                let y = numberValue(for: "y"),
-                let width = numberValue(for: "width"),
-                let height = numberValue(for: "height")
-            else { return nil }
-
-            return CGRect(x: x, y: y, width: width, height: height)
         }
     }
 
@@ -133,8 +134,6 @@ struct FobViewer: UIViewRepresentable {
         // Use a weak proxy so WKUserContentController doesn't retain Coordinator forever.
         config.userContentController.add(
             WeakScriptHandler(context.coordinator), name: "modelReady")
-        config.userContentController.add(
-            WeakScriptHandler(context.coordinator), name: "buttonHitRegion")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.isOpaque                   = false
@@ -160,8 +159,6 @@ struct FobViewer: UIViewRepresentable {
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.configuration.userContentController
             .removeScriptMessageHandler(forName: "modelReady")
-        webView.configuration.userContentController
-            .removeScriptMessageHandler(forName: "buttonHitRegion")
     }
 
     // MARK: – Apply state
@@ -251,12 +248,15 @@ struct FobInteractiveViewer: View {
     // the TapGesture.onEnded that fires on the subsequent finger-lift is ignored.
     @State private var longPressFired: Bool = false
 
-    // Normalized CGRect from JS representing the projected button / PCB hit region.
-    @State private var buttonHitRegion: CGRect? = nil
-
-    // True when the touch started inside the current button hit region.
-    // Tap / long-press actions only fire when this is true; orbit only fires when false.
+    // True when the front-most surface under the touch (Three.js raycast) is PCB or button.
     @State private var inButtonZone: Bool = false
+
+    /// Bumps on each new finger-down (first drag event) so stale WK hit-test completions are ignored.
+    @State private var touchGeneration: UInt = 0
+    @State private var sentSurfaceHitTestForDrag: Bool = false
+    @State private var surfaceHitTestInFlight: Bool = false
+    /// Normalized tap origin for a second raycast at tap-up (fast taps may finish before the first WK callback).
+    @State private var dragStartNormalized: (x: CGFloat, y: CGFloat)? = nil
 
     // Camera orbit / zoom — driven by SwiftUI gestures, forwarded to JS.
     @State private var cameraController      = CameraController()
@@ -264,21 +264,6 @@ struct FobInteractiveViewer: View {
     @State private var lastMagScale: CGFloat         = 1.0
     @State private var isPanning: Bool               = false
     @State private var orbitSuppressed: Bool         = false
-
-    private func isTouchInButtonZone(_ point: CGPoint, viewSize: CGSize) -> Bool {
-        if let normalizedRegion = buttonHitRegion {
-            let actualRegion = CGRect(
-                x: normalizedRegion.origin.x * viewSize.width,
-                y: normalizedRegion.origin.y * viewSize.height,
-                width: normalizedRegion.size.width * viewSize.width,
-                height: normalizedRegion.size.height * viewSize.height
-            )
-            return actualRegion.contains(point)
-        }
-
-        let center = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2)
-        return hypot(point.x - center.x, point.y - center.y) < 70
-    }
 
     var body: some View {
         GeometryReader { geo in
@@ -288,10 +273,7 @@ struct FobInteractiveViewer: View {
             modelPosition: .zero,
             modelScale: 1.0,
             modelRotation: .zero,
-            cameraController: cameraController,
-            onButtonHitRegionChange: { region in
-                buttonHitRegion = region
-            }
+            cameraController: cameraController
         )
         // A transparent overlay to capture touch events over the WebView
         .overlay(
@@ -303,17 +285,32 @@ struct FobInteractiveViewer: View {
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
-                            // Determine button zone on first event of each touch.
-                            if !isPanning && !inButtonZone && !isPressed {
+                            if !sentSurfaceHitTestForDrag && !isPanning {
+                                sentSurfaceHitTestForDrag = true
+                                touchGeneration &+= 1
+                                let tg = touchGeneration
+                                surfaceHitTestInFlight = true
+                                inButtonZone = false
+                                isPressed = false
                                 let s = value.startLocation
-                                inButtonZone = isTouchInButtonZone(s, viewSize: geo.size)
-                            }
-                            // Only depress button visual when touch is in button zone.
-                            if inButtonZone && !isPanning {
+                                let nx = s.x / max(geo.size.width, 1)
+                                let ny = s.y / max(geo.size.height, 1)
+                                dragStartNormalized = (nx, ny)
+                                cameraController.queryFobInteractableAtNormalized(nx: nx, ny: ny) { ok in
+                                    surfaceHitTestInFlight = false
+                                    guard tg == touchGeneration else { return }
+                                    inButtonZone = ok
+                                    if ok, !isPanning {
+                                        withAnimation(.easeOut(duration: 0.08)) { isPressed = true }
+                                    }
+                                }
+                            } else if inButtonZone, !isPanning {
                                 withAnimation(.easeOut(duration: 0.08)) { isPressed = true }
                             }
                         }
                         .onEnded { _ in
+                            sentSurfaceHitTestForDrag = false
+                            surfaceHitTestInFlight = false
                             withAnimation(.easeIn(duration: 0.15)) { isPressed = false }
                             // Defer flag resets so TapGesture.onEnded (same lift) runs first.
                             DispatchQueue.main.async {
@@ -345,32 +342,31 @@ struct FobInteractiveViewer: View {
                 .simultaneousGesture(
                     TapGesture()
                         .onEnded {
-                            // Only act when touch started in the button zone; swallow otherwise.
-                            guard inButtonZone && !longPressFired && !isPanning else { return }
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            // isPressed is driven by DragGesture; no manual flash needed.
+                            guard !longPressFired, !isPanning else { return }
+                            guard let o = dragStartNormalized else { return }
+                            let tg = touchGeneration
+                            cameraController.queryFobInteractableAtNormalized(nx: o.x, ny: o.y) { ok in
+                                guard ok, tg == touchGeneration else { return }
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-                            // Accumulate tap count and restart the 400 ms decision window,
-                            // mirroring firmware multi_click_deadline behaviour.
-                            pendingTapCount += 1
-                            let capturedCount = pendingTapCount
+                                pendingTapCount += 1
+                                let capturedCount = pendingTapCount
 
-                            tapDebounceItem?.cancel()
-                            let item = DispatchWorkItem {
-                                pendingTapCount = 0
-                                cmdCounter += 1
-                                if capturedCount >= 3 {
-                                    // Triple-press → Window (rainbow sweep)
-                                    ledCommand = LedCommand(kind: .window, id: cmdCounter)
-                                } else {
-                                    // Single or double tap → Unlock
-                                    ledCommand = LedCommand(kind: .unlock, id: cmdCounter)
-                                    onTap()
+                                tapDebounceItem?.cancel()
+                                let item = DispatchWorkItem {
+                                    pendingTapCount = 0
+                                    cmdCounter += 1
+                                    if capturedCount >= 3 {
+                                        ledCommand = LedCommand(kind: .window, id: cmdCounter)
+                                    } else {
+                                        ledCommand = LedCommand(kind: .unlock, id: cmdCounter)
+                                        onTap()
+                                    }
                                 }
+                                tapDebounceItem = item
+                                DispatchQueue.main.asyncAfter(
+                                    deadline: .now() + UGUISU_MULTI_CLICK_WINDOW_MS, execute: item)
                             }
-                            tapDebounceItem = item
-                            DispatchQueue.main.asyncAfter(
-                                deadline: .now() + UGUISU_MULTI_CLICK_WINDOW_MS, execute: item)
                         }
                 )
                 // ── Orbit: drag > 15 pt rotates camera around the model. ──────────────
@@ -381,8 +377,8 @@ struct FobInteractiveViewer: View {
                     DragGesture(minimumDistance: 15)
                         .onChanged { value in
                             if !isPanning {
-                                // First activation: suppress orbit when touch started in button zone.
-                                orbitSuppressed = inButtonZone
+                                // Wait for raycast before orbiting from PCB area; enclosure stays orbit-able.
+                                orbitSuppressed = inButtonZone || surfaceHitTestInFlight
                                 if !orbitSuppressed {
                                     withAnimation(.easeIn(duration: 0.1)) { isPressed = false }
                                 }

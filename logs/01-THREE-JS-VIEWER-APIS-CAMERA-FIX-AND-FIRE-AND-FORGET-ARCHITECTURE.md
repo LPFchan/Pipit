@@ -107,6 +107,8 @@ The previous value of `0.012` corresponded to ~0.65 mm, visually too much for a 
 
 **Where to edit:** `assets/viewer.html` only. `iosApp/iosApp/Resources/viewer.html` is a **symlink** to `../../../assets/viewer.html` (same for `materials.js` and `Uguisu.glb`). Do not copy over the symlink with a duplicate file.
 
+**Button hit testing:** Swift calls `window.fobInteractableAtNormalized(nx, ny)` via `evaluateJavaScript` so the **closest** ray hit must be PCB (`BUTTON_TRIGGER_PART_NAMES`) or the KEY1 `buttonObject` — enclosure in front returns false. `postButtonHitRegionIfNeeded` remains in JS for optional diagnostics but the native `buttonHitRegion` message handler was removed; orbit is suppressed while the async hit test is in flight.
+
 ---
 
 ## Files changed this session
