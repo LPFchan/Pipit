@@ -483,6 +483,11 @@ let buttonPressAxis = new THREE.Vector3(0, 0, 1);
 
 // Meshes whose projected bounds define the Swift tap target (see postButtonHitRegionIfNeeded).
 const BUTTON_TRIGGER_PART_NAMES = new Set(['Uguisu_PCB']);
+// LED meshes (emissive state); names mirror MATERIAL_RULES in materials.js.
+const LED_MESH_NAMES = new Set([
+    'LED', 'LED_1', 'LED_2', 'LED_3',
+    'LED-SMD_6P-L50-W50-TL_TC5050RGBF08', 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08_1',
+]);
 const BUTTON_HIT_REGION_PADDING_PX = 12;
 const buttonHitObjects = [];
 let lastPostedButtonHitRegionKey = '';
@@ -691,6 +696,34 @@ function computeButtonHitRegion() {
     };
 }
 
+/** Normalized touch [0,1] top-left, same space as `buttonHitRegion` posted to Swift. */
+function normalizedPointInPcbHitRegion(u, v) {
+    const r = computeButtonHitRegion();
+    if (!r || r.width <= 0 || r.height <= 0) return false;
+    return u >= r.x && u <= r.x + r.width && v >= r.y && v <= r.y + r.height;
+}
+
+/** Housing-only: Body / Lid shells (and suffixed variants e.g. Body_1). Not KiCAD `Uguisu_*`. */
+function enclosureBlockingFromMatchName(n) {
+    if (!n) return false;
+    if (/^Uguisu_/.test(n)) return false;
+    return /^Body(?:_|$)/.test(n) || /^Lid(?:_|$)/.test(n);
+}
+
+/** First-hit surface is Body/Lid housing in front of the board, not the PCB stack or an SMD. */
+function isEnclosureBlockingSurfaceObject(obj) {
+    if (buttonObject) {
+        for (let o = obj; o != null; o = o.parent) {
+            if (o === buttonObject) return false;
+        }
+    }
+    for (let o = obj; o != null && o !== rootModel; o = o.parent) {
+        if (!o.isMesh) continue;
+        if (enclosureBlockingFromMatchName(getMatchName(o))) return true;
+    }
+    return false;
+}
+
 function postButtonHitRegionIfNeeded(force = false) {
     const handler = window.webkit?.messageHandlers?.buttonHitRegion;
     if (!handler) return;
@@ -703,18 +736,6 @@ function postButtonHitRegionIfNeeded(force = false) {
     if (!force && key === lastPostedButtonHitRegionKey) return;
     lastPostedButtonHitRegionKey = key;
     handler.postMessage(region);
-}
-
-/** True if `obj` or an ancestor is the KEY1 button or a PCB trigger mesh (front-most hit only). */
-function isFobInteractableSurfaceObject(obj) {
-    for (let o = obj; o != null; o = o.parent) {
-        if (buttonObject && o === buttonObject) return true;
-        if (o.isMesh) {
-            const n = getMatchName(o);
-            if (BUTTON_TRIGGER_PART_NAMES.has(n)) return true;
-        }
-    }
-    return false;
 }
 
 // Button physical travel calibrated from GLB bounding box:
@@ -932,12 +953,11 @@ loader.load(
             if (BUTTON_TRIGGER_PART_NAMES.has(getMatchName(obj))) buttonHitObjects.push(obj);
         });
 
-        // ── Find LED meshes (by name, after material application) ─────────────
-        const LED_NAMES = new Set(['LED', 'LED_1', 'LED_2', 'LED_3', 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08_1']);
+        // ── LED meshes (emissive) ─────────────────────────────────────────────
         rootModel.traverse((obj) => {
             if (!obj.isMesh) return;
             const nameToMatch = getMatchName(obj);
-            if (LED_NAMES.has(nameToMatch)) {
+            if (LED_MESH_NAMES.has(nameToMatch) || /^LED(?:_|$|-)/.test(nameToMatch) || /^LED-SMD_/.test(nameToMatch)) {
                 ledMeshes.push(obj);
                 console.log('[Pipit] LED mesh:', nameToMatch);
             }
@@ -1383,12 +1403,14 @@ window.setModelTransform = (px, py, pz, scale, rx, ry, rz) => {
 
 /**
  * Depth-aware hit test for Swift overlay (same coords as buttonHitRegion: normalized [0,1], origin top-left).
- * Returns true only if the closest ray hit is the button cap or PCB — not enclosure in front.
+ * True when the touch lies in the projected `Uguisu_PCB` rect (same as button hit region) and the
+ * closest surface along the ray is not enclosure housing in front of the board (SMDs need not be listed).
  */
 window.fobInteractableAtNormalized = (nx, ny) => {
     if (!rootModel) return false;
     const u = Math.max(0, Math.min(1, Number(nx)));
     const v = Math.max(0, Math.min(1, Number(ny)));
+    if (!normalizedPointInPcbHitRegion(u, v)) return false;
     let uVp = u;
     let vVp = v;
     if (_vpLayout.useInset) {
@@ -1404,7 +1426,8 @@ window.fobInteractableAtNormalized = (nx, ny) => {
     surfaceRaycaster.setFromCamera(_surfaceNdc, getActiveCamera());
     const hits = surfaceRaycaster.intersectObject(rootModel, true);
     if (hits.length === 0) return false;
-    return isFobInteractableSurfaceObject(hits[0].object);
+    if (isEnclosureBlockingSurfaceObject(hits[0].object)) return false;
+    return true;
 };
 
 /**
