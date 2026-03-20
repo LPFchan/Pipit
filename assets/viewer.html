@@ -301,6 +301,8 @@ applyViewerSceneRuntime(THREE, viewerRuntimeCtx, initialAppearance.sceneCfg);
 groundPlane.visible = false;
 
 const MODEL_INTRO_MS = 1000;
+/** Shadow-catcher opacity ramp after intro spin (avoids popping the floor in). */
+const GROUND_POST_INTRO_FADE_MS = 480;
 /**
  * Progress advances by (frame delta / MODEL_INTRO_MS) so duration matches real time at 60 Hz,
  * 120 Hz ProMotion, or variable refresh. Caps one RAF gap so a suspended WKWebView cannot
@@ -308,6 +310,8 @@ const MODEL_INTRO_MS = 1000;
  */
 const MODEL_INTRO_MAX_DT_MS = 64;
 let _modelIntroActive = false;
+/** Non-null while ground ShadowMaterial opacity eases from 0 → scene target after intro. */
+let _groundPostIntroFadeStartTs = null;
 let _modelIntroLastTickTs = null;
 let _modelIntroT = 0;
 /** Eased progress in [0,1] for fade + slide + spin. */
@@ -344,9 +348,72 @@ function _tickModelIntro() {
         _modelIntroT = 0;
         _modelIntroEaseU = 1;
         renderer.domElement.style.opacity = '';
+        if (!RECOVERY_EMBED && modelPivot && !_recoveryDemoChromeActive) {
+            const gs = viewerSceneForColorScheme().sceneCfg.ground;
+            if (gs.visible) {
+                _groundPostIntroFadeStartTs = performance.now();
+                groundPlane.visible = true;
+                groundPlane.material.opacity = 0;
+            } else {
+                _groundPostIntroFadeStartTs = null;
+                groundPlane.visible = false;
+            }
+        }
         return false;
     }
     return true;
+}
+
+/** @returns {boolean} true while ground fade needs another frame */
+function _tickGroundPostIntroFade() {
+    if (_groundPostIntroFadeStartTs === null) return false;
+    if (_recoveryDemoChromeActive) return false;
+    const gs = viewerSceneForColorScheme().sceneCfg.ground;
+    if (!gs.visible) {
+        groundPlane.visible = false;
+        _groundPostIntroFadeStartTs = null;
+        return false;
+    }
+    const elapsed = performance.now() - _groundPostIntroFadeStartTs;
+    const rawT = Math.min(elapsed / GROUND_POST_INTRO_FADE_MS, 1.0);
+    const t = _easeOutCubic(rawT);
+    groundPlane.visible = true;
+    groundPlane.material.opacity = gs.opacity * t;
+    if (rawT >= 1.0) {
+        groundPlane.material.opacity = gs.opacity;
+        _groundPostIntroFadeStartTs = null;
+        return false;
+    }
+    return true;
+}
+
+/** Keeps ground hidden during intro / pre-model; reapplies fade opacity after theme-driven runtime. */
+function _refreshGroundPlanePresentationAfterTheme() {
+    if (_recoveryDemoChromeActive) {
+        groundPlane.visible = false;
+        return;
+    }
+    if (!modelPivot && !RECOVERY_EMBED) {
+        groundPlane.visible = false;
+        return;
+    }
+    if (_modelIntroActive) {
+        groundPlane.visible = false;
+        return;
+    }
+    if (_groundPostIntroFadeStartTs !== null) {
+        const gs = viewerSceneForColorScheme().sceneCfg.ground;
+        if (!gs.visible) {
+            _groundPostIntroFadeStartTs = null;
+            groundPlane.visible = false;
+            return;
+        }
+        groundPlane.visible = true;
+        const elapsed = performance.now() - _groundPostIntroFadeStartTs;
+        const rawT = Math.min(elapsed / GROUND_POST_INTRO_FADE_MS, 1.0);
+        const t = _easeOutCubic(rawT);
+        groundPlane.material.opacity = gs.opacity * t;
+    }
 }
 
 function syncBackdropBackground(sceneCfg) {
@@ -393,6 +460,8 @@ function syncViewerToSystemColorScheme() {
         document.documentElement.style.background = 'transparent';
         document.body.style.background = 'transparent';
         groundPlane.visible = false;
+    } else {
+        _refreshGroundPlanePresentationAfterTheme();
     }
     requestRender();
 }
@@ -744,6 +813,7 @@ function renderFrame() {
     if (_modelIntroActive && modelPivot) {
         recalculateHorizontalPan();
     }
+    const groundFadeContinues = _tickGroundPostIntroFade();
     const squishContinues = _tickPressSquishAnimation();
 
     if (_manualCamera) {
@@ -771,7 +841,7 @@ function renderFrame() {
 
     const returnAnimating = _returning && _returnFrom.pos;
 
-    if (introContinues || squishContinues || returnAnimating) {
+    if (introContinues || groundFadeContinues || squishContinues || returnAnimating) {
         requestRender();
     }
 }
@@ -934,10 +1004,6 @@ loader.load(
         }
 
         if (!RECOVERY_EMBED) {
-            groundPlane.visible = true;
-        }
-
-        if (!RECOVERY_EMBED) {
             _modelPivotRestPos.set(0, 0, 0);
             modelPivot.updateMatrixWorld(true);
             const introBox = new THREE.Box3().setFromObject(modelPivot);
@@ -951,6 +1017,10 @@ loader.load(
         } else {
             _modelIntroActive = false;
             renderer.domElement.style.opacity = '';
+            _groundPostIntroFadeStartTs = null;
+            const gs = viewerSceneForColorScheme().sceneCfg.ground;
+            groundPlane.visible = gs.visible;
+            groundPlane.material.opacity = gs.opacity;
         }
 
         console.log('[Pipit] Model loaded. LED meshes:', ledMeshes.length,
@@ -1208,6 +1278,7 @@ window.setRecoveryDemoChrome = (enabled) => {
     const on = !!enabled;
     _recoveryDemoChromeActive = on;
     if (on) {
+        _groundPostIntroFadeStartTs = null;
         if (_recoveryDemoStoredGroundVisible === null) {
             _recoveryDemoStoredGroundVisible = groundPlane.visible;
         }
