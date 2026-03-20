@@ -483,11 +483,6 @@ let buttonPressAxis = new THREE.Vector3(0, 0, 1);
 
 // Meshes whose projected bounds define the Swift tap target (see postButtonHitRegionIfNeeded).
 const BUTTON_TRIGGER_PART_NAMES = new Set(['Uguisu_PCB']);
-// LED meshes (emissive state); names mirror MATERIAL_RULES in materials.js.
-const LED_MESH_NAMES = new Set([
-    'LED', 'LED_1', 'LED_2', 'LED_3',
-    'LED-SMD_6P-L50-W50-TL_TC5050RGBF08', 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08_1',
-]);
 const BUTTON_HIT_REGION_PADDING_PX = 12;
 const buttonHitObjects = [];
 let lastPostedButtonHitRegionKey = '';
@@ -953,11 +948,12 @@ loader.load(
             if (BUTTON_TRIGGER_PART_NAMES.has(getMatchName(obj))) buttonHitObjects.push(obj);
         });
 
-        // ── LED meshes (emissive) ─────────────────────────────────────────────
+        // ── Find LED meshes (by name, after material application) ─────────────
+        const LED_NAMES = new Set(['LED', 'LED_1', 'LED_2', 'LED_3', 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08_1']);
         rootModel.traverse((obj) => {
             if (!obj.isMesh) return;
             const nameToMatch = getMatchName(obj);
-            if (LED_MESH_NAMES.has(nameToMatch) || /^LED(?:_|$|-)/.test(nameToMatch) || /^LED-SMD_/.test(nameToMatch)) {
+            if (LED_NAMES.has(nameToMatch)) {
                 ledMeshes.push(obj);
                 console.log('[Pipit] LED mesh:', nameToMatch);
             }
