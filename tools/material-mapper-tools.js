@@ -12,6 +12,18 @@ window.MaterialMapperToolsModule = function ({
     requestRender,
     showToast,
 }) {
+    function buildCanonicalExportModel(loadedModel) {
+        const exportModel = loadedModel.clone(true);
+        const baseTransform = loadedModel.userData?.mmBaseTransform;
+
+        if (baseTransform?.position) exportModel.position.fromArray(baseTransform.position);
+        if (baseTransform?.quaternion) exportModel.quaternion.fromArray(baseTransform.quaternion);
+        if (baseTransform?.scale) exportModel.scale.fromArray(baseTransform.scale);
+
+        exportModel.updateMatrixWorld(true);
+        return exportModel;
+    }
+
     function exportGLB() {
         const loadedModel = getLoadedModel?.();
         const loadedFileName = getLoadedFileName?.();
@@ -25,9 +37,10 @@ window.MaterialMapperToolsModule = function ({
             }
         });
 
+        const exportModel = buildCanonicalExportModel(loadedModel);
         const exporter = new GLTFExporter();
         requestRender?.();
-        exporter.parse(loadedModel, (glb) => {
+        exporter.parse(exportModel, (glb) => {
             outlines.forEach((child) => { child.visible = true; });
             const base = loadedFileName.replace(/\.[^.]+$/, '');
             const blob = new Blob([glb], { type: 'model/gltf-binary' });

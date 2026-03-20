@@ -10,6 +10,7 @@ window.MaterialMapperCameraModule = function ({
     requestRender,
     showToast,
     generateCameraCode,
+    getViewerCameraExportPayload,
     getLoadedModel,
     getIsOrtho,
     setIsOrtho,
@@ -119,11 +120,66 @@ window.MaterialMapperCameraModule = function ({
         if (loadedModel) setHudXYZDeg('hud-rot-x', 'hud-rot-y', 'hud-rot-z', loadedModel.rotation);
     }
 
+    function formatDebugNumber(n) {
+        return Number.isFinite(n) ? n.toFixed(4) : 'n/a';
+    }
+
+    function formatDebugVec3(vec) {
+        if (!vec) return '(n/a, n/a, n/a)';
+        return `(${formatDebugNumber(vec.x)}, ${formatDebugNumber(vec.y)}, ${formatDebugNumber(vec.z)})`;
+    }
+
     function getModelBounds() {
         const loadedModel = getLoadedModel();
         if (!loadedModel) return null;
         loadedModel.updateMatrixWorld(true);
         return new THREE.Box3().setFromObject(loadedModel);
+    }
+
+    function buildDebugSnapshotText() {
+        const boxCenter = new THREE.Vector3();
+        const boxSize = new THREE.Vector3();
+        const loadedModel = getLoadedModel();
+        const box = getModelBounds();
+        let boxCenterText = '(n/a, n/a, n/a)';
+        let boxSizeText = '(n/a, n/a, n/a)';
+        let rootPositionText = '(n/a, n/a, n/a)';
+
+        if (box && !box.isEmpty()) {
+            boxCenterText = formatDebugVec3(box.getCenter(boxCenter));
+            boxSizeText = formatDebugVec3(box.getSize(boxSize));
+        }
+
+        if (loadedModel) {
+            rootPositionText = formatDebugVec3(loadedModel.position);
+        }
+
+        let exportedModelPosition = null;
+        if (typeof getViewerCameraExportPayload === 'function') {
+            try {
+                exportedModelPosition = getViewerCameraExportPayload()?.modelPosition ?? null;
+            } catch (error) {
+                console.warn('[Material Mapper] debug snapshot export payload', error);
+            }
+        }
+
+        return [
+            `camera:    ${formatDebugVec3(camera.position)}`,
+            `target:    ${formatDebugVec3(controls.target)}`,
+            `root pos:  ${rootPositionText}`,
+            `box ctr:   ${boxCenterText}`,
+            `box size:  ${boxSizeText}`,
+            `exported:  ${JSON.stringify(exportedModelPosition)}`,
+        ].join('\n');
+    }
+
+    function copyDebugSnapshot() {
+        navigator.clipboard.writeText(buildDebugSnapshotText()).then(() => {
+            showToast('Debug snapshot copied!');
+        }).catch((error) => {
+            console.warn('[Material Mapper] clipboard copy failed', error);
+            showToast('Debug copy failed');
+        });
     }
 
     function syncGroundToModel() {
@@ -434,6 +490,7 @@ window.MaterialMapperCameraModule = function ({
         bindIfPresent('hud-copy-cam-btn', 'click', () => {
             navigator.clipboard.writeText(generateCameraCode()).then(() => showToast('Camera code copied!'));
         });
+        bindIfPresent('hud-copy-debug-btn', 'click', copyDebugSnapshot);
 
         syncOrthoButton();
     }

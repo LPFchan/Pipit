@@ -209,6 +209,11 @@ window.MaterialMapperLoaderModule = function ({
             const scale = 1.0 / maxDim;
             model.scale.setScalar(scale);
             model.position.sub(center.multiplyScalar(scale));
+            model.userData.mmBaseTransform = {
+                position: model.position.toArray(),
+                quaternion: model.quaternion.toArray(),
+                scale: model.scale.toArray(),
+            };
 
             scene.add(model);
             setLoadedModel(model);

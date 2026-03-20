@@ -411,11 +411,17 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         const t = controls.target;
         const f4 = n => Math.round(n * 10000) / 10000;
         let modelRotation = [0, 0, 0];
+        let modelPosition = null;
         if (loadedModel) {
             modelRotation = [
                 f4(loadedModel.rotation.x),
                 f4(loadedModel.rotation.y),
                 f4(loadedModel.rotation.z),
+            ];
+            modelPosition = [
+                f4(loadedModel.position.x),
+                f4(loadedModel.position.y),
+                f4(loadedModel.position.z),
             ];
         }
         return {
@@ -426,6 +432,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
             position: [f4(p.x), f4(p.y), f4(p.z)],
             target: [f4(t.x), f4(t.y), f4(t.z)],
             modelRotation,
+            modelPosition,
         };
     }
 
@@ -445,10 +452,15 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
             `if (USE_ORTHO) syncOrthoCamera();`,
         ];
         if (loadedModel) {
+            const mx = Math.round(loadedModel.position.x * 10000) / 10000;
+            const my = Math.round(loadedModel.position.y * 10000) / 10000;
+            const mz = Math.round(loadedModel.position.z * 10000) / 10000;
             const rx = Math.round(THREE.MathUtils.radToDeg(loadedModel.rotation.x) * 10) / 10;
             const ry = Math.round(THREE.MathUtils.radToDeg(loadedModel.rotation.y) * 10) / 10;
             const rz = Math.round(THREE.MathUtils.radToDeg(loadedModel.rotation.z) * 10) / 10;
             const d  = n => (n * Math.PI / 180).toFixed(6);
+            lines.push(`// ── Model pose ──`);
+            lines.push(`rootModel.position.set(${f(mx)}, ${f(my)}, ${f(mz)});`);
             lines.push(`// ── Model rotation ──`);
             lines.push(`rootModel.rotation.set(${d(rx)}, ${d(ry)}, ${d(rz)}); // ${rx}° ${ry}° ${rz}°`);
         }
@@ -777,6 +789,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         requestRender,
         showToast,
         generateCameraCode,
+        getViewerCameraExportPayload: () => getViewerCameraExportPayload(),
         getLoadedModel: () => loadedModel,
         getIsOrtho: () => isOrtho,
         setIsOrtho: (value) => { isOrtho = !!value; },

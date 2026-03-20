@@ -88,6 +88,7 @@ function defaultViewerCameraPayload() {
         position: [-0, -1.2865, -2.6566],
         target: [0, 0, 0],
         modelRotation: [0, 0, 0],
+        modelPosition: null,
     };
 }
 

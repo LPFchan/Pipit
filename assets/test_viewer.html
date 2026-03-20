@@ -8,6 +8,72 @@
     html, body { width: 100%; height: 100%; overflow: hidden; background: radial-gradient(ellipse at 50% 38%, #1c1e28 0%, #09090c 100%); }
     canvas { display: block; }
     #status { position: absolute; top: 80px; left: 10px; color: white; z-index: 999; font-size: 11px; pointer-events: none; }
+        #viewer-controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 999;
+            display: flex;
+            gap: 8px;
+        }
+        #pick-model-btn {
+            border: 0;
+            border-radius: 8px;
+            padding: 8px 10px;
+            background: rgba(10, 12, 18, 0.78);
+            color: #eef2ff;
+            font: 12px/1.2 -apple-system, BlinkMacSystemFont, sans-serif;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+        }
+        #pick-model-btn:active {
+            transform: translateY(1px);
+        }
+        #debug-hud {
+            position: absolute;
+            right: 10px;
+            bottom: 10px;
+            z-index: 999;
+            min-width: 260px;
+            max-width: min(360px, calc(100vw - 20px));
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(10, 12, 18, 0.78);
+            color: #eef2ff;
+            font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            pointer-events: auto;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+        }
+        #debug-hud-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        #debug-hud-title {
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+        #debug-copy-btn {
+            border: 0;
+            border-radius: 6px;
+            padding: 4px 8px;
+            background: #d8e4ff;
+            color: #111827;
+            font: inherit;
+            cursor: pointer;
+        }
+        #debug-copy-btn:active {
+            transform: translateY(1px);
+        }
+        #debug-hud-text {
+            margin: 0;
+            color: inherit;
+            font: inherit;
+            white-space: pre-wrap;
+            pointer-events: none;
+        }
   </style>
 
   <script>
@@ -30,7 +96,18 @@
   </script>
 </head>
 <body>
+<div id="viewer-controls">
+    <button id="pick-model-btn" type="button">Load GLB...</button>
+    <input id="pick-model-input" type="file" accept=".glb,.gltf" hidden>
+</div>
 <div id="status">Loading...</div>
+<div id="debug-hud">
+    <div id="debug-hud-head">
+        <div id="debug-hud-title">test_viewer debug</div>
+        <button id="debug-copy-btn" type="button">Copy</button>
+    </div>
+    <pre id="debug-hud-text">debug hud booting...</pre>
+</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -47,6 +124,11 @@ import {
 } from './materials.js';
 
 const statusEl = document.getElementById('status');
+const debugHudEl = document.getElementById('debug-hud');
+const debugHudTextEl = document.getElementById('debug-hud-text');
+const debugCopyBtnEl = document.getElementById('debug-copy-btn');
+const pickModelBtnEl = document.getElementById('pick-model-btn');
+const pickModelInputEl = document.getElementById('pick-model-input');
 statusEl.innerText = 'Initializing...';
 
 applyViewerBodyBackground(VIEWER_SCENE.bodyBackground);
@@ -188,6 +270,8 @@ let rootModel       = null;   // The raw GLTF scene (centred + scaled inside mod
 let ledMeshes       = [];     // Mesh objects whose material carries an emissive component
 let buttonObject    = null;   // Object3D for the physical button cap (KEY1)
 let buttonRestPos   = new THREE.Vector3();
+let currentModelLabel = './Uguisu.glb';
+let currentObjectUrl = null;
 // Button travel axis in rootModel local space.
 // KiCAD +Z points up (out of PCB surface toward user); pressing the cap moves in +Z.
 // After the 180° Z-rotation applied to rootModel, +Z local still maps to +Z world
@@ -200,148 +284,254 @@ let buttonPressAxis = new THREE.Vector3(0, 0, 1);
 //   0.3 mm physical travel → 0.3 / 54.4 = 0.005515 normalised units.
 const BUTTON_TRAVEL = 0.005515;
 
+function fmtNum(n) {
+    return Number.isFinite(n) ? n.toFixed(4) : 'n/a';
+}
+
+function fmtVec3(vec) {
+    if (!vec) return '(n/a, n/a, n/a)';
+    return `(${fmtNum(vec.x)}, ${fmtNum(vec.y)}, ${fmtNum(vec.z)})`;
+}
+
+function getDebugHudText() {
+    const boxCenter = new THREE.Vector3();
+    const boxSize = new THREE.Vector3();
+    let boxCenterText = '(n/a, n/a, n/a)';
+    let boxSizeText = '(n/a, n/a, n/a)';
+    let rootPositionText = '(n/a, n/a, n/a)';
+
+    if (modelPivot) {
+        modelPivot.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(modelPivot);
+        if (!box.isEmpty()) {
+            boxCenterText = fmtVec3(box.getCenter(boxCenter));
+            boxSizeText = fmtVec3(box.getSize(boxSize));
+        }
+    }
+
+    if (rootModel) {
+        rootPositionText = fmtVec3(rootModel.position);
+    }
+
+    return [
+        `model:     ${currentModelLabel}`,
+        `camera:    ${fmtVec3(camera.position)}`,
+        `target:    ${fmtVec3(controls.target)}`,
+        `root pos:  ${rootPositionText}`,
+        `box ctr:   ${boxCenterText}`,
+        `box size:  ${boxSizeText}`,
+        `exported:  ${JSON.stringify(VIEWER_CAMERA.modelPosition ?? null)}`,
+    ].join('\n');
+}
+
+async function copyDebugHudToClipboard() {
+    if (!debugCopyBtnEl) return;
+    const originalLabel = debugCopyBtnEl.textContent;
+    try {
+        await navigator.clipboard.writeText(getDebugHudText());
+        debugCopyBtnEl.textContent = 'Copied';
+    } catch (error) {
+        console.warn('[test_viewer] clipboard copy failed', error);
+        debugCopyBtnEl.textContent = 'Copy failed';
+    }
+    window.setTimeout(() => {
+        debugCopyBtnEl.textContent = originalLabel;
+    }, 1200);
+}
+
+function updateDebugHud() {
+    if (!debugHudEl || !debugHudTextEl) return;
+    debugHudTextEl.textContent = getDebugHudText();
+}
+
+debugCopyBtnEl?.addEventListener('click', () => {
+    copyDebugHudToClipboard();
+});
+
+pickModelBtnEl?.addEventListener('click', () => {
+    pickModelInputEl?.click();
+});
+
+function cleanupObjectUrl(url) {
+    if (url?.startsWith('blob:')) {
+        URL.revokeObjectURL(url);
+    }
+}
+
+function resetLoadedModelState() {
+    if (modelPivot) {
+        scene.remove(modelPivot);
+        modelPivot = null;
+    }
+    if (rootModel) {
+        scene.remove(rootModel);
+        rootModel = null;
+    }
+    ledMeshes = [];
+    buttonObject = null;
+    buttonRestPos.set(0, 0, 0);
+    _homeSet = false;
+    _manualCamera = false;
+    _interruptReturn();
+}
+
+function loadModel(sourceUrl, label, ownedObjectUrl = null) {
+    statusEl.style.display = '';
+    statusEl.innerText = `Loading ${label}...`;
+    currentModelLabel = label;
+    updateDebugHud();
+
+    resetLoadedModelState();
+
+    loader.load(
+        sourceUrl,
+        (gltf) => {
+            cleanupObjectUrl(currentObjectUrl);
+            currentObjectUrl = ownedObjectUrl;
+            scene.remove(cube);
+            rootModel = gltf.scene;
+
+
+            // Normalise to unit cube — same convention as material-mapper.
+            // This guarantees the calibrated camera parameters are valid regardless of export units.
+            const box    = new THREE.Box3().setFromObject(rootModel);
+            const center = box.getCenter(new THREE.Vector3());
+            const size   = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z) || 1;
+            rootModel.scale.setScalar(1.0 / maxDim);
+            rootModel.position.sub(center.multiplyScalar(1.0 / maxDim));
+
+            const exportedModelPosition = Array.isArray(VIEWER_CAMERA.modelPosition)
+                && VIEWER_CAMERA.modelPosition.length === 3
+                && VIEWER_CAMERA.modelPosition.every(Number.isFinite)
+                ? VIEWER_CAMERA.modelPosition
+                : null;
+            if (exportedModelPosition) {
+                rootModel.position.set(
+                    exportedModelPosition[0],
+                    exportedModelPosition[1],
+                    exportedModelPosition[2]
+                );
+            }
+
+            // Wrap in pivot so setModelTransform can freely reposition / rotate the model
+            // without overwriting the centring offset stored in rootModel.position.
+            modelPivot = new THREE.Group();
+            modelPivot.add(rootModel);
+            scene.add(modelPivot);
+
+            // Model rotation MUST be applied before camera — VIEWER_CAMERA was exported from
+            // Material Mapper with this rotation already on the mesh; doing camera first left
+            // the orbit target pointing at empty space after the 90° (etc.) spin.
+            rootModel.rotation.set(
+                VIEWER_CAMERA.modelRotation[0],
+                VIEWER_CAMERA.modelRotation[1],
+                VIEWER_CAMERA.modelRotation[2]
+            );
+            modelPivot.updateMatrixWorld(true);
+
+            // ── Camera / model pose from VIEWER_CAMERA (materials.js) ─────────────
+            USE_ORTHO = VIEWER_CAMERA.useOrtho;
+            camera.fov = VIEWER_CAMERA.fov;
+            camera.updateProjectionMatrix();
+            camera.position.set(
+                VIEWER_CAMERA.position[0],
+                VIEWER_CAMERA.position[1],
+                VIEWER_CAMERA.position[2]
+            );
+            controls.target.set(
+                VIEWER_CAMERA.target[0],
+                VIEWER_CAMERA.target[1],
+                VIEWER_CAMERA.target[2]
+            );
+            camera.lookAt(controls.target);
+            if (USE_ORTHO) syncOrthoCamera();
+
+            HOME_CAM_POS.copy(camera.position);
+            HOME_CTRL_TARGET.copy(controls.target);
+            _homeSet      = true;
+            _manualCamera = true;
+
+            // ── Apply materials ───────────────────────────────────────────────────
+            rootModel.traverse((obj) => {
+                if (!obj.isMesh) return;
+                const isParentRoot = !obj.parent || obj.parent === rootModel;
+                const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
+                const rule = MATERIAL_RULES.find(r =>
+                    typeof r.match === 'string' ? nameToMatch === r.match : r.match.test(nameToMatch));
+                if (rule) { obj.material = rule.mat; obj.material.needsUpdate = true; }
+            });
+
+            const LED_NAMES = new Set(['LED', 'LED_1', 'LED_2', 'LED_3', 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08_1']);
+            rootModel.traverse((obj) => {
+                if (!obj.isMesh) return;
+                const isParentRoot = !obj.parent || obj.parent === rootModel;
+                const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
+                if (LED_NAMES.has(nameToMatch)) {
+                    ledMeshes.push(obj);
+                    console.log('[Pipit] LED mesh:', nameToMatch);
+                }
+            });
+
+            _applyLedState(0, 0, 0, false, 1.0);
+
+            rootModel.traverse((obj) => {
+                if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; }
+            });
+            const modelBox = new THREE.Box3().setFromObject(modelPivot);
+            groundPlane.position.y = modelBox.min.y - 0.008;
+
+            const candidateNames = [
+                'KEY1', 'SW1', 'SKQGABE010',
+                'KEY-SMD_4P-L5.2-W5.2-H1.5-LS6.4-P3.70',
+                'button', 'Button', 'KEY_SMD',
+            ];
+            for (const name of candidateNames) {
+                buttonObject = rootModel.getObjectByName(name);
+                if (buttonObject) {
+                    console.log('[Pipit] Button node found:', name);
+                    break;
+                }
+            }
+            if (!buttonObject) {
+                console.warn('[Pipit] Button node not found. Available named nodes:');
+                rootModel.traverse((obj) => { if (obj.name) console.log('  •', obj.name); });
+            } else {
+                buttonRestPos.copy(buttonObject.position);
+            }
+
+            statusEl.style.display = 'none';
+            statusEl.style.color = 'white';
+            updateDebugHud();
+            console.log('[Pipit] Model loaded:', label, '| LED meshes:', ledMeshes.length,
+                '| Button:', buttonObject ? buttonObject.name : 'NOT FOUND');
+
+            if (window.webkit?.messageHandlers?.modelReady) {
+                window.webkit.messageHandlers.modelReady.postMessage(null);
+            }
+        },
+        undefined,
+        (err) => {
+            if (ownedObjectUrl) cleanupObjectUrl(ownedObjectUrl);
+            statusEl.innerText = 'Load error: ' + err.message;
+            statusEl.style.color = 'orange';
+            console.error('[Pipit] GLB load error', err);
+            updateDebugHud();
+        }
+    );
+}
+
+pickModelInputEl?.addEventListener('change', (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const objectUrl = URL.createObjectURL(file);
+    loadModel(objectUrl, file.name, objectUrl);
+    event.target.value = '';
+});
 
 // ─── GLB loader ──────────────────────────────────────────────────────────────
 const loader = new GLTFLoader();
-loader.load(
-    'local://app/Uguisu.glb',
-    (gltf) => {
-        scene.remove(cube);
-        rootModel = gltf.scene;
-
-        // Normalise to unit cube — same convention as material-mapper.
-        // This guarantees the calibrated camera parameters are valid regardless of export units.
-        const box    = new THREE.Box3().setFromObject(rootModel);
-        const center = box.getCenter(new THREE.Vector3());
-        const size   = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z) || 1;
-        rootModel.scale.setScalar(1.0 / maxDim);
-        rootModel.position.sub(center.multiplyScalar(1.0 / maxDim));
-
-        const exportedModelPosition = Array.isArray(VIEWER_CAMERA.modelPosition)
-            && VIEWER_CAMERA.modelPosition.length === 3
-            && VIEWER_CAMERA.modelPosition.every(Number.isFinite)
-            ? VIEWER_CAMERA.modelPosition
-            : null;
-        if (exportedModelPosition) {
-            rootModel.position.set(
-                exportedModelPosition[0],
-                exportedModelPosition[1],
-                exportedModelPosition[2]
-            );
-        }
-
-        // Wrap in pivot so setModelTransform can freely reposition / rotate the model
-        // without overwriting the centring offset stored in rootModel.position.
-        modelPivot = new THREE.Group();
-        modelPivot.add(rootModel);
-        scene.add(modelPivot);
-
-        // Model rotation MUST be applied before camera — VIEWER_CAMERA was exported from
-        // Material Mapper with this rotation already on the mesh; doing camera first left
-        // the orbit target pointing at empty space after the 90° (etc.) spin.
-        rootModel.rotation.set(
-            VIEWER_CAMERA.modelRotation[0],
-            VIEWER_CAMERA.modelRotation[1],
-            VIEWER_CAMERA.modelRotation[2]
-        );
-        modelPivot.updateMatrixWorld(true);
-
-        // ── Camera / model pose from VIEWER_CAMERA (materials.js) ─────────────
-        USE_ORTHO = VIEWER_CAMERA.useOrtho;
-        camera.fov = VIEWER_CAMERA.fov;
-        camera.updateProjectionMatrix();
-        camera.position.set(
-            VIEWER_CAMERA.position[0],
-            VIEWER_CAMERA.position[1],
-            VIEWER_CAMERA.position[2]
-        );
-        controls.target.set(
-            VIEWER_CAMERA.target[0],
-            VIEWER_CAMERA.target[1],
-            VIEWER_CAMERA.target[2]
-        );
-        camera.lookAt(controls.target);
-        if (USE_ORTHO) syncOrthoCamera();
-
-        HOME_CAM_POS.copy(camera.position);
-        HOME_CTRL_TARGET.copy(controls.target);
-        _homeSet      = true;
-        _manualCamera = true;
-
-        // ── Apply materials ───────────────────────────────────────────────────
-        rootModel.traverse((obj) => {
-            if (!obj.isMesh) return;
-            // Material mapper groups by parent Group name (Onshape/KiCAD Layout A) or by the
-            // mesh's own name (Layout B / flat).  Mirror that same name-selection here so the
-            // MATERIAL_RULES keys always resolve to the right mesh.
-            const isParentRoot = !obj.parent || obj.parent === rootModel;
-            const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
-            const rule = MATERIAL_RULES.find(r =>
-                typeof r.match === 'string' ? nameToMatch === r.match : r.match.test(nameToMatch));
-            if (rule) { obj.material = rule.mat; obj.material.needsUpdate = true; }
-        });
-
-        // ── Find LED meshes (by name, after material application) ─────────────
-        const LED_NAMES = new Set(['LED', 'LED_1', 'LED_2', 'LED_3', 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08_1']);
-        rootModel.traverse((obj) => {
-            if (!obj.isMesh) return;
-            const isParentRoot = !obj.parent || obj.parent === rootModel;
-            const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
-            if (LED_NAMES.has(nameToMatch)) {
-                ledMeshes.push(obj);
-                console.log('[Pipit] LED mesh:', nameToMatch);
-            }
-        });
-
-        // Ensure LED starts OFF; Swift drives state via setLedState after modelReady.
-        _applyLedState(0, 0, 0, false, 1.0);
-
-        // ── Enable shadows on all meshes ─────────────────────────────────────
-        rootModel.traverse((obj) => {
-            if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; }
-        });
-        // Snap shadow-catcher floor to the exact bottom of the normalised model.
-        const modelBox = new THREE.Box3().setFromObject(modelPivot);
-        groundPlane.position.y = modelBox.min.y - 0.008;
-
-        // ── Find button object ────────────────────────────────────────────────
-        // KiCAD reference designator for the ALPS SKQGABE010 tactile switch is KEY1.
-        const candidateNames = [
-            'KEY1', 'SW1', 'SKQGABE010',
-            'KEY-SMD_4P-L5.2-W5.2-H1.5-LS6.4-P3.70',
-            'button', 'Button', 'KEY_SMD',
-        ];
-        for (const name of candidateNames) {
-            buttonObject = rootModel.getObjectByName(name);
-            if (buttonObject) {
-                console.log('[Pipit] Button node found:', name);
-                break;
-            }
-        }
-        if (!buttonObject) {
-            console.warn('[Pipit] Button node not found. Available named nodes:');
-            rootModel.traverse((obj) => { if (obj.name) console.log('  •', obj.name); });
-        } else {
-            buttonRestPos.copy(buttonObject.position);
-        }
-
-        statusEl.style.display = 'none';
-        console.log('[Pipit] Model loaded. LED meshes:', ledMeshes.length,
-            '| Button:', buttonObject ? buttonObject.name : 'NOT FOUND');
-
-        // Notify Swift: model is ready, APIs will now work.
-        if (window.webkit?.messageHandlers?.modelReady) {
-            window.webkit.messageHandlers.modelReady.postMessage(null);
-        }
-    },
-    undefined,
-    (err) => {
-        statusEl.innerText = 'Load error: ' + err.message;
-        statusEl.style.color = 'orange';
-        console.error('[Pipit] GLB load error', err);
-    }
-);
+loadModel('./Uguisu.glb', './Uguisu.glb');
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -610,6 +800,7 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     if (USE_ORTHO) syncOrthoCamera();
+    updateDebugHud();
 });
 
 // ─── Render loop ──────────────────────────────────────────────────────────────
@@ -639,6 +830,7 @@ renderer.setAnimationLoop(() => {
         controls.update();
     }
     if (USE_ORTHO) syncOrthoCamera();
+    updateDebugHud();
     renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
 });
 </script>
