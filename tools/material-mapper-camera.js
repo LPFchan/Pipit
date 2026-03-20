@@ -7,6 +7,7 @@ window.MaterialMapperCameraModule = function ({
     controls,
     groundMesh,
     saveState,
+    requestRender,
     showToast,
     generateCameraCode,
     getLoadedModel,
@@ -98,6 +99,7 @@ window.MaterialMapperCameraModule = function ({
         controls.target.copy(center);
         controls.update();
         updateCameraHUD();
+        requestRender?.();
         if (persist) saveState();
     }
 
@@ -115,6 +117,7 @@ window.MaterialMapperCameraModule = function ({
         camera.position.set(center.x, center.y + maxDim * 0.08, center.z + dist);
         controls.update();
         updateCameraHUD();
+        requestRender?.();
         if (persist) saveState();
     }
 
@@ -181,6 +184,7 @@ window.MaterialMapperCameraModule = function ({
     function toggleOrtho() {
         setIsOrtho(!getIsOrtho());
         syncOrthoButton();
+        requestRender?.();
         saveState();
     }
 
@@ -259,6 +263,7 @@ window.MaterialMapperCameraModule = function ({
                 const v = parseHudXYZ('hud-pos-x', 'hud-pos-y', 'hud-pos-z');
                 camera.position.set(v.x, v.y, v.z);
                 controls.update();
+                requestRender?.();
                 saveState();
             });
         });
@@ -268,6 +273,7 @@ window.MaterialMapperCameraModule = function ({
                 const v = parseHudXYZ('hud-tgt-x', 'hud-tgt-y', 'hud-tgt-z');
                 controls.target.set(v.x, v.y, v.z);
                 controls.update();
+                requestRender?.();
                 saveState();
             });
         });
@@ -297,6 +303,7 @@ window.MaterialMapperCameraModule = function ({
                 hudFovInput.value = v;
                 camera.fov = v;
                 camera.updateProjectionMatrix();
+                requestRender?.();
                 saveState();
             });
         }

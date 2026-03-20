@@ -4,6 +4,7 @@ window.MaterialMapperShellModule = function ({
     loadBuffer,
     importFromCode,
     getPartMap,
+    getMaterialsModule,
     getSceneModule,
     saveState,
     showToast,
@@ -26,11 +27,13 @@ window.MaterialMapperShellModule = function ({
 
     function getLayoutState() {
         const { panelBody, editorSide, panelEl } = getLayoutElements();
+        const partSortSelect = document.getElementById('part-sort-select');
         return {
             mode: panelBody?.classList.contains('side-by-side') ? 'side-by-side' : 'stacked',
             panelWidth: panelEl?.style.width || '',
             editorWidth: editorSide?.style.width || '',
             editorHeight: editorSide?.style.height || '',
+            partSort: partSortSelect?.value || 'name-asc',
         };
     }
 
@@ -38,6 +41,7 @@ window.MaterialMapperShellModule = function ({
         if (!savedLayout) return;
 
         const { panelBody, editorSide, panelEl } = getLayoutElements();
+        const partSortSelect = document.getElementById('part-sort-select');
         if (!panelBody || !editorSide || !panelEl) return;
 
         const isSide = savedLayout.mode === 'side-by-side';
@@ -54,6 +58,10 @@ window.MaterialMapperShellModule = function ({
             if (savedLayout.editorWidth) editorSide.style.flex = 'none';
         } else {
             editorSide.style.height = savedLayout.editorHeight || '';
+        }
+
+        if (partSortSelect && savedLayout.partSort) {
+            partSortSelect.value = savedLayout.partSort;
         }
     }
 
@@ -232,23 +240,52 @@ window.MaterialMapperShellModule = function ({
 
     function bindTabsAndScene() {
         const tabPartsBtn = document.getElementById('tab-parts-btn');
+        const tabMaterialsBtn = document.getElementById('tab-materials-btn');
         const tabSceneBtn = document.getElementById('tab-scene-btn');
         const panelBody = document.getElementById('panel-body');
+        const partsSide = document.querySelector('.parts-side');
+        const materialsSide = document.getElementById('materials-side');
         const scenePanel = document.getElementById('scene-panel');
         const layoutBtn = document.getElementById('layout-btn');
         const showAllBtn = document.getElementById('show-all-btn');
         const partCount = document.getElementById('part-count');
         const copySceneCodeBtn = document.getElementById('sp-copy-code-btn');
 
-        tabPartsBtn.addEventListener('click', () => {
+        function activatePartsTab() {
             panelBody.style.display = '';
             scenePanel.style.display = 'none';
+            if (partsSide) partsSide.style.display = '';
+            if (materialsSide) materialsSide.style.display = 'none';
             tabPartsBtn.classList.add('active');
+            tabMaterialsBtn?.classList.remove('active');
             tabSceneBtn.classList.remove('active');
             layoutBtn.style.display = '';
             const anyHidden = [...getPartMap().values()].some((entry) => !entry.visible);
             showAllBtn.style.display = anyHidden ? '' : 'none';
             partCount.style.display = '';
+            getMaterialsModule?.()?.syncSelectionEditor?.();
+        }
+
+        function activateMaterialsTab() {
+            panelBody.style.display = '';
+            scenePanel.style.display = 'none';
+            if (partsSide) partsSide.style.display = 'none';
+            if (materialsSide) materialsSide.style.display = '';
+            tabPartsBtn.classList.remove('active');
+            tabMaterialsBtn?.classList.add('active');
+            tabSceneBtn.classList.remove('active');
+            layoutBtn.style.display = '';
+            showAllBtn.style.display = 'none';
+            partCount.style.display = 'none';
+            getMaterialsModule?.()?.activateMaterialManager?.();
+        }
+
+        tabPartsBtn.addEventListener('click', () => {
+            activatePartsTab();
+        });
+
+        tabMaterialsBtn?.addEventListener('click', () => {
+            activateMaterialsTab();
         });
 
         tabSceneBtn.addEventListener('click', () => {
@@ -256,6 +293,7 @@ window.MaterialMapperShellModule = function ({
             scenePanel.style.display = '';
             tabSceneBtn.classList.add('active');
             tabPartsBtn.classList.remove('active');
+            tabMaterialsBtn?.classList.remove('active');
             layoutBtn.style.display = 'none';
             showAllBtn.style.display = 'none';
             partCount.style.display = 'none';

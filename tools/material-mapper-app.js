@@ -28,17 +28,130 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     controls.autoRotate      = false;
     controls.autoRotateSpeed = 0.7;
 
+    const defaultLeftMouseAction = controls.mouseButtons.LEFT;
+    let spacePanActive = false;
+    let spacePanDragging = false;
+
+    function isTextEditingTarget(target = document.activeElement) {
+        if (!target) return false;
+        const tagName = target.tagName;
+        return target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+    }
+
+    function setSpacePanActive(nextActive) {
+        const active = !!nextActive;
+        if (spacePanActive === active) return;
+        spacePanActive = active;
+        controls.mouseButtons.LEFT = active ? THREE.MOUSE.PAN : defaultLeftMouseAction;
+        document.body.classList.toggle('space-pan-active', active);
+        if (!active) {
+            spacePanDragging = false;
+            document.body.classList.remove('space-pan-dragging');
+        }
+    }
+
+    function endSpacePanDrag() {
+        if (!spacePanDragging) return;
+        spacePanDragging = false;
+        document.body.classList.remove('space-pan-dragging');
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.code !== 'Space' || event.repeat) return;
+        if (isTextEditingTarget(event.target)) return;
+        event.preventDefault();
+        setSpacePanActive(true);
+    });
+
+    document.addEventListener('keyup', (event) => {
+        if (event.code !== 'Space') return;
+        setSpacePanActive(false);
+    });
+
+    window.addEventListener('blur', () => setSpacePanActive(false));
+
+    renderer.domElement.addEventListener('pointerdown', (event) => {
+        if (!spacePanActive || event.button !== 0) return;
+        spacePanDragging = true;
+        document.body.classList.add('space-pan-dragging');
+    });
+    renderer.domElement.addEventListener('pointerup', endSpacePanDrag);
+    renderer.domElement.addEventListener('pointercancel', endSpacePanDrag);
+    renderer.domElement.addEventListener('pointerleave', endSpacePanDrag);
+
     let composer = null;
     let renderPass = null;
     let bloomPass = null;
     let ssaoPass = null;
     let postGradePass = null;
+    let renderQueued = false;
+
+    const _preUpdateCameraPos = new THREE.Vector3();
+    const _preUpdateTarget = new THREE.Vector3();
+    const _preUpdateCameraQuat = new THREE.Quaternion();
 
     function setRenderSize(w, h) {
         renderer.setSize(w, h);
         if (composer) composer.setSize(w, h);
         if (bloomPass && bloomPass.setSize) bloomPass.setSize(w, h);
         if (ssaoPass && ssaoPass.setSize) ssaoPass.setSize(w, h);
+    }
+
+    function syncOrthoCamera() {
+        const d = Math.max(0.001, camera.position.distanceTo(controls.target));
+        const halfH = d * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        const asp = (w > 0 && h > 0) ? w / h : 1;
+        orthoCamera.left   = -halfH * asp;
+        orthoCamera.right  =  halfH * asp;
+        orthoCamera.top    =  halfH;
+        orthoCamera.bottom = -halfH;
+        orthoCamera.near   = camera.near;
+        orthoCamera.far    = camera.far;
+        orthoCamera.position.copy(camera.position);
+        orthoCamera.quaternion.copy(camera.quaternion);
+        orthoCamera.updateProjectionMatrix();
+    }
+
+    function shouldUseComposer() {
+        return !!(bloomPass?.enabled || ssaoPass?.enabled || postGradePass?.enabled);
+    }
+
+    function renderFrame() {
+        renderQueued = false;
+
+        _preUpdateCameraPos.copy(camera.position);
+        _preUpdateTarget.copy(controls.target);
+        _preUpdateCameraQuat.copy(camera.quaternion);
+
+        controls.update();
+
+        const controlsChanged =
+            _preUpdateCameraPos.distanceToSquared(camera.position) > 1e-12 ||
+            _preUpdateTarget.distanceToSquared(controls.target) > 1e-12 ||
+            (1 - Math.abs(_preUpdateCameraQuat.dot(camera.quaternion))) > 1e-12;
+
+        if (isOrtho) syncOrthoCamera();
+
+        const activeCamera = isOrtho ? orthoCamera : camera;
+        updateCameraHUD();
+
+        if (shouldUseComposer()) {
+            if (renderPass) renderPass.camera = activeCamera;
+            if (ssaoPass) ssaoPass.camera = activeCamera;
+            composer.render();
+        } else {
+            renderer.render(scene, activeCamera);
+        }
+
+        if (controlsChanged || controls.autoRotate) requestRender();
+    }
+
+    function requestRender() {
+        if (renderQueued) return;
+        renderQueued = true;
+        requestAnimationFrame(renderFrame);
     }
 
     const PostGradeVignetteShader = {
@@ -184,6 +297,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         const frame = document.getElementById('iphone-frame');
         frame.style.width  = w + 'px';
         frame.style.height = h + 'px';
+        requestRender();
     }
 
     function toggleIPhonePreview() {
@@ -205,6 +319,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
                 camera.updateProjectionMatrix();
             }
         }
+        requestRender();
     }
 
     document.getElementById('iphone-preview-btn').addEventListener('click', toggleIPhonePreview);
@@ -216,31 +331,10 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         setRenderSize(w, h);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        requestRender();
     }).observe(container);
 
-    renderer.setAnimationLoop(() => {
-        controls.update();
-        if (isOrtho) {
-            const d = Math.max(0.001, camera.position.distanceTo(controls.target));
-            const halfH = d * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
-            const w = container.clientWidth, h = container.clientHeight;
-            const asp = (w > 0 && h > 0) ? w / h : 1;
-            orthoCamera.left   = -halfH * asp;
-            orthoCamera.right  =  halfH * asp;
-            orthoCamera.top    =  halfH;
-            orthoCamera.bottom = -halfH;
-            orthoCamera.near   = camera.near;
-            orthoCamera.far    = camera.far;
-            orthoCamera.position.copy(camera.position);
-            orthoCamera.quaternion.copy(camera.quaternion);
-            orthoCamera.updateProjectionMatrix();
-        }
-        const activeCamera = isOrtho ? orthoCamera : camera;
-        if (renderPass) renderPass.camera = activeCamera;
-        if (ssaoPass) ssaoPass.camera = activeCamera;
-        updateCameraHUD();
-        composer.render();
-    });
+    controls.addEventListener('change', requestRender);
 
     // ── Lights (photorealistic — matches viewer.html setup) ─────────────────────
     const keyLight = new THREE.DirectionalLight(0xfff8f0, 2.0);
@@ -301,14 +395,14 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         cameraModule.updateCameraHUD();
     }
 
-    function syncOrbitTarget() {
+    function syncOrbitTarget(options) {
         if (!cameraModule) return;
-        cameraModule.syncOrbitTarget();
+        cameraModule.syncOrbitTarget(options);
     }
 
-    function fitCameraToModel() {
+    function fitCameraToModel(persist = true) {
         if (!cameraModule) return;
-        cameraModule.fitCameraToModel();
+        cameraModule.fitCameraToModel(persist);
     }
 
     function generateCameraCode() {
@@ -424,14 +518,46 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     // ─────────────────────────────────────────────────────────────
     // Search / filter
     // ─────────────────────────────────────────────────────────────
-    document.getElementById('search-input').addEventListener('input', (e) => {
-        const q = e.target.value.trim().toLowerCase();
+    const searchInput = document.getElementById('search-input');
+    const searchClearBtn = document.getElementById('search-clear-btn');
+    const partSortSelect = document.getElementById('part-sort-select');
+
+    function getPartSortMode() {
+        return partSortSelect?.value || 'name-asc';
+    }
+
+    function applySearchFilter(rawValue) {
+        const q = rawValue.trim().toLowerCase();
         document.querySelectorAll('.part-row').forEach(row => {
             const match = !q || row.dataset.name.toLowerCase().includes(q);
             row.classList.toggle('hidden', !match);
         });
+        searchClearBtn.classList.toggle('visible', rawValue.length > 0);
         updatePartCount();
+    }
+
+    searchInput.addEventListener('input', (e) => {
+        applySearchFilter(e.target.value);
     });
+
+    searchClearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        applySearchFilter('');
+        searchInput.focus();
+    });
+
+    partSortSelect.addEventListener('change', () => {
+        buildPartsUI();
+        applySearchFilter(searchInput.value);
+        saveState();
+    });
+
+    function ensurePartVisible(displayName) {
+        const row = document.querySelector(`.part-row[data-name="${CSS.escape(displayName)}"]`);
+        if (!row?.classList.contains('hidden')) return;
+        searchInput.value = '';
+        applySearchFilter('');
+    }
 
     document.getElementById('save-materials-btn').addEventListener('click', () => {
         if (partMap.size === 0) { showToast('Load a model first'); return; }
@@ -497,6 +623,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         controls,
         groundMesh,
         saveState,
+        requestRender,
         showToast,
         generateCameraCode,
         getLoadedModel: () => loadedModel,
@@ -520,6 +647,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         ssaoPass,
         postGradePass,
         saveState,
+        requestRender,
     });
     sceneState = sceneModule.getState();
     try {
@@ -534,8 +662,11 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         partMap,
         loadedModel: () => loadedModel,
         saveState: () => saveState(),
+        requestRender,
         showToast,
         updatePartCount: () => updatePartCount(),
+        ensurePartVisible,
+        getPartSortMode,
         generateCameraCode: () => generateCameraCode(),
     });
 
@@ -550,11 +681,13 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         isOrtho: () => isOrtho,
         hudState: () => cameraModule?.getHudState?.() ?? null,
         shellState: () => shellModule?.getLayoutState?.() ?? null,
+        materialsState: () => materialsModule?.getMaterialState?.() ?? null,
         camera,
         controls,
         sceneState: () => sceneState,
         groundMesh,
         THREE,
+        requestRender,
         showToast,
         importFromCode: (text) => importFromCode(text),
     });
@@ -580,10 +713,12 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         updateCode: () => updateCode(),
         getMatProps: () => matProps,
         getMAT_OBJ: () => MAT_OBJ,
+        ensureMaterial: (...args) => materialsModule?.ensureMaterial?.(...args),
         saveLastFileToDB: (...args) => saveLastFileToDB(...args),
         restoreState: (...args) => restoreState(...args),
         suspendPersistence: () => suspendPersistence(),
         resumePersistence: () => resumePersistence(),
+        requestRender,
         getRestoreCallbacks: () => ({
             applyMaterials,
             buildPartsUI,
@@ -598,6 +733,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
             restoreHudState: cameraModule?.restoreHudState,
             syncOrbitTarget: cameraModule?.syncOrbitTarget,
             restoreLayoutState: shellModule?.restoreLayoutState,
+            restoreMaterialState: materialsModule?.restoreMaterialState,
             mergeSceneState: sceneModule?.mergeState,
             applySceneState: sceneModule?.applyAll,
             syncScenePanel: sceneModule?.syncScenePanel,
@@ -611,9 +747,17 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     matProps = materialsModule.getMatProps();
     MAT_OBJ = materialsModule.getMAT_OBJ();
     MAT_SCHEMA = materialsModule.getMAT_SCHEMA();
+    materialsModule.init?.();
     ({ setProp, selectMesh, clearSelection, selectAllVisible, syncSelectionEditor, setVisibility, syncShowAllBtn, buildEditor, buildPartsUI, applyMaterials, generateMaterialsJs, guessKey, updateCode } = materialsModule);
     ({ loadBuffer, importFromCode } = loaderModule);
     ({ saveLastFileToDB, loadLastFileFromDB, saveState: persistSaveState, restoreState, suspendWrites: suspendPersistence, resumeWrites: resumePersistence } = persistenceModule);
+
+    const rawBuildPartsUI = buildPartsUI;
+    buildPartsUI = (...args) => {
+        rawBuildPartsUI(...args);
+        materialsModule?.buildMaterialsManagerUI?.({ scroll: false });
+        applySearchFilter(searchInput.value);
+    };
 
     toolsModule = window.MaterialMapperToolsModule({
         THREE,
@@ -624,6 +768,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         getMatProps: () => matProps,
         setProp,
         syncEditor: () => syncSelectionEditor(),
+        requestRender,
         showToast,
     });
 
@@ -631,6 +776,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         loadBuffer: (...args) => loadBuffer(...args),
         importFromCode: (...args) => importFromCode(...args),
         getPartMap: () => partMap,
+        getMaterialsModule: () => materialsModule,
         getSceneModule: () => sceneModule,
         saveState,
         showToast,
@@ -639,4 +785,5 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
 
     // Auto-reload last opened file on page open
     loadLastFileFromDB();
+    requestRender();
 };  // end MaterialMapperApp

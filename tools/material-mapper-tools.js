@@ -9,6 +9,7 @@ window.MaterialMapperToolsModule = function ({
     getMatProps,
     setProp,
     syncEditor,
+    requestRender,
     showToast,
 }) {
     function exportGLB() {
@@ -25,6 +26,7 @@ window.MaterialMapperToolsModule = function ({
         });
 
         const exporter = new GLTFExporter();
+        requestRender?.();
         exporter.parse(loadedModel, (glb) => {
             outlines.forEach((child) => { child.visible = true; });
             const base = loadedFileName.replace(/\.[^.]+$/, '');

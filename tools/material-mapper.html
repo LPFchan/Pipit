@@ -135,6 +135,7 @@
     <!-- Tab bar -->
     <div class="tab-bar">
       <button class="tab-btn active" id="tab-parts-btn">Parts</button>
+      <button class="tab-btn" id="tab-materials-btn">🎨 Materials</button>
       <button class="tab-btn" id="tab-scene-btn">🌓 Scene</button>
       <button class="layout-btn" id="layout-btn" title="Toggle side-by-side layout" style="margin-left:auto">⊞</button>
       <button class="show-all-btn" id="show-all-btn" style="display:none">Show all</button>
@@ -147,12 +148,40 @@
       <!-- Parts side -->
       <div class="parts-side">
         <div class="search-wrap">
-          <input class="search-input" id="search-input" type="search" placeholder="Filter parts…" autocomplete="off">
+          <div class="search-controls">
+            <div class="search-input-wrap">
+              <button class="search-clear-btn" id="search-clear-btn" type="button" aria-label="Clear search" title="Clear search">✕</button>
+              <input class="search-input" id="search-input" type="search" placeholder="Filter parts…" autocomplete="off">
+            </div>
+            <select class="search-sort-select" id="part-sort-select" aria-label="Sort parts">
+              <option value="name-asc">A-Z</option>
+              <option value="name-desc">Z-A</option>
+            </select>
+          </div>
         </div>
         <div class="parts-list" id="parts-list">
           <div class="empty-state" id="empty-state">
             <span>No model loaded</span>
             <span style="color:#22284a">Drop a .glb to see parts</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="materials-side" id="materials-side" style="display:none">
+        <div class="materials-toolbar">
+          <div class="materials-input-group">
+            <input class="materials-name-input" id="material-add-input" type="text" placeholder="newMaterial" autocomplete="off">
+            <button class="btn btn-ghost materials-action-btn" id="material-add-btn" type="button">Add</button>
+          </div>
+          <div class="materials-input-group">
+            <input class="materials-name-input" id="material-rename-input" type="text" placeholder="Rename selected material" autocomplete="off">
+            <button class="btn btn-ghost materials-action-btn" id="material-rename-btn" type="button">Rename</button>
+          </div>
+        </div>
+        <div class="materials-list" id="materials-list">
+          <div class="empty-state" id="materials-empty-state">
+            <span>No materials yet</span>
+            <span style="color:#22284a">Load a model to manage materials</span>
           </div>
         </div>
       </div>

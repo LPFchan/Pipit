@@ -21,10 +21,12 @@ window.MaterialMapperLoaderModule = function ({
     updateCode,
     getMatProps,
     getMAT_OBJ,
+    ensureMaterial,
     saveLastFileToDB,
     restoreState,
     suspendPersistence,
     resumePersistence,
+    requestRender,
     getRestoreCallbacks,
     onModelLoaded,
     saveState,
@@ -90,6 +92,7 @@ window.MaterialMapperLoaderModule = function ({
             while ((matMatch = matRegex.exec(source)) !== null) {
                 const matKey = matMatch[1];
                 const propsBlock = matMatch[2];
+                if (!(matKey in matProps)) ensureMaterial?.(matKey);
                 if (!(matKey in matProps)) continue;
 
                 const nextProps = matProps[matKey];
@@ -117,6 +120,7 @@ window.MaterialMapperLoaderModule = function ({
                     const matchToken = ruleMatch[1];
                     const matKey = ruleMatch[2];
                     if (matchToken.startsWith('/')) continue;
+                    if (!(matKey in matProps)) ensureMaterial?.(matKey);
                     const partName = decodeQuotedString(matchToken.slice(1, -1));
                     const entry = partMap.get(partName);
                     if (!entry) continue;
@@ -235,6 +239,7 @@ window.MaterialMapperLoaderModule = function ({
             } else {
                 showToast('Session restored');
             }
+            requestRender?.();
             resumePersistence?.();
         }, (error) => {
             resumePersistence?.();

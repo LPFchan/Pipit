@@ -29,11 +29,13 @@ window.MaterialMapperPersistenceModule = function ({
     isOrtho,
     hudState,
     shellState,
+    materialsState,
     camera,
     controls,
     sceneState,
     groundMesh,
     THREE,
+    requestRender,
     showToast,
     importFromCode,
 }) {
@@ -87,6 +89,7 @@ window.MaterialMapperPersistenceModule = function ({
         const currentIsOrtho = resolve(isOrtho);
         const currentHudState = resolve(hudState);
         const currentShellState = resolve(shellState);
+        const currentMaterialsState = resolve(materialsState);
         const currentSceneState = resolve(sceneState);
 
         if (!currentFileName || partMap.size === 0 || !currentMatProps) return;
@@ -98,6 +101,7 @@ window.MaterialMapperPersistenceModule = function ({
         }
         const state = {
             matProps:    JSON.parse(JSON.stringify(currentMatProps)),
+            materialsState: currentMaterialsState ? JSON.parse(JSON.stringify(currentMaterialsState)) : null,
             assignments,
             visibility,
             camera: {
@@ -166,6 +170,7 @@ window.MaterialMapperPersistenceModule = function ({
             restoreHudState,
             syncOrbitTarget,
             restoreLayoutState,
+            restoreMaterialState,
             mergeSceneState,
             applySceneState,
             syncScenePanel,
@@ -176,29 +181,35 @@ window.MaterialMapperPersistenceModule = function ({
             const saved = all[fileName];
             if (!saved) return false;
 
-            // Restore matProps + rebuild live Three.js material objects
-            for (const [key, props] of Object.entries(saved.matProps ?? {})) {
-                if (!currentMatProps || !(key in currentMatProps)) continue;
-                Object.assign(currentMatProps[key], props);
-                const mat = currentMAT_OBJ?.[key];
-                if (!mat) continue;
-                const p = currentMatProps[key];
-                mat.color.set(p.color);
-                mat.emissive.set(p.emissive);
-                mat.emissiveIntensity = p.emissiveIntensity;
-                mat.roughness         = p.roughness;
-                mat.metalness         = p.metalness;
-                mat.transmission      = p.transmission;
-                mat.thickness         = p.thickness;
-                mat.ior               = p.ior;
-                mat.opacity           = p.opacity;
-                mat.transparent          = p.transparent;
-                mat.toneMapped           = p.toneMapped;
-                mat.side                 = p.side === 'Double' ? THREE.DoubleSide : THREE.FrontSide;
-                mat.polygonOffset        = p.polygonOffset        ?? false;
-                mat.polygonOffsetFactor  = p.polygonOffsetFactor  ?? 0;
-                mat.polygonOffsetUnits   = p.polygonOffsetUnits   ?? 0;
-                mat.needsUpdate          = true;
+            const savedMaterialsState = saved.materialsState ?? (saved.matProps ? { matProps: saved.matProps } : null);
+
+            // Restore materials registry and live Three.js material objects
+            if (savedMaterialsState && restoreMaterialState) {
+                restoreMaterialState(savedMaterialsState);
+            } else {
+                for (const [key, props] of Object.entries(saved.matProps ?? {})) {
+                    if (!currentMatProps || !(key in currentMatProps)) continue;
+                    Object.assign(currentMatProps[key], props);
+                    const mat = currentMAT_OBJ?.[key];
+                    if (!mat) continue;
+                    const p = currentMatProps[key];
+                    mat.color.set(p.color);
+                    mat.emissive.set(p.emissive);
+                    mat.emissiveIntensity = p.emissiveIntensity;
+                    mat.roughness         = p.roughness;
+                    mat.metalness         = p.metalness;
+                    mat.transmission      = p.transmission;
+                    mat.thickness         = p.thickness;
+                    mat.ior               = p.ior;
+                    mat.opacity           = p.opacity;
+                    mat.transparent          = p.transparent;
+                    mat.toneMapped           = p.toneMapped;
+                    mat.side                 = p.side === 'Double' ? THREE.DoubleSide : THREE.FrontSide;
+                    mat.polygonOffset        = p.polygonOffset        ?? false;
+                    mat.polygonOffsetFactor  = p.polygonOffsetFactor  ?? 0;
+                    mat.polygonOffsetUnits   = p.polygonOffsetUnits   ?? 0;
+                    mat.needsUpdate          = true;
+                }
             }
 
             // Restore per-part assignments + visibility
@@ -271,6 +282,7 @@ window.MaterialMapperPersistenceModule = function ({
             if (buildPartsUI) buildPartsUI();
             if (syncShowAllBtn) syncShowAllBtn();
             if (buildEditor) buildEditor(null);
+            requestRender?.();
 
             return true;
         } catch (e) {

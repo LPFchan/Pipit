@@ -14,6 +14,8 @@
  *   - saveState: callback function
  *   - showToast: callback function
  *   - updatePartCount: callback function (or handled internally)
+ *   - ensurePartVisible: callback to reveal a selected part in the filtered list
+ *   - getPartSortMode: callback returning the current part sort mode
  *   - generateCameraCode: function that returns camera setup code
  */
 window.MaterialMapperMaterialsModule = function ({
@@ -21,8 +23,11 @@ window.MaterialMapperMaterialsModule = function ({
     partMap,
     loadedModel,
     saveState,
+    requestRender,
     showToast,
     updatePartCount,
+    ensurePartVisible,
+    getPartSortMode,
     generateCameraCode,
 }) {
     const selectedParts = new Set();
@@ -43,9 +48,9 @@ window.MaterialMapperMaterialsModule = function ({
     // These drive both the live Three.js objects and the code output.
     // Editing in the UI calls setProp() which updates both.
     // ─────────────────────────────────────────────────────────────
-    // All 7 materials share the same full property set.
+    // All materials share the same full property set.
     // Every property is editable; code gen skips Three.js defaults.
-    const matProps = {
+    const DEFAULT_MATERIAL_TEMPLATES = {
         housingMat: { color: '#181b2a', roughness: 0.50, metalness: 0.00, emissive: '#000000', emissiveIntensity: 0.0, transmission: 0.22, thickness: 0.009, ior: 1.49, opacity: 1.0, transparent: true,  toneMapped: true,  side: 'Double', polygonOffset: false, polygonOffsetFactor: 0, polygonOffsetUnits: 0 },
         buttonMat:  { color: '#23263a', roughness: 0.18, metalness: 0.04, emissive: '#000000', emissiveIntensity: 0.0, transmission: 0.00, thickness: 0.0,   ior: 1.50, opacity: 1.0, transparent: false, toneMapped: true,  side: 'Front',  polygonOffset: false, polygonOffsetFactor: 0, polygonOffsetUnits: 0 },
         ledMat:     { color: '#00ff45', roughness: 0.10, metalness: 0.00, emissive: '#00ff45', emissiveIntensity: 4.0, transmission: 0.00, thickness: 0.0,   ior: 1.50, opacity: 1.0, transparent: false, toneMapped: false, side: 'Front',  polygonOffset: false, polygonOffsetFactor: 0, polygonOffsetUnits: 0 },
@@ -53,6 +58,15 @@ window.MaterialMapperMaterialsModule = function ({
         pcbMat:     { color: '#1b3a1e', roughness: 0.88, metalness: 0.08, emissive: '#000000', emissiveIntensity: 0.0, transmission: 0.00, thickness: 0.0,   ior: 1.50, opacity: 1.0, transparent: false, toneMapped: true,  side: 'Front',  polygonOffset: true,  polygonOffsetFactor: -2, polygonOffsetUnits: -2 },
         metalMat:   { color: '#b8a870', roughness: 0.22, metalness: 0.92, emissive: '#000000', emissiveIntensity: 0.0, transmission: 0.00, thickness: 0.0,   ior: 1.50, opacity: 1.0, transparent: false, toneMapped: true,  side: 'Front',  polygonOffset: true,  polygonOffsetFactor: -1, polygonOffsetUnits: -1 },
         rubberMat:  { color: '#101010', roughness: 0.96, metalness: 0.00, emissive: '#000000', emissiveIntensity: 0.0, transmission: 0.00, thickness: 0.0,   ior: 1.50, opacity: 1.0, transparent: false, toneMapped: true,  side: 'Front',  polygonOffset: false, polygonOffsetFactor: 0, polygonOffsetUnits: 0 },
+    };
+    const DEFAULT_MATERIAL_ROLES = {
+        housing: 'housingMat',
+        button: 'buttonMat',
+        led: 'ledMat',
+        ledCap: 'ledCapMat',
+        pcb: 'pcbMat',
+        metal: 'metalMat',
+        rubber: 'rubberMat',
     };
 
     // Shared full schema — same for all materials
@@ -73,12 +87,43 @@ window.MaterialMapperMaterialsModule = function ({
         { key: 'polygonOffsetFactor',  type: 'range',  min: -10, max: 10, step: 1,       label: 'Offset Factor'   },
         { key: 'polygonOffsetUnits',   type: 'range',  min: -10, max: 10, step: 1,       label: 'Offset Units'    },
     ];
+    const matProps = {};
     const MAT_SCHEMA = {};
-    for (const key of Object.keys(matProps)) MAT_SCHEMA[key] = FULL_SCHEMA;
 
     // All materials are MeshPhysicalMaterial (Physical is a superset of Standard)
     const MAT_CLASS = {};
-    for (const key of Object.keys(matProps)) MAT_CLASS[key] = 'MeshPhysicalMaterial';
+    const MAT_OBJ = {};
+    let materialOrder = [];
+    let materialRoles = { ...DEFAULT_MATERIAL_ROLES };
+    let activeMaterialKey = null;
+
+    function cloneMaterialProps(props) {
+        return JSON.parse(JSON.stringify(props));
+    }
+
+    function syncMaterialObject(mat, props) {
+        if (!mat || !props) return;
+        mat.color.set(props.color);
+        mat.emissive.set(props.emissive);
+        mat.emissiveIntensity = props.emissiveIntensity;
+        mat.roughness = props.roughness;
+        mat.metalness = props.metalness;
+        mat.transmission = props.transmission;
+        mat.thickness = props.thickness;
+        mat.ior = props.ior;
+        mat.opacity = props.opacity;
+        mat.transparent = props.transparent;
+        mat.toneMapped = props.toneMapped;
+        mat.side = props.side === 'Double' ? THREE.DoubleSide : THREE.FrontSide;
+        mat.polygonOffset = props.polygonOffset ?? false;
+        mat.polygonOffsetFactor = props.polygonOffsetFactor ?? 0;
+        mat.polygonOffsetUnits = props.polygonOffsetUnits ?? 0;
+        mat.needsUpdate = true;
+    }
+
+    function resetObject(target) {
+        Object.keys(target).forEach((key) => delete target[key]);
+    }
 
     // ─────────────────────────────────────────────────────────────
     // Live Three.js material objects — built from matProps
@@ -104,9 +149,68 @@ window.MaterialMapperMaterialsModule = function ({
         });
     }
 
-    const MAT_OBJ = {};
-    for (const key of Object.keys(matProps)) {
+    function registerMaterial(key, props, { append = true } = {}) {
+        matProps[key] = cloneMaterialProps(props);
+        MAT_SCHEMA[key] = FULL_SCHEMA;
+        MAT_CLASS[key] = 'MeshPhysicalMaterial';
         MAT_OBJ[key] = buildMaterial(key);
+        if (!materialOrder.includes(key)) {
+            if (append) materialOrder.push(key);
+            else materialOrder.unshift(key);
+        }
+        if (!activeMaterialKey) activeMaterialKey = key;
+    }
+
+    function getFallbackMaterialKey() {
+        return materialRoles.housing && matProps[materialRoles.housing]
+            ? materialRoles.housing
+            : (materialOrder.find((key) => !!matProps[key]) ?? null);
+    }
+
+    function normalizeMaterialKey(rawValue) {
+        let key = String(rawValue || '').trim();
+        if (!key) return '';
+        key = key
+            .replace(/[^A-Za-z0-9_$]+(.)?/g, (_, chr) => (chr ? chr.toUpperCase() : ''))
+            .replace(/^[^A-Za-z_$]+/, '');
+        if (!key) key = 'material';
+        if (!/^[A-Za-z_$]/.test(key)) key = `material${key}`;
+        return key;
+    }
+
+    function ensureUniqueMaterialKey(baseKey) {
+        let key = baseKey;
+        let index = 2;
+        while (matProps[key]) {
+            key = `${baseKey}${index}`;
+            index += 1;
+        }
+        return key;
+    }
+
+    function resetMaterialsToDefaults() {
+        resetObject(matProps);
+        resetObject(MAT_SCHEMA);
+        resetObject(MAT_CLASS);
+        resetObject(MAT_OBJ);
+        materialOrder = [];
+        materialRoles = { ...DEFAULT_MATERIAL_ROLES };
+        activeMaterialKey = null;
+        for (const [key, props] of Object.entries(DEFAULT_MATERIAL_TEMPLATES)) {
+            registerMaterial(key, props);
+        }
+        activeMaterialKey = materialOrder[0] ?? null;
+    }
+
+    resetMaterialsToDefaults();
+
+    function ensureMaterial(key, templateKey = getFallbackMaterialKey()) {
+        if (!key || key === '_keep') return null;
+        if (matProps[key]) return key;
+        const sourceKey = matProps[templateKey] ? templateKey : getFallbackMaterialKey();
+        const sourceProps = sourceKey ? matProps[sourceKey] : DEFAULT_MATERIAL_TEMPLATES.housingMat;
+        registerMaterial(key, sourceProps ?? DEFAULT_MATERIAL_TEMPLATES.housingMat);
+        return key;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -163,6 +267,7 @@ window.MaterialMapperMaterialsModule = function ({
         }
 
         setOutlines(selectedParts);
+        requestRender?.();
         const primaryEntry = currentPrimarySelected ? partMap.get(currentPrimarySelected) : null;
         buildEditor(primaryEntry?.assignedKey ?? null, selectedParts.size);
     }
@@ -172,6 +277,7 @@ window.MaterialMapperMaterialsModule = function ({
         assignPrimarySelected(null);
         document.querySelectorAll('.part-row').forEach((row) => row.classList.remove('selected'));
         clearOutlines();
+        requestRender?.();
         buildEditor(null);
     }
 
@@ -212,13 +318,13 @@ window.MaterialMapperMaterialsModule = function ({
     // ─────────────────────────────────────────────────────────────
     function guessKey(name) {
         const n = name.toLowerCase();
-        if (/led|rgb|emitter|die/.test(n))                              return 'ledMat';
-        if (/diffuser|lens|cap|dome/.test(n))                           return 'ledCapMat';
-        if (/button|btn|trigger/.test(n))                               return 'buttonMat';
-        if (/pcb|board|substrate|fr4/.test(n))                          return 'pcbMat';
-        if (/clip|spring|pin|contact|metal|brass|steel|screw|nut/.test(n)) return 'metalMat';
-        if (/rubber|gasket|seal|grip/.test(n))                          return 'rubberMat';
-        return 'housingMat';
+        if (/led|rgb|emitter|die/.test(n))                              return materialRoles.led ?? getFallbackMaterialKey();
+        if (/diffuser|lens|cap|dome/.test(n))                           return materialRoles.ledCap ?? getFallbackMaterialKey();
+        if (/button|btn|trigger/.test(n))                               return materialRoles.button ?? getFallbackMaterialKey();
+        if (/pcb|board|substrate|fr4/.test(n))                          return materialRoles.pcb ?? getFallbackMaterialKey();
+        if (/clip|spring|pin|contact|metal|brass|steel|screw|nut/.test(n)) return materialRoles.metal ?? getFallbackMaterialKey();
+        if (/rubber|gasket|seal|grip/.test(n))                          return materialRoles.rubber ?? getFallbackMaterialKey();
+        return materialRoles.housing ?? getFallbackMaterialKey();
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -232,6 +338,7 @@ window.MaterialMapperMaterialsModule = function ({
                 m.material = mat ?? entry.origMats[i];
             });
         }
+        requestRender?.();
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -262,6 +369,7 @@ window.MaterialMapperMaterialsModule = function ({
         });
 
         updateCode();
+        requestRender?.();
         saveState();
     }
 
@@ -392,6 +500,11 @@ window.MaterialMapperMaterialsModule = function ({
     function selectPart(displayName, { ctrl = false, shift = false } = {}) {
         if (!partMap.has(displayName)) return;
 
+        const targetRow = document.querySelector(`.part-row[data-name="${CSS.escape(displayName)}"]`);
+        if (targetRow?.classList.contains('hidden')) {
+            ensurePartVisible?.(displayName);
+        }
+
         let currentPrimarySelected = getPrimarySelected();
 
         if (shift && currentPrimarySelected) {
@@ -453,6 +566,7 @@ window.MaterialMapperMaterialsModule = function ({
             if (btn) btn.innerHTML = visible ? EYE_OPEN_SVG : EYE_SHUT_SVG;
         }
         syncShowAllBtn();
+        requestRender?.();
         saveState();
     }
 
@@ -466,7 +580,13 @@ window.MaterialMapperMaterialsModule = function ({
         [...list.querySelectorAll('.part-row')].forEach(el => el.remove());
         document.getElementById('reset-btn').style.display = '';
 
-        for (const [displayName, entry] of partMap) {
+        const sortMode = getPartSortMode?.() ?? 'name-asc';
+        const direction = sortMode === 'name-desc' ? -1 : 1;
+        const entries = [...partMap.entries()].sort(([nameA], [nameB]) => (
+            nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' }) * direction
+        ));
+
+        for (const [displayName, entry] of entries) {
             const row = document.createElement('div');
             row.className = 'part-row';
             row.dataset.name = displayName;
@@ -507,14 +627,10 @@ window.MaterialMapperMaterialsModule = function ({
             const sel = document.createElement('select');
             sel.className = 'mat-select';
             const options = [
-                ['housingMat', 'Housing — plastic'],
-                ['buttonMat',  'Button — glossy'],
-                ['ledMat',     'LED die — emissive'],
-                ['ledCapMat',  'LED cap — diffuser'],
-                ['pcbMat',     'PCB — FR4'],
-                ['metalMat',   'Metal — contacts'],
-                ['rubberMat',  'Rubber — gasket'],
-                ['_keep',      '— keep original —'],
+                ...materialOrder
+                    .filter((key) => !!matProps[key])
+                    .map((key) => [key, key]),
+                ['_keep', '— keep original —'],
             ];
             for (const [val, label] of options) {
                 const opt = document.createElement('option');
@@ -575,8 +691,270 @@ window.MaterialMapperMaterialsModule = function ({
             list.appendChild(row);
         }
 
+        const searchInput = document.getElementById('search-input');
+        const searchQuery = searchInput?.value.trim().toLowerCase() ?? '';
+        if (searchQuery) {
+            list.querySelectorAll('.part-row').forEach((row) => {
+                const match = row.dataset.name.toLowerCase().includes(searchQuery);
+                row.classList.toggle('hidden', !match);
+            });
+        }
+
         updatePartCount();
         updateCode();
+    }
+
+    function getMaterialUsageCount(matKey) {
+        let count = 0;
+        for (const entry of partMap.values()) {
+            if (entry.assignedKey === matKey) count += 1;
+        }
+        return count;
+    }
+
+    function syncMaterialsManagerInputs() {
+        const renameInput = document.getElementById('material-rename-input');
+        const renameBtn = document.getElementById('material-rename-btn');
+        if (renameInput) {
+            renameInput.value = activeMaterialKey ?? '';
+            renameInput.disabled = !activeMaterialKey;
+        }
+        if (renameBtn) renameBtn.disabled = !activeMaterialKey;
+    }
+
+    function buildMaterialsManagerUI({ scroll = true } = {}) {
+        const list = document.getElementById('materials-list');
+        const empty = document.getElementById('materials-empty-state');
+        if (!list || !empty) return;
+
+        [...list.querySelectorAll('.material-row')].forEach((row) => row.remove());
+
+        if (!materialOrder.length) {
+            empty.style.display = '';
+            syncMaterialsManagerInputs();
+            return;
+        }
+
+        empty.style.display = 'none';
+
+        for (const matKey of materialOrder) {
+            if (!matProps[matKey]) continue;
+
+            const row = document.createElement('div');
+            row.className = 'material-row';
+            row.dataset.key = matKey;
+            row.classList.toggle('selected', matKey === activeMaterialKey);
+
+            const swatch = document.createElement('div');
+            swatch.className = 'swatch';
+            swatch.dataset.mat = matKey;
+            swatch.style.background = matProps[matKey]?.color ?? '#444';
+
+            const meta = document.createElement('div');
+            meta.className = 'material-meta';
+
+            const name = document.createElement('div');
+            name.className = 'material-name';
+            name.textContent = matKey;
+            name.title = matKey;
+
+            const usage = document.createElement('div');
+            usage.className = 'material-usage';
+            const usageCount = getMaterialUsageCount(matKey);
+            usage.textContent = `${usageCount} part${usageCount !== 1 ? 's' : ''}`;
+
+            meta.appendChild(name);
+            meta.appendChild(usage);
+            row.appendChild(swatch);
+            row.appendChild(meta);
+            row.addEventListener('click', () => setActiveMaterialKey(matKey));
+            list.appendChild(row);
+        }
+
+        syncMaterialsManagerInputs();
+
+        if (scroll && activeMaterialKey) {
+            const activeRow = list.querySelector(`.material-row[data-key="${CSS.escape(activeMaterialKey)}"]`);
+            if (activeRow) activeRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }
+
+    function setActiveMaterialKey(matKey, { scroll = true } = {}) {
+        if (!matKey || !matProps[matKey]) return;
+        activeMaterialKey = matKey;
+        buildMaterialsManagerUI({ scroll });
+        buildEditor(matKey, 1);
+    }
+
+    function activateMaterialManager() {
+        if (!activeMaterialKey || !matProps[activeMaterialKey]) {
+            const currentPrimarySelected = getPrimarySelected();
+            const primaryEntry = currentPrimarySelected ? partMap.get(currentPrimarySelected) : null;
+            activeMaterialKey = (primaryEntry?.assignedKey && primaryEntry.assignedKey !== '_keep' && matProps[primaryEntry.assignedKey])
+                ? primaryEntry.assignedKey
+                : getFallbackMaterialKey();
+        }
+        buildMaterialsManagerUI({ scroll: false });
+        if (activeMaterialKey) buildEditor(activeMaterialKey, 1);
+    }
+
+    function addMaterial(rawName, baseKey = activeMaterialKey ?? getFallbackMaterialKey()) {
+        const normalized = normalizeMaterialKey(rawName);
+        if (!normalized) {
+            showToast('Enter a material name first');
+            return null;
+        }
+
+        const uniqueKey = ensureUniqueMaterialKey(normalized);
+        ensureMaterial(uniqueKey, baseKey);
+        activeMaterialKey = uniqueKey;
+
+        buildPartsUI();
+        buildMaterialsManagerUI({ scroll: true });
+        buildEditor(uniqueKey, 1);
+        updateCode();
+        saveState();
+        showToast(uniqueKey === normalized ? `Added ${uniqueKey}` : `Added ${uniqueKey}`);
+        return uniqueKey;
+    }
+
+    function renameMaterial(oldKey, rawNextKey) {
+        if (!oldKey || !matProps[oldKey]) return false;
+
+        const nextKey = normalizeMaterialKey(rawNextKey);
+        if (!nextKey || nextKey === '_keep') {
+            showToast('Choose a valid material name');
+            return false;
+        }
+        if (nextKey !== oldKey && matProps[nextKey]) {
+            showToast('Material name already exists');
+            return false;
+        }
+        if (nextKey === oldKey) {
+            buildMaterialsManagerUI({ scroll: false });
+            return true;
+        }
+
+        const props = cloneMaterialProps(matProps[oldKey]);
+        delete matProps[oldKey];
+        delete MAT_SCHEMA[oldKey];
+        delete MAT_CLASS[oldKey];
+        delete MAT_OBJ[oldKey];
+
+        registerMaterial(nextKey, props);
+        materialOrder = materialOrder.map((key) => key === oldKey ? nextKey : key).filter((key, index, arr) => arr.indexOf(key) === index);
+
+        for (const role of Object.keys(materialRoles)) {
+            if (materialRoles[role] === oldKey) materialRoles[role] = nextKey;
+        }
+        for (const entry of partMap.values()) {
+            if (entry.assignedKey === oldKey) entry.assignedKey = nextKey;
+        }
+
+        activeMaterialKey = nextKey;
+
+        buildPartsUI();
+        buildMaterialsManagerUI({ scroll: true });
+        applyMaterials();
+        buildEditor(nextKey, 1);
+        updateCode();
+        saveState();
+        showToast(`Renamed to ${nextKey}`);
+        return true;
+    }
+
+    function getMaterialState() {
+        return {
+            matProps: cloneMaterialProps(matProps),
+            order: [...materialOrder],
+            roles: { ...materialRoles },
+        };
+    }
+
+    function restoreMaterialState(savedState) {
+        const nextState = savedState && typeof savedState === 'object' ? savedState : {};
+        const nextMatProps = nextState.matProps && typeof nextState.matProps === 'object'
+            ? nextState.matProps
+            : DEFAULT_MATERIAL_TEMPLATES;
+        const nextOrder = Array.isArray(nextState.order) ? nextState.order : Object.keys(nextMatProps);
+        const nextRoles = nextState.roles && typeof nextState.roles === 'object' ? nextState.roles : null;
+
+        resetObject(matProps);
+        resetObject(MAT_SCHEMA);
+        resetObject(MAT_CLASS);
+        resetObject(MAT_OBJ);
+        materialOrder = [];
+        activeMaterialKey = null;
+
+        for (const key of nextOrder) {
+            if (!(key in nextMatProps)) continue;
+            registerMaterial(key, nextMatProps[key]);
+        }
+        for (const [key, props] of Object.entries(nextMatProps)) {
+            if (matProps[key]) continue;
+            registerMaterial(key, props);
+        }
+
+        if (!materialOrder.length) {
+            resetMaterialsToDefaults();
+        }
+
+        materialRoles = { ...DEFAULT_MATERIAL_ROLES };
+        if (nextRoles) {
+            for (const [role, key] of Object.entries(nextRoles)) {
+                if (matProps[key]) materialRoles[role] = key;
+            }
+        }
+        for (const [role, defaultKey] of Object.entries(DEFAULT_MATERIAL_ROLES)) {
+            if (matProps[materialRoles[role]]) continue;
+            if (matProps[defaultKey]) materialRoles[role] = defaultKey;
+            else materialRoles[role] = getFallbackMaterialKey();
+        }
+
+        if (!activeMaterialKey || !matProps[activeMaterialKey]) {
+            activeMaterialKey = getFallbackMaterialKey();
+        }
+
+        buildMaterialsManagerUI({ scroll: false });
+    }
+
+    function bindMaterialsManagerControls() {
+        const addInput = document.getElementById('material-add-input');
+        const addBtn = document.getElementById('material-add-btn');
+        const renameInput = document.getElementById('material-rename-input');
+        const renameBtn = document.getElementById('material-rename-btn');
+        if (!addInput || !addBtn || !renameInput || !renameBtn) return;
+
+        const handleAdd = () => {
+            const createdKey = addMaterial(addInput.value);
+            if (!createdKey) return;
+            addInput.value = '';
+            renameInput.value = createdKey;
+        };
+
+        const handleRename = () => {
+            if (!activeMaterialKey) return;
+            renameMaterial(activeMaterialKey, renameInput.value);
+        };
+
+        addBtn.addEventListener('click', handleAdd);
+        addInput.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            handleAdd();
+        });
+
+        renameBtn.addEventListener('click', handleRename);
+        renameInput.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            handleRename();
+        });
+    }
+
+    function init() {
+        bindMaterialsManagerControls();
+        buildMaterialsManagerUI({ scroll: false });
     }
 
     function _updatePartCount() {
@@ -661,8 +1039,9 @@ window.MaterialMapperMaterialsModule = function ({
 
     function generateLedDetection() {
         const ledNames = [];
+        const ledKey = materialRoles.led ?? 'ledMat';
         for (const [displayName, entry] of partMap) {
-            if (entry.assignedKey === 'ledMat') ledNames.push(entry.origName ?? displayName);
+            if (entry.assignedKey === ledKey) ledNames.push(entry.origName ?? displayName);
         }
         const setLiteral = ledNames.map(n => `'${n.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(', ');
         return [
@@ -688,8 +1067,10 @@ window.MaterialMapperMaterialsModule = function ({
         for (const e of partMap.values()) {
             if (e.assignedKey !== '_keep') usedKeys.add(e.assignedKey);
         }
+        const fallbackMatKey = getFallbackMaterialKey() ?? materialOrder[0] ?? 'housingMat';
+        if (fallbackMatKey) usedKeys.add(fallbackMatKey);
 
-        const matSection = [...usedKeys].map(k => generateMatDef(k)).join('\n\n');
+        const matSection = materialOrder.filter((key) => usedKeys.has(key)).map(k => generateMatDef(k)).join('\n\n');
 
         const ruleLines = [];
         for (const [displayName, entry] of partMap) {
@@ -703,7 +1084,7 @@ window.MaterialMapperMaterialsModule = function ({
             ...ruleLines,
             ``,
             `    // Catch-all (must be last)`,
-            `    { match: /.*/, mat: housingMat },`,
+            `    { match: /.*/, mat: ${fallbackMatKey} },`,
             `];`,
         ].join('\n');
 
@@ -742,7 +1123,9 @@ window.MaterialMapperMaterialsModule = function ({
         for (const e of partMap.values()) {
             if (e.assignedKey !== '_keep') usedKeys.add(e.assignedKey);
         }
-        const matSection = [...usedKeys].map(k => generateMatDef(k)).join('\n\n');
+        const fallbackMatKey = getFallbackMaterialKey() ?? materialOrder[0] ?? 'housingMat';
+        if (fallbackMatKey) usedKeys.add(fallbackMatKey);
+        const matSection = materialOrder.filter((key) => usedKeys.has(key)).map(k => generateMatDef(k)).join('\n\n');
 
         const ruleLines = [];
         for (const [displayName, entry] of partMap) {
@@ -756,12 +1139,12 @@ window.MaterialMapperMaterialsModule = function ({
             ...ruleLines,
             ``,
             `    // Catch-all (must be last)`,
-            `    { match: /.*/, mat: housingMat },`,
+            `    { match: /.*/, mat: ${fallbackMatKey} },`,
             `];`,
         ].join('\n');
 
         // Derive LED_MAX_INTENSITY from the ledMat emissiveIntensity value
-        const ledIntensity = matProps.ledMat?.emissiveIntensity ?? 7.7;
+        const ledIntensity = matProps[materialRoles.led ?? 'ledMat']?.emissiveIntensity ?? 7.7;
 
         return [
             `// materials.js — material definitions for Pipit's 3D viewer`,
@@ -789,14 +1172,23 @@ window.MaterialMapperMaterialsModule = function ({
     // Public API — return methods used by app.js
     // ─────────────────────────────────────────────────────────────
     return {
+        init,
+
         // Getters / state access
         getMatProps:     () => matProps,
         getMAT_OBJ:      () => MAT_OBJ,
         getMAT_SCHEMA:   () => MAT_SCHEMA,
         getMAT_CLASS:    () => MAT_CLASS,
+        getMaterialState,
 
         // Material property updates
         setProp,
+        ensureMaterial,
+        addMaterial,
+        renameMaterial,
+        restoreMaterialState,
+        buildMaterialsManagerUI,
+        activateMaterialManager,
 
         // Part selection
         selectPart,

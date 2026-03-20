@@ -15,6 +15,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
     ssaoPass,
     postGradePass,
     saveState,
+    requestRender,
 }) {
     const sceneState = {
         renderer: { toneMap: 'ACES', output: 'sRGB', physicallyCorrect: true },
@@ -79,6 +80,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         renderer.outputColorSpace = r.output === 'Linear' ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace;
         renderer.physicallyCorrectLights = !!r.physicallyCorrect;
         renderer.toneMappingExposure = sceneState.tm.exposure;
+        requestRender?.();
     }
 
     function applyBackground() {
@@ -102,6 +104,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         if (bgColor2Row) bgColor2Row.style.display = g ? '' : 'none';
         if (bgTypeRow) bgTypeRow.style.display = g ? '' : 'none';
         if (bgSolidRow) bgSolidRow.style.display = g ? 'none' : '';
+        requestRender?.();
     }
 
     function applyEnv() {
@@ -118,10 +121,12 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         if (scene.backgroundRotation) scene.backgroundRotation.set(rotX, rotY, rotZ);
         scene.backgroundBlurriness = (e.enabled && e.useAsBackground) ? e.bgBlurriness : 0;
         scene.backgroundIntensity  = (e.enabled && e.useAsBackground) ? e.bgIntensity  : 1;
+        requestRender?.();
     }
 
     function applyToneMapping() {
         renderer.toneMappingExposure = sceneState.tm.exposure;
+        requestRender?.();
     }
 
     function applyKeyLight() {
@@ -150,23 +155,27 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         renderer.shadowMap.type = typeMap[sh.type] ?? THREE.PCFSoftShadowMap;
         renderer.shadowMap.needsUpdate = true;
         keyLight.shadow.needsUpdate = true;
+        requestRender?.();
     }
 
     function applyFillLight() {
         fillLight.color.set(sceneState.fill.color);
         fillLight.intensity = sceneState.fill.intensity;
         fillLight.position.set(sceneState.fill.px, sceneState.fill.py, sceneState.fill.pz);
+        requestRender?.();
     }
 
     function applyRimLight() {
         rimLight.color.set(sceneState.rim.color);
         rimLight.intensity = sceneState.rim.intensity;
         rimLight.position.set(sceneState.rim.px, sceneState.rim.py, sceneState.rim.pz);
+        requestRender?.();
     }
 
     function applyAmbient() {
         ambientLight.color.set(sceneState.amb.color);
         ambientLight.intensity = sceneState.amb.intensity;
+        requestRender?.();
     }
 
     function applyGround() {
@@ -174,6 +183,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         groundMesh.material.opacity = sceneState.ground.opacity;
         groundMesh.scale.setScalar(sceneState.ground.radius / 1.8);
         groundMesh.material.needsUpdate = true;
+        requestRender?.();
     }
 
     function applyPostFx() {
@@ -196,6 +206,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         postGradePass.uniforms.vignetteEnabled.value = p.vignetteEnabled ? 1 : 0;
         postGradePass.uniforms.vignetteOffset.value = p.vignetteOffset;
         postGradePass.uniforms.vignetteDarkness.value = p.vignetteDarkness;
+        requestRender?.();
     }
 
     function applyAll() {
