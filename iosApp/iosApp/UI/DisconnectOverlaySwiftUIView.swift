@@ -62,7 +62,6 @@ struct DisconnectOverlaySwiftUIView: View {
             .opacity(appeared ? 1 : 0)
             .scaleEffect(appeared ? 1 : 0.88)
 
-            #if targetEnvironment(simulator)
             VStack {
                 Spacer()
                 Button(action: {
@@ -78,7 +77,6 @@ struct DisconnectOverlaySwiftUIView: View {
                 }
                 .padding(.bottom, 52)
             }
-            #endif
         }
         .onAppear {
             withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {

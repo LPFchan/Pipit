@@ -300,20 +300,49 @@ const viewerRuntimeCtx = {
 applyViewerSceneRuntime(THREE, viewerRuntimeCtx, initialAppearance.sceneCfg);
 groundPlane.visible = false;
 
-const MODEL_INTRO_FADE_MS = 550;
+const MODEL_INTRO_MS = 1000;
+/**
+ * Progress advances by (frame delta / MODEL_INTRO_MS) so duration matches real time at 60 Hz,
+ * 120 Hz ProMotion, or variable refresh. Caps one RAF gap so a suspended WKWebView cannot
+ * finish the whole intro in a single tick.
+ */
+const MODEL_INTRO_MAX_DT_MS = 64;
 let _modelIntroActive = false;
-let _modelFadeStartTs = null;
+let _modelIntroLastTickTs = null;
+let _modelIntroT = 0;
+/** Eased progress in [0,1] for fade + slide + spin. */
+let _modelIntroEaseU = 1;
+let _introSlideDistance = 1.2;
 
-/** @returns {boolean} true while canvas opacity intro should keep scheduling frames */
-function _tickModelIntroFade() {
-    if (!_modelIntroActive) return false;
-    if (_modelFadeStartTs === null) _modelFadeStartTs = performance.now();
-    const t = Math.min((performance.now() - _modelFadeStartTs) / MODEL_INTRO_FADE_MS, 1.0);
-    const o = _easeOutCubic(t);
-    renderer.domElement.style.opacity = String(o);
+/** @returns {boolean} true while model intro should keep scheduling frames */
+function _tickModelIntro() {
+    if (!_modelIntroActive) {
+        _modelIntroEaseU = 1;
+        _modelIntroLastTickTs = null;
+        _modelIntroT = 0;
+        return false;
+    }
+    const now = performance.now();
+    if (_modelIntroLastTickTs === null) {
+        _modelIntroLastTickTs = now;
+        _modelIntroT = 0;
+        _modelIntroEaseU = _easeOutCubic(0);
+        renderer.domElement.style.opacity = '0';
+        return true;
+    }
+    let dt = now - _modelIntroLastTickTs;
+    _modelIntroLastTickTs = now;
+    if (dt < 0) dt = 0;
+    if (dt > MODEL_INTRO_MAX_DT_MS) dt = MODEL_INTRO_MAX_DT_MS;
+    _modelIntroT = Math.min(1, _modelIntroT + dt / MODEL_INTRO_MS);
+    const t = _modelIntroT;
+    _modelIntroEaseU = _easeOutCubic(t);
+    renderer.domElement.style.opacity = String(_modelIntroEaseU);
     if (t >= 1.0) {
         _modelIntroActive = false;
-        _modelFadeStartTs = null;
+        _modelIntroLastTickTs = null;
+        _modelIntroT = 0;
+        _modelIntroEaseU = 1;
         renderer.domElement.style.opacity = '';
         return false;
     }
@@ -426,9 +455,18 @@ function _applyLightsFromTilt() {
 
 // ─── API state ────────────────────────────────────────────────────────────────
 let modelPivot      = null;   // Wrapper Group — setModelTransform acts on this
-let rootModel       = null;   // The raw GLTF scene (centred + scaled inside modelPivot)
+/** Child of modelPivot at mesh AABB center; intro Z spin applies here so the axis is geometric center. */
+let introSpinGroup  = null;
+let rootModel       = null;   // The raw GLTF scene (centred + scaled inside introSpinGroup or modelPivot)
 /** Swift `setModelTransform` position before horizontal auto-pan (world-space pivot). */
 const _swiftModelPos = new THREE.Vector3();
+/** Pivot position from Swift + horizontal pan only (intro slide applied on top each frame). */
+const _modelPivotRestPos = new THREE.Vector3();
+/** Swift Euler components (rad) on modelPivot; intro Z roll is on introSpinGroup when present. */
+let _swiftRotX = 0;
+let _swiftRotY = 0;
+let _swiftRotZ = 0;
+const _introCamUp = new THREE.Vector3();
 /** World offset along baseline camera right so projected mesh AABB is centred in NDC X. */
 let _horizontalPanWorld = 0;
 const _projCamForPan = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
@@ -508,7 +546,8 @@ function _applyModelPivotWorldPosition() {
     if (!modelPivot) return;
     syncBaselineProjectionCamera();
     _panRight.setFromMatrixColumn(_projCamForPan.matrixWorld, 0).normalize();
-    modelPivot.position.copy(_swiftModelPos).addScaledVector(_panRight, _horizontalPanWorld);
+    _modelPivotRestPos.copy(_swiftModelPos).addScaledVector(_panRight, _horizontalPanWorld);
+    modelPivot.position.copy(_modelPivotRestPos);
 }
 
 /**
@@ -516,13 +555,38 @@ function _applyModelPivotWorldPosition() {
  * Uses orbit pose without parallax; re-run after layout or Swift transform changes.
  */
 function recalculateHorizontalPan() {
-    if (!modelPivot || USE_ORTHO) return;
+    if (!modelPivot) return;
+    // Pan solver must match what we render: during intro, Z roll changes projected width; if we pan
+    // for spin=0 the mesh swings outside the frustum (hard vertical clip on one side).
+    modelPivot.rotation.set(_swiftRotX, _swiftRotY, _swiftRotZ);
+    if (introSpinGroup) {
+        if (_modelIntroActive) {
+            introSpinGroup.rotation.set(0, 0, Math.PI * (1 - _modelIntroEaseU));
+        } else {
+            introSpinGroup.rotation.set(0, 0, 0);
+        }
+    }
+    if (USE_ORTHO) {
+        syncBaselineProjectionCamera();
+        _horizontalPanWorld = 0;
+        _applyModelPivotWorldPosition();
+        _applyModelPivotScale();
+        return;
+    }
     syncBaselineProjectionCamera();
     const projCam = _projCamForPan;
     _horizontalPanWorld = 0;
 
     for (let iter = 0; iter < 22; iter++) {
         _applyModelPivotWorldPosition();
+        // Pan must match the pose we render: intro slide shifts the pivot along baseline cam-up;
+        // that has horizontal screen-space component when the camera is pitched, so solving pan
+        // without slide leaves the mesh clipped on one side until the slide eases off.
+        if (_modelIntroActive) {
+            const slide = (1 - _modelIntroEaseU) * _introSlideDistance;
+            _introCamUp.setFromMatrixColumn(_projCamForPan.matrixWorld, 1).normalize();
+            modelPivot.position.addScaledVector(_introCamUp, -slide);
+        }
         modelPivot.updateMatrixWorld(true);
         const mid = projectedHorizontalMidNdc(projCam);
         if (Math.abs(mid) < 0.0009) break;
@@ -536,6 +600,29 @@ function recalculateHorizontalPan() {
     }
     _applyModelPivotWorldPosition();
     _applyModelPivotScale();
+}
+
+/** Apply rest pose + optional intro slide (camera-up) and Z spin about mesh center (introSpinGroup). */
+function _applyModelPivotDisplayPose() {
+    if (!modelPivot) return;
+    if (_modelIntroActive) {
+        const u = _modelIntroEaseU;
+        const spinZ = Math.PI * (1 - u);
+        const slide = (1 - u) * _introSlideDistance;
+        syncBaselineProjectionCamera();
+        _introCamUp.setFromMatrixColumn(_projCamForPan.matrixWorld, 1).normalize();
+        modelPivot.position.copy(_modelPivotRestPos).addScaledVector(_introCamUp, -slide);
+        modelPivot.rotation.set(_swiftRotX, _swiftRotY, _swiftRotZ);
+        if (introSpinGroup) {
+            introSpinGroup.rotation.set(0, 0, spinZ);
+        } else {
+            modelPivot.rotation.z = _swiftRotZ + spinZ;
+        }
+    } else {
+        modelPivot.position.copy(_modelPivotRestPos);
+        modelPivot.rotation.set(_swiftRotX, _swiftRotY, _swiftRotZ);
+        if (introSpinGroup) introSpinGroup.rotation.set(0, 0, 0);
+    }
 }
 
 function computeButtonHitRegion() {
@@ -692,7 +779,10 @@ function renderFrame() {
 
     applyPreRenderViewport();
 
-    const introContinues = _tickModelIntroFade();
+    const introContinues = _tickModelIntro();
+    if (_modelIntroActive && modelPivot) {
+        recalculateHorizontalPan();
+    }
     const squishContinues = _tickPressSquishAnimation();
     _tickTiltSmoothing();
     _applyLightsFromTilt();
@@ -716,6 +806,7 @@ function renderFrame() {
     }
     _applyOrbitAndParallaxToCamera();
     if (USE_ORTHO) syncOrthoCamera();
+    _applyModelPivotDisplayPose();
     renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
     postButtonHitRegionIfNeeded();
 
@@ -780,6 +871,24 @@ loader.load(
             VIEWER_CAMERA.modelRotation[1],
             VIEWER_CAMERA.modelRotation[2]
         );
+        modelPivot.updateMatrixWorld(true);
+
+        // Spin intro about mesh AABB center: offset rootModel so that center lies on this group's origin.
+        const spinBounds = new THREE.Box3().setFromObject(rootModel);
+        introSpinGroup = null;
+        if (!spinBounds.isEmpty()) {
+            const cWorld = spinBounds.getCenter(new THREE.Vector3());
+            const cLocal = new THREE.Vector3();
+            modelPivot.worldToLocal(cLocal.copy(cWorld));
+            const spin = new THREE.Group();
+            spin.name = 'introSpinGroup';
+            modelPivot.remove(rootModel);
+            spin.position.copy(cLocal);
+            rootModel.position.sub(cLocal);
+            spin.add(rootModel);
+            modelPivot.add(spin);
+            introSpinGroup = spin;
+        }
         modelPivot.updateMatrixWorld(true);
 
         // ── Camera / model pose from VIEWER_CAMERA (materials.js) ─────────────
@@ -871,9 +980,16 @@ loader.load(
         }
 
         if (!RECOVERY_EMBED) {
+            _modelPivotRestPos.set(0, 0, 0);
+            modelPivot.updateMatrixWorld(true);
+            const introBox = new THREE.Box3().setFromObject(modelPivot);
+            const introSz = introBox.getSize(new THREE.Vector3());
+            _introSlideDistance = 1.2 * Math.max(introSz.x, introSz.y, introSz.z, 0.35);
             renderer.domElement.style.opacity = '0';
             _modelIntroActive = true;
-            _modelFadeStartTs = null;
+            _modelIntroLastTickTs = null;
+            _modelIntroT = 0;
+            _modelIntroEaseU = 0;
         } else {
             _modelIntroActive = false;
             renderer.domElement.style.opacity = '';
@@ -888,6 +1004,7 @@ loader.load(
         }
         postButtonHitRegionIfNeeded(true);
         requestRender();
+        requestAnimationFrame(() => requestRender());
     },
     undefined,
     (err) => {
@@ -1256,7 +1373,9 @@ window.setModelTransform = (px, py, pz, scale, rx, ry, rz) => {
     if (!modelPivot) return;
     _modelBaseScale = scale;
     _swiftModelPos.set(px, py, pz);
-    modelPivot.rotation.set(rx, ry, rz);
+    _swiftRotX = Number(rx) || 0;
+    _swiftRotY = Number(ry) || 0;
+    _swiftRotZ = Number(rz) || 0;
     _applyModelPivotScale();
     recalculateHorizontalPan();
     requestRender();
@@ -1333,6 +1452,10 @@ window.addEventListener('resize', () => {
     configureViewerLayout();
     if (modelPivot) recalculateHorizontalPan();
     requestRender();
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') requestRender();
 });
 </script>
 </body>

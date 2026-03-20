@@ -111,9 +111,8 @@ struct DisconnectOverlayModifier: ViewModifier {
     var isOverlayEnabled: Bool
     var isBluetoothPoweredOff: Bool
 
-    #if targetEnvironment(simulator)
+    /// Same dev escape hatch as simulator: set from the disconnect overlay’s “Bypass” control (or UserDefaults).
     @AppStorage("DEV_BYPASS_OVERLAY") private var devBypassOverlay = false
-    #endif
 
     func body(content: Content) -> some View {
         ZStack {
@@ -127,10 +126,8 @@ struct DisconnectOverlayModifier: ViewModifier {
     }
     
     private var shouldShowOverlay: Bool {
-        #if targetEnvironment(simulator)
         if devBypassOverlay { return false }
-        #endif
-        
+
         switch connectionState {
         case .connected:
             return false

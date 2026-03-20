@@ -507,6 +507,28 @@ struct OnboardingView: View {
         )
     }
 
+    /// Wrench menu: same actions on simulator and physical device (mock QR + hard reset).
+    private var onboardingDebugToolsMenu: some View {
+        Menu {
+            Button("Simulate guest QR (slot 3)") {
+                viewModel.debugSimulateScannedQr(debugGuestMockQr)
+            }
+            Button("Simulate owner QR (slot 1)") {
+                viewModel.debugSimulateScannedQr(debugOwnerMockQr)
+            }
+            Button("Hard reset app and permissions", role: .destructive) {
+                performDeveloperHardReset()
+            }
+        } label: {
+            Image(systemName: "wrench.and.screwdriver.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(Color.black.opacity(0.46), in: Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: Camera View
     private var cameraView: some View {
         GeometryReader { geometry in
@@ -595,37 +617,17 @@ struct OnboardingView: View {
                 .padding(.top, scanLabelTopInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-                #if targetEnvironment(simulator)
                 VStack {
                     HStack {
                         Spacer()
-
-                        Menu {
-                            Button("Simulate guest QR (slot 3)") {
-                                viewModel.handleScannedQr(simulatorGuestMockQr)
-                            }
-
-                            Button("Simulate owner QR (slot 1)") {
-                                viewModel.handleScannedQr(simulatorOwnerMockQr)
-                            }
-
-                            Button("Hard reset app and permissions", role: .destructive) {
-                                performSimulatorHardReset()
-                            }
-                        } label: {
-                            Image(systemName: "wrench.and.screwdriver.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 38, height: 38)
-                                .background(Color.black.opacity(0.46), in: Circle())
-                        }
-                        .padding(.top, 18)
-                        .padding(.trailing, 18)
+                        onboardingDebugToolsMenu
+                            .padding(.top, geometry.safeAreaInsets.top + 8)
+                            .padding(.trailing, max(18, geometry.safeAreaInsets.trailing))
                     }
-
                     Spacer()
                 }
-                #endif
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .zIndex(200)
             }
             .onAppear {
                 recoveryFobPool.ensureWebViewCreated()
@@ -633,15 +635,15 @@ struct OnboardingView: View {
         }
     }
 
-    private var simulatorGuestMockQr: String {
+    private var debugGuestMockQr: String {
         "immogen://prov?slot=3&ctr=0&key=00112233445566778899aabbccddeeff&name=Guest%20iPhone"
     }
 
-    private var simulatorOwnerMockQr: String {
+    private var debugOwnerMockQr: String {
         "immogen://prov?slot=1&ctr=0&salt=00112233445566778899aabbccddeeff&ekey=00112233445566778899aabbccddeeff0011223344556677&name=Owner%20iPhone"
     }
 
-    private func performSimulatorHardReset() {
+    private func performDeveloperHardReset() {
         if let bundleID = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
         }
@@ -774,20 +776,24 @@ struct OnboardingView: View {
     // MARK: Recovery View
     private var recoveryView: some View {
         VStack(spacing: 0) {
-            ZStack(alignment: .trailing) {
+            ZStack {
                 Text("Recover Phone Key")
                     .font(.system(size: OnboardingMockup.recoveryTitleSize, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
 
-                Button(action: {
-                    viewModel.cancelRecovery()
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(OnboardingMockup.closeButtonSymbol)
-                        .frame(width: OnboardingMockup.closeButtonDiameter, height: OnboardingMockup.closeButtonDiameter)
-                        .background(OnboardingMockup.closeButtonFill, in: Circle())
+                HStack {
+                    onboardingDebugToolsMenu
+                    Spacer()
+                    Button(action: {
+                        viewModel.cancelRecovery()
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(OnboardingMockup.closeButtonSymbol)
+                            .frame(width: OnboardingMockup.closeButtonDiameter, height: OnboardingMockup.closeButtonDiameter)
+                            .background(OnboardingMockup.closeButtonFill, in: Circle())
+                    }
                 }
             }
             .padding(.horizontal, 24)

@@ -440,7 +440,33 @@ final class OnboardingViewModel {
     func finishOnboarding() {
         onProvisioned()
     }
-    
+
+    /// Dev menu: return to QR flow and inject a mock payload (same as simulator menu). Used from camera or recovery sheet.
+    func debugSimulateScannedQr(_ rawValue: String) {
+        importTask?.cancel()
+        recoveryTask?.cancel()
+        bleService.stopWindowOpenScan()
+        bleService.disconnectManagement()
+
+        pinCode = ""
+        pinErrorMessage = nil
+        pendingEncryptedPayload = nil
+        pendingProvisioningMaterial = nil
+        isProvisioningInFlight = false
+        isScanLocked = false
+        lastScannedQrPayload = nil
+        scanErrorMessage = nil
+        provisioningSuccess = nil
+
+        recoveryState = .waitingForWindowOpen
+        recoverySlots = []
+        selectedSlotId = nil
+        recoveryErrorMessage = nil
+
+        onboardingState = .camera
+        handleScannedQr(rawValue)
+    }
+
     func handleScannedQr(_ rawValue: String) {
         guard onboardingState == .camera, !isScanLocked else { return }
 
