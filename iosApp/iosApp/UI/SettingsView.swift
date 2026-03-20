@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @StateObject private var viewModel: SettingsViewModel
     @EnvironmentObject private var bleService: IosBleProximityService
+    @AppStorage("fobMotionParallaxEnabled") private var fobMotionParallaxEnabled = true
 
     private let slotCardStyle = SlotPresentationStyle.settingsGrouped
 
@@ -35,6 +36,8 @@ struct SettingsView: View {
                     }
 
                     proximitySection
+
+                    fobPreviewSection
 
                     keysSection
 
@@ -218,6 +221,31 @@ struct SettingsView: View {
                 viewModel.backgroundUnlockToggled()
             }
         )
+    }
+
+    private var fobPreviewSection: some View {
+        settingsSection(
+            eyebrow: "Fob preview",
+            footer: "Uses device motion for a subtle tilt and lighting shift. Disabled when Reduce Motion is on in Accessibility."
+        ) {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Motion parallax")
+                        .font(.headline)
+
+                    Text(fobMotionParallaxEnabled ? "On" : "Off")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $fobMotionParallaxEnabled)
+                    .labelsHidden()
+            }
+            .padding(16)
+            .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
     }
 
     private var keysSection: some View {

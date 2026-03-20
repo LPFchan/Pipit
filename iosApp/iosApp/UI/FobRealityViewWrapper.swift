@@ -1,4 +1,7 @@
+import Combine
+import CoreMotion
 import SwiftUI
+import UIKit
 import WebKit
 
 // MARK: – LedCommand
@@ -47,6 +50,19 @@ fileprivate final class CameraController {
             completionHandler: nil)
     }
 
+    func setDeviceTilt(gx: Double, gy: Double, gz: Double) {
+        webView?.evaluateJavaScript(
+            "if(window.setDeviceTilt)window.setDeviceTilt(\(gx),\(gy),\(gz));",
+            completionHandler: nil)
+    }
+
+    func setParallaxMotionEnabled(_ enabled: Bool) {
+        let e = enabled ? "true" : "false"
+        webView?.evaluateJavaScript(
+            "if(window.setParallaxMotionEnabled)window.setParallaxMotionEnabled(\(e));",
+            completionHandler: nil)
+    }
+
     /// Raycast in Three.js: true if the front-most surface at (nx, ny) is PCB or button, not enclosure.
     func queryFobInteractableAtNormalized(nx: CGFloat, ny: CGFloat, completion: @escaping (Bool) -> Void) {
         guard let wv = webView else {
@@ -72,6 +88,91 @@ fileprivate final class CameraController {
     }
 }
 
+// MARK: – Motion parallax (Core Motion → viewer.setDeviceTilt)
+
+/// UserDefaults key — keep in sync with Settings `AppStorage` and JS bridge policy.
+private let kFobMotionParallaxEnabledDefaultsKey = "fobMotionParallaxEnabled"
+
+fileprivate final class FobMotionParallaxCoordinator: ObservableObject {
+    private let motionManager = CMMotionManager()
+    private let motionQueue: OperationQueue = {
+        let q = OperationQueue()
+        q.name = "com.immogen.pipit.motionParallax"
+        q.maxConcurrentOperationCount = 1
+        return q
+    }()
+    private var reduceMotionObserver: NSObjectProtocol?
+    weak var cameraController: CameraController?
+    private var running = false
+
+    init() {
+        reduceMotionObserver = NotificationCenter.default.addObserver(
+            forName: UIAccessibility.reduceMotionStatusDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshPolicy()
+        }
+    }
+
+    deinit {
+        stopMotionUpdates()
+        if let o = reduceMotionObserver {
+            NotificationCenter.default.removeObserver(o)
+        }
+    }
+
+    private var parallaxPreferenceOn: Bool {
+        UserDefaults.standard.object(forKey: kFobMotionParallaxEnabledDefaultsKey) as? Bool ?? true
+    }
+
+    /// Mirrored into the WebView whenever the page is ready (settings + a11y + hardware).
+    var webParallaxEnabled: Bool {
+        parallaxPreferenceOn
+            && !UIAccessibility.isReduceMotionEnabled
+            && motionManager.isDeviceMotionAvailable
+    }
+
+    private var shouldRunMotion: Bool { webParallaxEnabled }
+
+    func bind(cameraController: CameraController) {
+        self.cameraController = cameraController
+    }
+
+    func refreshPolicy() {
+        guard cameraController != nil else { return }
+        if shouldRunMotion {
+            startMotionUpdates()
+        } else {
+            stopMotionUpdates()
+        }
+        objectWillChange.send()
+    }
+
+    func handleDisappear() {
+        stopMotionUpdates()
+        cameraController?.setDeviceTilt(gx: 0, gy: 0, gz: 0)
+    }
+
+    private func startMotionUpdates() {
+        guard !running, motionManager.isDeviceMotionAvailable else { return }
+        running = true
+        motionManager.deviceMotionUpdateInterval = 1.0 / 30.0
+        motionManager.startDeviceMotionUpdates(using: .xArbitraryZVertical, to: motionQueue) { [weak self] data, _ in
+            guard let self = self, let g = data?.gravity else { return }
+            DispatchQueue.main.async {
+                guard self.running else { return }
+                self.cameraController?.setDeviceTilt(gx: g.x, gy: g.y, gz: g.z)
+            }
+        }
+    }
+
+    private func stopMotionUpdates() {
+        motionManager.stopDeviceMotionUpdates()
+        running = false
+    }
+}
+
 // MARK: – FobViewer
 
 /// Embedded Three.js fob viewer backed by WKWebView.
@@ -93,6 +194,12 @@ struct FobViewer: UIViewRepresentable {
     // ── Camera controller (JS bridge for pan / zoom) ────────────
     fileprivate var cameraController: CameraController?
 
+    /// Core Motion + settings gate for `window.setParallaxMotionEnabled` (see applyState).
+    var parallaxMotionJSEnabled: Bool = true
+
+    /// Onboarding recovery sheet: transparent chrome + looping triple-press + rainbow LED (viewer.html).
+    var recoverySheetDemoLoop: Bool = false
+
     // MARK: Coordinator
 
     /// Holds the latest FobViewer value and listens for the JS `modelReady`
@@ -102,6 +209,8 @@ struct FobViewer: UIViewRepresentable {
         weak var webView: WKWebView?
         /// Last command id pushed to JS; prevents re-firing on unrelated SwiftUI updates.
         var lastLedCommandId: Int = -1
+        var lastParallaxJSPushed: Bool?
+        var lastRecoveryDemoPushed: Bool?
 
         init(_ parent: FobViewer) { self.parent = parent }
 
@@ -114,6 +223,12 @@ struct FobViewer: UIViewRepresentable {
                 guard let wv = webView else { return }
                 // Reset so the current command fires again after a page reload.
                 lastLedCommandId = -1
+                lastParallaxJSPushed = nil
+                // Recovery demo JS is defined at end of module; first updateUIView often runs before it exists.
+                // Clear the latch so applyState re-sends chrome + start now that WK is ready.
+                if parent.recoverySheetDemoLoop {
+                    lastRecoveryDemoPushed = nil
+                }
                 parent.applyState(to: wv, coordinator: self)
             default:
                 break
@@ -140,6 +255,7 @@ struct FobViewer: UIViewRepresentable {
         webView.backgroundColor            = .clear
         webView.underPageBackgroundColor   = .clear
         webView.scrollView.backgroundColor = .clear
+        webView.scrollView.isOpaque        = false
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces         = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
@@ -167,25 +283,51 @@ struct FobViewer: UIViewRepresentable {
     /// JS command only when `ledCommand.id` has changed (prevents cancelling
     /// an in-progress animation on unrelated SwiftUI re-renders).
     func applyState(to webView: WKWebView, coordinator: Coordinator) {
-        // ── LED (fire only on new command id) ─────────────────────────────────
-        if ledCommand.id != coordinator.lastLedCommandId {
-            coordinator.lastLedCommandId = ledCommand.id
-            let js: String
-            switch ledCommand.kind {
-            case .unlock:      js = "if(window.playLedUnlock)  window.playLedUnlock();"
-            case .lock:        js = "if(window.playLedLock)    window.playLedLock();"
-            case .window:      js = "if(window.playLedWindow)  window.playLedWindow();"
-            case .prov:        js = "if(window.startLedProv)   window.startLedProv();"
-            case .lowBatUnlock: js = "if(window.playLedLowBat) window.playLedLowBat(0,255,0);"
-            case .lowBatLock:   js = "if(window.playLedLowBat) window.playLedLowBat(255,0,0);"
-            case .off:         js = "if(window.stopLedAnim)    window.stopLedAnim();"
-            }
-            webView.evaluateJavaScript(js, completionHandler: nil)
+        if coordinator.lastParallaxJSPushed != parallaxMotionJSEnabled {
+            coordinator.lastParallaxJSPushed = parallaxMotionJSEnabled
+            let e = parallaxMotionJSEnabled ? "true" : "false"
+            webView.evaluateJavaScript(
+                "if(window.setParallaxMotionEnabled)window.setParallaxMotionEnabled(\(e));",
+                completionHandler: nil)
         }
 
-        webView.evaluateJavaScript(
-            "if (window.setButtonDepth) window.setButtonDepth(\(buttonDepth));",
-            completionHandler: nil)
+        if coordinator.lastRecoveryDemoPushed != recoverySheetDemoLoop {
+            coordinator.lastRecoveryDemoPushed = recoverySheetDemoLoop
+            if recoverySheetDemoLoop {
+                webView.evaluateJavaScript(
+                    "if(window.setRecoveryDemoChrome)window.setRecoveryDemoChrome(true);"
+                    + "if(window.startRecoveryTriplePressDemo)window.startRecoveryTriplePressDemo();",
+                    completionHandler: nil)
+            } else {
+                webView.evaluateJavaScript(
+                    "if(window.stopRecoveryTriplePressDemo)window.stopRecoveryTriplePressDemo();"
+                    + "if(window.setRecoveryDemoChrome)window.setRecoveryDemoChrome(false);",
+                    completionHandler: nil)
+            }
+        }
+
+        // ── LED + button depth (recovery demo drives these from JS) ───────────
+        if !recoverySheetDemoLoop {
+            if ledCommand.id != coordinator.lastLedCommandId {
+                coordinator.lastLedCommandId = ledCommand.id
+                let js: String
+                switch ledCommand.kind {
+                case .unlock:      js = "if(window.playLedUnlock)  window.playLedUnlock();"
+                case .lock:        js = "if(window.playLedLock)    window.playLedLock();"
+                case .window:      js = "if(window.playLedWindow)  window.playLedWindow();"
+                case .prov:        js = "if(window.startLedProv)   window.startLedProv();"
+                case .lowBatUnlock: js = "if(window.playLedLowBat) window.playLedLowBat(0,255,0);"
+                case .lowBatLock:   js = "if(window.playLedLowBat) window.playLedLowBat(255,0,0);"
+                case .off:         js = "if(window.stopLedAnim)    window.stopLedAnim();"
+                }
+                webView.evaluateJavaScript(js, completionHandler: nil)
+            }
+
+            webView.evaluateJavaScript(
+                "if (window.setButtonDepth) window.setButtonDepth(\(buttonDepth));",
+                completionHandler: nil)
+        }
+
         let p = modelPosition
         let rot = modelRotation
         webView.evaluateJavaScript(
@@ -200,8 +342,193 @@ struct FobViewer: UIViewRepresentable {
         // (e.g. './materials.js') resolve to local://app/… and are served by
         // LocalSchemeHandler with CORS headers.  loadFileURL blocks cross-file
         // ES module imports in modern WebKit; the custom scheme avoids that.
-        guard let url = URL(string: "local://app/viewer.html") else { return }
+        // #pipitRecovery: skip placeholder cube/status for a clean sheet embed.
+        let urlString = recoverySheetDemoLoop
+            ? "local://app/viewer.html#pipitRecovery"
+            : "local://app/viewer.html"
+        guard let url = URL(string: urlString) else { return }
         webView.load(URLRequest(url: url))
+    }
+}
+
+extension FobViewer {
+    /// Onboarding recovery sheet: non-interactive triple-press + rainbow demo.
+    /// `cameraController` is `fileprivate`, so the synthesized memberwise `init` is not visible outside this file; use this factory from other Swift files.
+    static func recoverySheetDemo() -> FobViewer {
+        FobViewer(
+            ledCommand: .idle,
+            buttonDepth: 0,
+            modelPosition: .zero,
+            modelScale: 1.0,
+            modelRotation: .zero,
+            cameraController: nil,
+            parallaxMotionJSEnabled: false,
+            recoverySheetDemoLoop: true
+        )
+    }
+}
+
+// MARK: – Recovery sheet: pooled WKWebView (prewarm on camera, attach in sheet)
+
+/// Single shared `WKWebView` for onboarding recovery: loads `Uguisu` off-screen while the QR camera is visible,
+/// then moves into the sheet and starts the triple-press demo only when the sheet is shown.
+final class RecoveryFobWebViewPool: ObservableObject {
+    private static let uguisuDisplayScale: Double = 1.4
+    /// Pivot-space X (normalised model units); counters wide-sheet perspective so the fob sits visually centred.
+    private static let uguisuPivotOffsetX: Double = -0.025
+
+    @Published private(set) var isModelReady = false
+
+    private let scriptCoordinator = RecoveryFobPoolCoordinator()
+    private var _webView: WKWebView?
+
+    /// True while the recovery bottom sheet is on-screen (user should see the demo).
+    private var recoverySheetPresented = false
+    private var demoRunning = false
+
+    init() {
+        scriptCoordinator.pool = self
+    }
+
+    /// Touch the web view so GLB loading begins before the sheet opens.
+    func ensureWebViewCreated() {
+        _ = webView
+    }
+
+    var webView: WKWebView {
+        if let w = _webView { return w }
+
+        let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(LocalSchemeHandler(), forURLScheme: "local")
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
+        config.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
+        config.userContentController.add(
+            WeakRecoveryPoolScriptHandler(scriptCoordinator), name: "modelReady")
+
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.underPageBackgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        webView.scrollView.isOpaque = false
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.bounces = false
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+
+        scriptCoordinator.webView = webView
+        _webView = webView
+
+        if let url = URL(string: "local://app/viewer.html#pipitRecovery") {
+            webView.load(URLRequest(url: url))
+        }
+        return webView
+    }
+
+    func attach(to container: UIView) {
+        let wv = webView
+        if wv.superview === container { return }
+        wv.removeFromSuperview()
+        container.addSubview(wv)
+        wv.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            wv.topAnchor.constraint(equalTo: container.topAnchor),
+            wv.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            wv.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            wv.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        wv.evaluateJavaScript(
+            "if(window.setParallaxMotionEnabled)window.setParallaxMotionEnabled(false);",
+            completionHandler: nil)
+        let s = Self.uguisuDisplayScale
+        let ox = Self.uguisuPivotOffsetX
+        wv.evaluateJavaScript(
+            "if(window.setModelTransform)window.setModelTransform(\(ox),0,0,\(s),0,0,0);",
+            completionHandler: nil)
+    }
+
+    @MainActor
+    fileprivate func handleModelReady() {
+        let s = Self.uguisuDisplayScale
+        let ox = Self.uguisuPivotOffsetX
+        webView.evaluateJavaScript(
+            "if(window.setModelTransform)window.setModelTransform(\(ox),0,0,\(s),0,0,0);",
+            completionHandler: nil)
+        isModelReady = true
+        tryStartRecoveryDemo()
+    }
+
+    @MainActor
+    func recoverySheetBecamePresented(_ presented: Bool) {
+        recoverySheetPresented = presented
+        if presented {
+            tryStartRecoveryDemo()
+        } else {
+            stopRecoveryDemo()
+        }
+    }
+
+    @MainActor
+    private func tryStartRecoveryDemo() {
+        guard recoverySheetPresented, isModelReady, !demoRunning else { return }
+        demoRunning = true
+        webView.evaluateJavaScript(
+            "if(window.setRecoveryDemoChrome)window.setRecoveryDemoChrome(true);"
+                + "if(window.startRecoveryTriplePressDemo)window.startRecoveryTriplePressDemo();",
+            completionHandler: nil)
+    }
+
+    @MainActor
+    private func stopRecoveryDemo() {
+        demoRunning = false
+        webView.evaluateJavaScript(
+            "if(window.stopRecoveryTriplePressDemo)window.stopRecoveryTriplePressDemo();"
+                + "if(window.setRecoveryDemoChrome)window.setRecoveryDemoChrome(false);",
+            completionHandler: nil)
+    }
+}
+
+private final class RecoveryFobPoolCoordinator: NSObject, WKScriptMessageHandler {
+    weak var pool: RecoveryFobWebViewPool?
+    weak var webView: WKWebView?
+
+    func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        guard message.name == "modelReady" else { return }
+        Task { @MainActor in
+            pool?.handleModelReady()
+        }
+    }
+}
+
+private final class WeakRecoveryPoolScriptHandler: NSObject, WKScriptMessageHandler {
+    private weak var target: RecoveryFobPoolCoordinator?
+    init(_ target: RecoveryFobPoolCoordinator) { self.target = target }
+    func userContentController(
+        _ uc: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        target?.userContentController(uc, didReceive: message)
+    }
+}
+
+/// Hosts the pooled recovery `WKWebView` in a `UIView` subtree (prewarm container or sheet slot).
+struct RecoveryFobAnchor: UIViewRepresentable {
+    @ObservedObject var pool: RecoveryFobWebViewPool
+    var shouldAttach: Bool
+
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView()
+        v.backgroundColor = .clear
+        v.clipsToBounds = true
+        return v
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        guard shouldAttach else { return }
+        pool.attach(to: uiView)
     }
 }
 
@@ -260,6 +587,8 @@ struct FobInteractiveViewer: View {
 
     // Camera orbit / zoom — driven by SwiftUI gestures, forwarded to JS.
     @State private var cameraController      = CameraController()
+    @StateObject private var motionParallax  = FobMotionParallaxCoordinator()
+    @AppStorage("fobMotionParallaxEnabled") private var motionParallaxEnabled = true
     @State private var lastOrbitTranslation: CGSize = .zero
     @State private var lastMagScale: CGFloat         = 1.0
     @State private var isPanning: Bool               = false
@@ -273,7 +602,8 @@ struct FobInteractiveViewer: View {
             modelPosition: .zero,
             modelScale: 1.0,
             modelRotation: .zero,
-            cameraController: cameraController
+            cameraController: cameraController,
+            parallaxMotionJSEnabled: motionParallax.webParallaxEnabled
         )
         // A transparent overlay to capture touch events over the WebView
         .overlay(
@@ -412,6 +742,16 @@ struct FobInteractiveViewer: View {
                         }
                 )
         )
+        .onAppear {
+            motionParallax.bind(cameraController: cameraController)
+            motionParallax.refreshPolicy()
+        }
+        .onDisappear {
+            motionParallax.handleDisappear()
+        }
+        .onChange(of: motionParallaxEnabled) { _ in
+            motionParallax.refreshPolicy()
+        }
         } // GeometryReader
     }
 }

@@ -41,6 +41,8 @@ private enum OnboardingMockup {
     static let slotCardCornerRadius: CGFloat = 21 // Estimated from the success card rounding.
     static let closeButtonDiameter: CGFloat = 38 // Estimated from the circular close control.
     static let recoverySheetHeight: CGFloat = 468 // Estimated from the shorter visible bottom sheet height in the reference.
+    /// 3D Uguisu demo in the recovery sheet (WKWebView); taller slot so the scaled model fills the pane.
+    static let recoveryFobDemoHeight: CGFloat = 280
     static let recoveryMessageHorizontalPadding: CGFloat = 46 // Estimated from the message width in the reference.
     static let recoveryMessageToSpinnerGap: CGFloat = 42 // Estimated from the tighter message-to-spinner spacing in the reference.
     static let recoveryStatusBottomPadding: CGFloat = 16 // Estimated from the tighter spinner-to-home-indicator spacing in the reference.
@@ -420,9 +422,14 @@ struct QRDecryptionAnimationView: View {
 
 struct OnboardingView: View {
     @State private var viewModel: OnboardingViewModel
+    @StateObject private var recoveryFobPool = RecoveryFobWebViewPool()
 
     init(bleService: IosBleProximityService, onProvisioned: @escaping () -> Void) {
         _viewModel = State(initialValue: OnboardingViewModel(bleService: bleService, onProvisioned: onProvisioned))
+    }
+
+    private var isRecoverySheetPresented: Bool {
+        viewModel.onboardingState == .recovery
     }
 
     var body: some View {
@@ -511,6 +518,19 @@ struct OnboardingView: View {
 
                 ScannerCutoutOverlay()
 
+                // Prewarm / park the pooled `WKWebView` while on QR or recovery (sheet steals the web view when open).
+                if viewModel.onboardingState == .camera || viewModel.onboardingState == .recovery {
+                    RecoveryFobAnchor(
+                        pool: recoveryFobPool,
+                        shouldAttach: !isRecoverySheetPresented
+                    )
+                    .frame(width: 340, height: OnboardingMockup.recoveryFobDemoHeight)
+                    .opacity(0.004)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .position(x: -500, y: geometry.size.height * 0.35)
+                }
+
                 VStack(spacing: 0) {
                     Text("Pipit")
                         .font(.system(size: OnboardingMockup.appTitleSize, weight: .bold))
@@ -582,6 +602,9 @@ struct OnboardingView: View {
                     Spacer()
                 }
                 #endif
+            }
+            .onAppear {
+                recoveryFobPool.ensureWebViewCreated()
             }
         }
     }
@@ -751,6 +774,12 @@ struct OnboardingView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(OnboardingMockup.recoverySheetBackground)
+        .onAppear {
+            recoveryFobPool.recoverySheetBecamePresented(true)
+        }
+        .onDisappear {
+            recoveryFobPool.recoverySheetBecamePresented(false)
+        }
     }
 
     private var waitingRecoveryMessage: String {
@@ -760,7 +789,23 @@ struct OnboardingView: View {
     @ViewBuilder
     private func recoveryBottomStatus(message: String) -> some View {
         VStack(spacing: 0) {
-            Spacer()
+            ZStack {
+                RecoveryFobAnchor(pool: recoveryFobPool, shouldAttach: true)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OnboardingMockup.recoveryFobDemoHeight)
+                    .background(Color.clear)
+
+                if !recoveryFobPool.isModelReady {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(1.08)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+
+            Spacer(minLength: 12)
 
             VStack(spacing: 0) {
                 Text(message)

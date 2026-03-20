@@ -6,13 +6,29 @@
   <style>
     * { margin: 0; padding: 0; }
     html, body { width: 100%; height: 100%; overflow: hidden; color-scheme: light dark; }
-    /* Match VIEWER_SCENE_PRESETS until JS runs */
-    html, body { background: radial-gradient(ellipse at 50% 38%, #ffffff 0%, #b5b5b5 100%); }
-    @media (prefers-color-scheme: dark) {
-      html, body { background: radial-gradient(ellipse at 50% 38%, #1c1e28 0%, #09090c 100%); }
-    }
+    /* Opaque gradient is applied via #pipitViewerBackdrop after JS boots (avoids flash before fade). */
+    html, body { background: transparent; }
     canvas { display: block; }
-    #status { position: absolute; top: 80px; left: 10px; color: #111827; z-index: 999; font-size: 11px; pointer-events: none; }
+    #pipitViewerBackdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.45s ease-out;
+    }
+    #status {
+      display: none;
+      position: absolute;
+      top: 80px;
+      left: 10px;
+      right: 10px;
+      color: #111827;
+      z-index: 999;
+      font-size: 12px;
+      pointer-events: none;
+      line-height: 1.35;
+    }
     @media (prefers-color-scheme: dark) {
       #status { color: white; }
     }
@@ -38,7 +54,18 @@
   </script>
 </head>
 <body>
-<div id="status">Loading...</div>
+<script>
+(function () {
+    var h = (typeof location !== 'undefined' && location.hash) || '';
+    window.__pipitRecoveryEmbed = h.indexOf('pipitRecovery') >= 0;
+    if (window.__pipitRecoveryEmbed) {
+        document.documentElement.style.background = 'transparent';
+        document.body.style.background = 'transparent';
+    }
+})();
+</script>
+<div id="pipitViewerBackdrop" aria-hidden="true"></div>
+<div id="status"></div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -54,6 +81,10 @@ import {
     applyViewerSceneRuntime,
 } from './materials.js';
 
+const RECOVERY_EMBED = typeof window !== 'undefined' && !!window.__pipitRecoveryEmbed;
+/** Skips radial page background while recovery sheet (or embed) is active. */
+let _recoveryDemoChromeActive = RECOVERY_EMBED;
+
 /** @returns {{ presetKey: 'light' | 'dark', sceneCfg: object }} */
 function viewerSceneForColorScheme() {
     const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -62,17 +93,19 @@ function viewerSceneForColorScheme() {
 }
 
 const statusEl = document.getElementById('status');
-statusEl.innerText = 'Initializing...';
+const backdropEl = document.getElementById('pipitViewerBackdrop');
+statusEl.style.display = 'none';
 
 const initialAppearance = viewerSceneForColorScheme();
-applyViewerBodyBackground(initialAppearance.sceneCfg.bodyBackground);
-statusEl.style.color = initialAppearance.presetKey === 'dark' ? 'white' : '#111827';
 document.documentElement.dataset.viewerTheme = initialAppearance.presetKey;
 
 // ─── Renderer ────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.domElement.style.background = 'transparent';
+renderer.domElement.style.position = 'relative';
+renderer.domElement.style.zIndex = '1';
 document.body.appendChild(renderer.domElement);
 
 // ─── Scene / Camera ──────────────────────────────────────────────────────────
@@ -93,6 +126,9 @@ const camera = new THREE.PerspectiveCamera(
     VIEWER_CAMERA.far
 );
 camera.position.set(VIEWER_CAMERA.position[0], VIEWER_CAMERA.position[1], VIEWER_CAMERA.position[2]);
+
+// Orbit pan/zoom / home-return operate on this; parallax is applied on top each frame.
+const _orbitCamPos = new THREE.Vector3().copy(camera.position);
 
 // Orthographic camera — mirrors perspective camera; toggled by USE_ORTHO.
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, VIEWER_CAMERA.near, VIEWER_CAMERA.far);
@@ -161,7 +197,7 @@ function _scheduleReturn() {
     _returnTimerId = setTimeout(() => {
         _returnTimerId = null;
         _returning  = true;
-        _returnFrom = { pos: camera.position.clone(), target: controls.target.clone() };
+        _returnFrom = { pos: _orbitCamPos.clone(), target: controls.target.clone() };
         _returnStartTs = null;
     }, RETURN_DELAY_MS);
 }
@@ -198,14 +234,85 @@ const viewerRuntimeCtx = {
 };
 
 applyViewerSceneRuntime(THREE, viewerRuntimeCtx, initialAppearance.sceneCfg);
+groundPlane.visible = false;
+
+const MODEL_INTRO_FADE_MS = 550;
+let _modelIntroActive = false;
+let _modelFadeStartTs = null;
+
+function syncBackdropBackground(sceneCfg) {
+    if (!backdropEl || RECOVERY_EMBED || _recoveryDemoChromeActive) return;
+    backdropEl.style.background = sceneCfg.bodyBackground;
+}
+
+/** Main viewer only: radial page background fades in (empty scene, no cube). */
+function startBackdropIntroFade() {
+    if (RECOVERY_EMBED || _recoveryDemoChromeActive) return;
+    const { sceneCfg } = viewerSceneForColorScheme();
+    syncBackdropBackground(sceneCfg);
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            if (backdropEl) backdropEl.style.opacity = '1';
+        });
+    });
+}
+
+function setModelBranchOpacity(root, opacity) {
+    if (!root) return;
+    root.traverse((obj) => {
+        if (!obj.isMesh || !obj.material) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const m of mats) {
+            if (!m || m.opacity === undefined) continue;
+            if (m.userData._pipitBaseOpacity === undefined) {
+                m.userData._pipitBaseOpacity = m.transparent ? m.opacity : 1;
+                m.transparent = true;
+            }
+            m.opacity = opacity * m.userData._pipitBaseOpacity;
+            m.needsUpdate = true;
+        }
+    });
+}
+
+function _tickModelIntroFade() {
+    if (!_modelIntroActive || !modelPivot) return;
+    if (_modelFadeStartTs === null) _modelFadeStartTs = performance.now();
+    const t = Math.min((performance.now() - _modelFadeStartTs) / MODEL_INTRO_FADE_MS, 1.0);
+    const o = _easeOutCubic(t);
+    setModelBranchOpacity(modelPivot, o);
+    if (t >= 1.0) _modelIntroActive = false;
+}
+
+startBackdropIntroFade();
+
+const _lightBaseKey = new THREE.Vector3();
+const _lightBaseFill = new THREE.Vector3();
+const _lightBaseRim = new THREE.Vector3();
+function cacheLightBasePositions() {
+    _lightBaseKey.copy(keyLight.position);
+    _lightBaseFill.copy(fillLight.position);
+    _lightBaseRim.copy(rimLight.position);
+}
+cacheLightBasePositions();
 
 const colorSchemeMql = window.matchMedia('(prefers-color-scheme: dark)');
 function syncViewerToSystemColorScheme() {
     const { presetKey, sceneCfg } = viewerSceneForColorScheme();
-    applyViewerBodyBackground(sceneCfg.bodyBackground);
+    if (!_recoveryDemoChromeActive) {
+        if (RECOVERY_EMBED) {
+            applyViewerBodyBackground(sceneCfg.bodyBackground);
+        } else {
+            syncBackdropBackground(sceneCfg);
+        }
+    }
     applyViewerSceneRuntime(THREE, viewerRuntimeCtx, sceneCfg);
-    statusEl.style.color = presetKey === 'dark' ? 'white' : '#111827';
+    cacheLightBasePositions();
     document.documentElement.dataset.viewerTheme = presetKey;
+    if (_recoveryDemoChromeActive) {
+        document.documentElement.style.background = 'transparent';
+        document.body.style.background = 'transparent';
+        groundPlane.visible = false;
+    }
 }
 if (typeof colorSchemeMql.addEventListener === 'function') {
     colorSchemeMql.addEventListener('change', syncViewerToSystemColorScheme);
@@ -213,12 +320,56 @@ if (typeof colorSchemeMql.addEventListener === 'function') {
     colorSchemeMql.addListener(syncViewerToSystemColorScheme);
 }
 
-// ─── Placeholder cube (removed once GLB loads) ───────────────────────────────
-const cubeGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-const cubeMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-const cube    = new THREE.Mesh(cubeGeo, cubeMat);
-scene.add(cube);
-statusEl.innerText = 'WebGL ready, loading model...';
+// ─── Device tilt parallax (Swift Core Motion → gravity in device frame) ──────
+const _tiltTarget = new THREE.Vector3();
+const _tiltSmoothed = new THREE.Vector3();
+const _vecZero = new THREE.Vector3();
+let _parallaxMotionEnabled = true;
+const TILT_INPUT_CLAMP = 0.14;
+const TILT_SMOOTH = 0.17;
+const PARALLAX_MAX = 0.034;
+const LIGHT_TILT_GAIN = 0.38;
+const _camRight = new THREE.Vector3();
+const _camUp = new THREE.Vector3();
+const _lightQuat = new THREE.Quaternion();
+const _eulerLight = new THREE.Euler(0, 0, 0, 'YXZ');
+
+function _tickTiltSmoothing() {
+    _tiltSmoothed.lerp(_tiltTarget, TILT_SMOOTH);
+    if (!_parallaxMotionEnabled) {
+        _tiltSmoothed.lerp(_vecZero, 0.22);
+    }
+}
+
+function _applyOrbitAndParallaxToCamera() {
+    camera.position.copy(_orbitCamPos);
+    camera.lookAt(controls.target);
+    const nx = THREE.MathUtils.clamp(_tiltSmoothed.x, -TILT_INPUT_CLAMP, TILT_INPUT_CLAMP);
+    const nz = THREE.MathUtils.clamp(_tiltSmoothed.z, -TILT_INPUT_CLAMP, TILT_INPUT_CLAMP);
+    if (nx * nx + nz * nz < 1e-12) return;
+    camera.updateMatrixWorld(true);
+    _camRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    _camUp.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+    const scale = PARALLAX_MAX / TILT_INPUT_CLAMP;
+    camera.position.addScaledVector(_camRight, -nx * scale);
+    camera.position.addScaledVector(_camUp, nz * scale);
+}
+
+function _applyLightsFromTilt() {
+    const tlx = THREE.MathUtils.clamp(_tiltSmoothed.x, -TILT_INPUT_CLAMP, TILT_INPUT_CLAMP);
+    const tlz = THREE.MathUtils.clamp(_tiltSmoothed.z, -TILT_INPUT_CLAMP, TILT_INPUT_CLAMP);
+    const span = TILT_INPUT_CLAMP;
+    _eulerLight.set(
+        (tlz / span) * LIGHT_TILT_GAIN * 0.55,
+        (tlx / span) * LIGHT_TILT_GAIN,
+        0,
+        'YXZ'
+    );
+    _lightQuat.setFromEuler(_eulerLight);
+    keyLight.position.copy(_lightBaseKey).applyQuaternion(_lightQuat);
+    fillLight.position.copy(_lightBaseFill).applyQuaternion(_lightQuat);
+    rimLight.position.copy(_lightBaseRim).applyQuaternion(_lightQuat);
+}
 
 // ─── API state ────────────────────────────────────────────────────────────────
 let modelPivot      = null;   // Wrapper Group — setModelTransform acts on this
@@ -381,7 +532,6 @@ const loader = new GLTFLoader();
 loader.load(
     'local://app/Uguisu.glb',
     (gltf) => {
-        scene.remove(cube);
         rootModel = gltf.scene;
 
         // Normalise to unit cube — same convention as material-mapper.
@@ -438,9 +588,10 @@ loader.load(
             VIEWER_CAMERA.target[2]
         );
         camera.lookAt(controls.target);
+        _orbitCamPos.copy(camera.position);
         if (USE_ORTHO) syncOrthoCamera();
 
-        HOME_CAM_POS.copy(camera.position);
+        HOME_CAM_POS.copy(_orbitCamPos);
         HOME_CTRL_TARGET.copy(controls.target);
         _homeSet      = true;
         _manualCamera = true;
@@ -506,7 +657,14 @@ loader.load(
             buttonRestPos.copy(buttonObject.position);
         }
 
-        statusEl.style.display = 'none';
+        if (!RECOVERY_EMBED) {
+            groundPlane.visible = true;
+        }
+
+        setModelBranchOpacity(modelPivot, 0);
+        _modelIntroActive = true;
+        _modelFadeStartTs = null;
+
         console.log('[Pipit] Model loaded. LED meshes:', ledMeshes.length,
             '| Button:', buttonObject ? buttonObject.name : 'NOT FOUND');
 
@@ -518,8 +676,14 @@ loader.load(
     },
     undefined,
     (err) => {
-        statusEl.innerText = 'Load error: ' + err.message;
-        statusEl.style.color = 'orange';
+        statusEl.style.display = 'block';
+        statusEl.innerText = 'Model load error: ' + err.message;
+        const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        statusEl.style.color = dark ? '#fca5a5' : '#b45309';
+        if (backdropEl && !RECOVERY_EMBED && !_recoveryDemoChromeActive) {
+            syncBackdropBackground(viewerSceneForColorScheme().sceneCfg);
+            backdropEl.style.opacity = '1';
+        }
         console.error('[Pipit] GLB load error', err);
     }
 );
@@ -682,8 +846,9 @@ window.playLedLock = () => _flashOnce(255, 0, 0, 300, 150, 300);
 /**
  * Play the Window / triple-click rainbow sweep — mirrors firmware led::rainbow_sweep().
  * Full HSV hue rotation over 1500 ms.
+ * @param {function} [onDone] optional callback when the sweep finishes
  */
-window.playLedWindow = () => _rainbowSweep(1500, 200);
+window.playLedWindow = (onDone) => _rainbowSweep(1500, 200, onDone);
 
 /**
  * Start the provisioning pulsed-blue blink loop — mirrors firmware led::prov_pulse().
@@ -718,6 +883,136 @@ window.playLedLowBat = (r = 255, g = 0, b = 0) => _pulseBlink(r, g, b, 120, 100,
 window.stopLedAnim = () => {
     _cancelLedAnim();
     _applyLedState(0, 0, 0, false, 1.0);
+};
+
+// ─── Onboarding recovery sheet: transparent chrome + triple-press demo loop ──
+let _recoveryDemoGen = 0;
+let _recoveryDemoTimeoutIds = [];
+let _recoveryDemoPendingStart = false;
+let _recoveryDemoStoredGroundVisible = null;
+
+function _recoveryClearTimeouts() {
+    for (const id of _recoveryDemoTimeoutIds) clearTimeout(id);
+    _recoveryDemoTimeoutIds = [];
+}
+
+function _recoverySchedule(fn, ms) {
+    const id = setTimeout(() => {
+        const idx = _recoveryDemoTimeoutIds.indexOf(id);
+        if (idx >= 0) _recoveryDemoTimeoutIds.splice(idx, 1);
+        fn();
+    }, ms);
+    _recoveryDemoTimeoutIds.push(id);
+}
+
+/** Recovery sheet only: longer than `playLedWindow` (1500 ms) — fades eat ~400 ms of that, so the sweep feels short. */
+function _recoveryDemoPlayLedWindow(onDone) {
+    _rainbowSweep(1750, 200, onDone);
+}
+
+/**
+ * Recovery sheet: transparent page + hide ground so only the fob shows over the sheet.
+ */
+window.setRecoveryDemoChrome = (enabled) => {
+    const on = !!enabled;
+    _recoveryDemoChromeActive = on;
+    if (on) {
+        if (_recoveryDemoStoredGroundVisible === null) {
+            _recoveryDemoStoredGroundVisible = groundPlane.visible;
+        }
+        document.documentElement.style.background = 'transparent';
+        document.body.style.background = 'transparent';
+        groundPlane.visible = false;
+        statusEl.style.display = 'none';
+    } else {
+        const { sceneCfg } = viewerSceneForColorScheme();
+        applyViewerBodyBackground(sceneCfg.bodyBackground);
+        document.documentElement.style.background = '';
+        document.body.style.background = '';
+        if (_recoveryDemoStoredGroundVisible !== null) {
+            groundPlane.visible = _recoveryDemoStoredGroundVisible;
+        }
+        _recoveryDemoStoredGroundVisible = null;
+        statusEl.style.display = 'none';
+    }
+};
+
+function _recoveryDemoRunCycle(gen) {
+    if (gen !== _recoveryDemoGen) return;
+
+    const pressHoldMs = 90;
+    const interPressGapMs = 145;
+    const multiClickWindowMs = 420;
+    const pauseAfterRainbowMs = 900;
+
+    function afterThirdRelease() {
+        if (gen !== _recoveryDemoGen) return;
+        _recoverySchedule(() => {
+            if (gen !== _recoveryDemoGen) return;
+            _recoveryDemoPlayLedWindow(() => {
+                if (gen !== _recoveryDemoGen) return;
+                _recoverySchedule(() => _recoveryDemoRunCycle(gen), pauseAfterRainbowMs);
+            });
+        }, multiClickWindowMs);
+    }
+
+    function doPress(index) {
+        if (gen !== _recoveryDemoGen) return;
+        window.setButtonDepth(1);
+        _recoverySchedule(() => {
+            if (gen !== _recoveryDemoGen) return;
+            window.setButtonDepth(0);
+            if (index < 2) {
+                _recoverySchedule(() => doPress(index + 1), interPressGapMs);
+            } else {
+                afterThirdRelease();
+            }
+        }, pressHoldMs);
+    }
+    doPress(0);
+}
+
+window.stopRecoveryTriplePressDemo = () => {
+    _recoveryDemoGen++;
+    _recoveryClearTimeouts();
+    window.stopLedAnim();
+    if (window.setButtonDepth) window.setButtonDepth(0);
+    _recoveryDemoPendingStart = false;
+};
+
+window.startRecoveryTriplePressDemo = () => {
+    _recoveryDemoGen++;
+    _recoveryClearTimeouts();
+    window.stopLedAnim();
+    if (window.setButtonDepth) window.setButtonDepth(0);
+
+    if (!modelPivot) {
+        _recoveryDemoPendingStart = true;
+        return;
+    }
+    _recoveryDemoPendingStart = false;
+    _recoveryDemoRunCycle(_recoveryDemoGen);
+};
+
+/**
+ * Device gravity from iOS Core Motion (G units), portrait orientation.
+ * x / z drive parallax and subtle key/fill/rim light swing; y is unused here.
+ */
+window.setDeviceTilt = (gx, gy, gz) => {
+    if (!_parallaxMotionEnabled) return;
+    _tiltTarget.set(
+        Math.max(-1, Math.min(1, Number(gx) || 0)),
+        Math.max(-1, Math.min(1, Number(gy) || 0)),
+        Math.max(-1, Math.min(1, Number(gz) || 0))
+    );
+};
+
+/** When false, tilt input is ignored and smoothed state eases to neutral. */
+window.setParallaxMotionEnabled = (enabled) => {
+    _parallaxMotionEnabled = !!enabled;
+    if (!_parallaxMotionEnabled) {
+        _tiltTarget.set(0, 0, 0);
+    }
 };
 
 /**
@@ -774,7 +1069,7 @@ window.fobInteractableAtNormalized = (nx, ny) => {
 window.orbitCamera = (dTheta, dPhi) => {
     _scheduleReturn();
     const target = controls.target;
-    const offset = camera.position.clone().sub(target);
+    const offset = _orbitCamPos.clone().sub(target);
     const radius = Math.max(0.001, offset.length());
     // Decompose current position into spherical angles.
     let theta = Math.atan2(offset.x, offset.z);
@@ -782,12 +1077,11 @@ window.orbitCamera = (dTheta, dPhi) => {
     // Apply deltas; clamp phi away from poles to avoid gimbal flip.
     theta += dTheta;
     phi    = Math.max(0.05, Math.min(Math.PI - 0.05, phi + dPhi));
-    camera.position.set(
+    _orbitCamPos.set(
         target.x + radius * Math.sin(phi) * Math.sin(theta),
         target.y + radius * Math.cos(phi),
         target.z + radius * Math.sin(phi) * Math.cos(theta)
     );
-    camera.lookAt(target);
 };
 
 /**
@@ -797,12 +1091,12 @@ window.orbitCamera = (dTheta, dPhi) => {
  */
 window.zoomCamera = (factor) => {
     _scheduleReturn();
-    camera.updateMatrixWorld();
-    const dist    = camera.position.distanceTo(controls.target);
+    const target = controls.target;
+    const toCam = _orbitCamPos.clone().sub(target);
+    const dist = Math.max(0.001, toCam.length());
+    const dir = toCam.multiplyScalar(1 / dist);
     const newDist = Math.max(0.3, Math.min(8.0, dist / factor));
-    const lookDir = new THREE.Vector3();
-    camera.getWorldDirection(lookDir);
-    camera.position.copy(controls.target).addScaledVector(lookDir, -newDist);
+    _orbitCamPos.copy(target).addScaledVector(dir, newDist);
 };
 
 // ─── Resize ───────────────────────────────────────────────────────────────────
@@ -815,31 +1109,29 @@ window.addEventListener('resize', () => {
 
 // ─── Render loop ──────────────────────────────────────────────────────────────
 renderer.setAnimationLoop(() => {
-    if (cube.parent) {
-        cube.rotation.x += 0.01;
-        cube.rotation.y += 0.01;
-    }
+    _tickModelIntroFade();
     _tickPressSquishAnimation();
+    _tickTiltSmoothing();
+    _applyLightsFromTilt();
     if (_manualCamera) {
-        // Eased return-to-home animation.
+        // Eased return-to-home animation (orbit position only; parallax applied after).
         if (_returning && _returnFrom.pos) {
             const now = performance.now();
             if (_returnStartTs === null) _returnStartTs = now;
             const rawT = Math.min((now - _returnStartTs) / RETURN_ANIM_MS, 1.0);
             const t    = _easeOutCubic(rawT);
-            camera.position.lerpVectors(_returnFrom.pos,    HOME_CAM_POS,     t);
+            _orbitCamPos.lerpVectors(_returnFrom.pos, HOME_CAM_POS, t);
             controls.target.lerpVectors(_returnFrom.target, HOME_CTRL_TARGET, t);
-            camera.lookAt(controls.target);
             if (rawT >= 1.0) {
-                camera.position.copy(HOME_CAM_POS);
+                _orbitCamPos.copy(HOME_CAM_POS);
                 controls.target.copy(HOME_CTRL_TARGET);
-                camera.lookAt(controls.target);
                 _returning = false;
             }
         }
     } else {
         controls.update();
     }
+    _applyOrbitAndParallaxToCamera();
     if (USE_ORTHO) syncOrthoCamera();
     renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
     postButtonHitRegionIfNeeded();
