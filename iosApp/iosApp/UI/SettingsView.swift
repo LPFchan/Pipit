@@ -1,4 +1,15 @@
 import SwiftUI
+import UIKit
+
+private enum SettingsProximityThresholdHaptics {
+    static let generator = UIImpactFeedbackGenerator(style: .heavy)
+
+    /// Medium–strong feedback when the user snaps the threshold slider to a new preset.
+    static func playThresholdChanged() {
+        generator.prepare()
+        generator.impactOccurred(intensity: 0.85)
+    }
+}
 
 /// MainActor + non-observed `bleService` keep sheet/bindings and the view body on one actor and avoid
 /// re-rendering Settings on every `IosBleProximityService` publish (management session churn).
@@ -402,7 +413,14 @@ struct SettingsView: View {
             Slider(
                 value: Binding(
                     get: { Double(viewModel.selectedProximityPresetIndex) },
-                    set: { viewModel.setProximityPreset(index: Int($0.rounded())) }
+                    set: { newVal in
+                        let newIndex = Int(newVal.rounded())
+                        let previous = viewModel.selectedProximityPresetIndex
+                        viewModel.setProximityPreset(index: newIndex)
+                        if newIndex != previous {
+                            SettingsProximityThresholdHaptics.playThresholdChanged()
+                        }
+                    }
                 ),
                 in: 0...Double(max(viewModel.proximityPresets.count - 1, 0)),
                 step: 1
