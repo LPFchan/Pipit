@@ -80,10 +80,7 @@ window.MaterialMapperPersistenceModule = function ({
     // ─────────────────────────────────────────────────────────────
     const STORAGE_KEY = 'material-mapper-v1';
 
-    function saveState() {
-        if (writesSuspended) return;
-
-        const currentFileName = resolve(loadedFileName);
+    function captureState() {
         const currentMatProps = resolve(matProps);
         const currentLoadedModel = resolve(loadedModel);
         const currentIsOrtho = resolve(isOrtho);
@@ -92,23 +89,25 @@ window.MaterialMapperPersistenceModule = function ({
         const currentMaterialsState = resolve(materialsState);
         const currentSceneState = resolve(sceneState);
 
-        if (!currentFileName || partMap.size === 0 || !currentMatProps) return;
+        if (partMap.size === 0 || !currentMatProps) return null;
+
         const assignments = {};
-        const visibility  = {};
+        const visibility = {};
         for (const [name, entry] of partMap) {
             assignments[name] = entry.assignedKey;
             if (!entry.visible) visibility[name] = false;
         }
-        const state = {
-            matProps:    JSON.parse(JSON.stringify(currentMatProps)),
+
+        return {
+            matProps: JSON.parse(JSON.stringify(currentMatProps)),
             materialsState: currentMaterialsState ? JSON.parse(JSON.stringify(currentMaterialsState)) : null,
             assignments,
             visibility,
             camera: {
                 position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-                target:   { x: controls.target.x,  y: controls.target.y,  z: controls.target.z  },
-                fov:      camera.fov,
-                isOrtho:  !!currentIsOrtho,
+                target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
+                fov: camera.fov,
+                isOrtho: !!currentIsOrtho,
             },
             modelRotation: currentLoadedModel ? {
                 x: THREE.MathUtils.radToDeg(currentLoadedModel.rotation.x),
@@ -122,8 +121,16 @@ window.MaterialMapperPersistenceModule = function ({
             } : null,
             hudState: currentHudState ? JSON.parse(JSON.stringify(currentHudState)) : null,
             shellState: currentShellState ? JSON.parse(JSON.stringify(currentShellState)) : null,
-            sceneState:    currentSceneState ? JSON.parse(JSON.stringify(currentSceneState)) : null,
+            sceneState: currentSceneState ? JSON.parse(JSON.stringify(currentSceneState)) : null,
         };
+    }
+
+    function saveState() {
+        if (writesSuspended) return;
+
+        const currentFileName = resolve(loadedFileName);
+        const state = captureState();
+        if (!currentFileName || !state) return;
         try {
             const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
             all[currentFileName] = state;
@@ -154,7 +161,7 @@ window.MaterialMapperPersistenceModule = function ({
     // ─────────────────────────────────────────────────────────────
     // Restore persisted state from localStorage
     // ─────────────────────────────────────────────────────────────
-    function restoreState(fileName, callbacks) {
+    function applyStateSnapshot(saved, callbacks) {
         const currentMatProps = resolve(matProps);
         const currentMAT_OBJ = resolve(MAT_OBJ);
         const currentLoadedModel = resolve(loadedModel);
@@ -176,11 +183,9 @@ window.MaterialMapperPersistenceModule = function ({
             syncScenePanel,
         } = callbacks || {};
 
-        try {
-            const all   = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-            const saved = all[fileName];
-            if (!saved) return false;
+        if (!saved) return false;
 
+        try {
             const savedMaterialsState = saved.materialsState ?? (saved.matProps ? { matProps: saved.matProps } : null);
 
             // Restore materials registry and live Three.js material objects
@@ -291,6 +296,18 @@ window.MaterialMapperPersistenceModule = function ({
         }
     }
 
+    function restoreState(fileName, callbacks) {
+        try {
+            const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            const saved = all[fileName];
+            if (!saved) return false;
+            return applyStateSnapshot(saved, callbacks);
+        } catch (e) {
+            console.warn('[State] restore failed', e);
+            return false;
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Public API
     // ─────────────────────────────────────────────────────────────
@@ -300,6 +317,8 @@ window.MaterialMapperPersistenceModule = function ({
         loadLastFileFromDB,
 
         // Local storage state
+        captureState,
+        applyState: applyStateSnapshot,
         saveState,
         restoreState,
         suspendWrites,

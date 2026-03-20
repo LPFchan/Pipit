@@ -16,22 +16,62 @@ window.MaterialMapperCameraModule = function ({
 }) {
     let initialized = false;
     let hudCollapsed = false;
+    let hudPosition = null;
+    let hudDrag = null;
     const FLOOR_EPSILON = 0.008;
+    const HUD_DRAG_THRESHOLD = 16;
 
     function getHudElements() {
         return {
             hud: document.getElementById('camera-hud'),
+            header: document.getElementById('camera-hud-header'),
+            body: document.getElementById('camera-hud-body'),
             toggleBtn: document.getElementById('camera-hud-toggle-btn'),
         };
     }
 
+    function clampHudPosition(left, top, hud, parent) {
+        const maxLeft = Math.max(0, parent.clientWidth - hud.offsetWidth);
+        const maxTop = Math.max(0, parent.clientHeight - hud.offsetHeight);
+        return {
+            left: Math.min(Math.max(0, left), maxLeft),
+            top: Math.min(Math.max(0, top), maxTop),
+        };
+    }
+
+    function syncHudPosition() {
+        const { hud } = getHudElements();
+        if (!hud) return;
+        const parent = hud.parentElement;
+        if (!parent || !hudPosition) {
+            hud.classList.remove('floating');
+            hud.style.left = '';
+            hud.style.top = '';
+            hud.style.right = '';
+            hud.style.bottom = '';
+            return;
+        }
+
+        const next = clampHudPosition(hudPosition.left, hudPosition.top, hud, parent);
+        hudPosition = next;
+        hud.classList.add('floating');
+        hud.style.left = `${next.left}px`;
+        hud.style.top = `${next.top}px`;
+        hud.style.right = 'auto';
+        hud.style.bottom = 'auto';
+    }
+
     function syncHudCollapsed() {
-        const { hud, toggleBtn } = getHudElements();
-        if (!hud || !toggleBtn) return;
+        const { hud, header, body, toggleBtn } = getHudElements();
+        if (!hud || !header || !body || !toggleBtn) return;
         hud.classList.toggle('collapsed', hudCollapsed);
         toggleBtn.textContent = hudCollapsed ? '▸' : '▾';
         toggleBtn.setAttribute('aria-expanded', hudCollapsed ? 'false' : 'true');
         toggleBtn.title = hudCollapsed ? 'Expand camera panel' : 'Collapse camera panel';
+        header.setAttribute('aria-expanded', hudCollapsed ? 'false' : 'true');
+        header.title = hudCollapsed ? 'Expand camera panel' : 'Collapse camera panel';
+        body.setAttribute('aria-hidden', hudCollapsed ? 'true' : 'false');
+        requestAnimationFrame(syncHudPosition);
     }
 
     function setHudCollapsed(nextCollapsed, persist = true) {
@@ -42,6 +82,12 @@ window.MaterialMapperCameraModule = function ({
 
     function toggleHudCollapsed() {
         setHudCollapsed(!hudCollapsed, true);
+    }
+
+    function setHudPosition(left, top, persist = true) {
+        hudPosition = Number.isFinite(left) && Number.isFinite(top) ? { left, top } : null;
+        syncHudPosition();
+        if (persist) saveState();
     }
 
     function setHudXYZ(idX, idY, idZ, vec) {
@@ -256,7 +302,80 @@ window.MaterialMapperCameraModule = function ({
             return true;
         };
 
-        bindIfPresent('camera-hud-toggle-btn', 'click', toggleHudCollapsed);
+        const hudHeader = document.getElementById('camera-hud-header');
+        const hudToggleBtn = document.getElementById('camera-hud-toggle-btn');
+        if (hudHeader) {
+            hudHeader.addEventListener('pointerdown', (event) => {
+                if (event.button !== 0) return;
+                if (event.target.closest('#camera-hud-toggle-btn')) return;
+                const { hud } = getHudElements();
+                const parent = hud?.parentElement;
+                if (!hud || !parent) return;
+
+                const parentRect = parent.getBoundingClientRect();
+                const hudRect = hud.getBoundingClientRect();
+                hudDrag = {
+                    pointerId: event.pointerId,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    startLeft: hudRect.left - parentRect.left,
+                    startTop: hudRect.top - parentRect.top,
+                    dragging: false,
+                };
+
+                try { hudHeader.setPointerCapture(event.pointerId); } catch (_) {}
+                event.preventDefault();
+            });
+
+            hudHeader.addEventListener('pointermove', (event) => {
+                if (!hudDrag || hudDrag.pointerId !== event.pointerId) return;
+                const dx = event.clientX - hudDrag.startX;
+                const dy = event.clientY - hudDrag.startY;
+                const distSq = dx * dx + dy * dy;
+
+                if (!hudDrag.dragging) {
+                    if (distSq < HUD_DRAG_THRESHOLD) return;
+                    hudDrag.dragging = true;
+                    getHudElements().hud?.classList.add('dragging');
+                }
+
+                setHudPosition(hudDrag.startLeft + dx, hudDrag.startTop + dy, false);
+            });
+
+            hudHeader.addEventListener('pointerup', (event) => {
+                if (!hudDrag || hudDrag.pointerId !== event.pointerId) return;
+                const wasDragging = hudDrag.dragging;
+                const activeDrag = hudDrag;
+                hudDrag = null;
+                getHudElements().hud?.classList.remove('dragging');
+                try { hudHeader.releasePointerCapture(event.pointerId); } catch (_) {}
+
+                if (wasDragging) {
+                    setHudPosition(activeDrag.startLeft + (event.clientX - activeDrag.startX), activeDrag.startTop + (event.clientY - activeDrag.startY), true);
+                    return;
+                }
+
+                if (!event.target.closest('#camera-hud-toggle-btn')) toggleHudCollapsed();
+            });
+
+            hudHeader.addEventListener('pointercancel', (event) => {
+                if (!hudDrag || hudDrag.pointerId !== event.pointerId) return;
+                hudDrag = null;
+                getHudElements().hud?.classList.remove('dragging');
+            });
+
+            hudHeader.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                toggleHudCollapsed();
+            });
+        }
+        if (hudToggleBtn) {
+            hudToggleBtn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                toggleHudCollapsed();
+            });
+        }
 
         ['hud-pos-x', 'hud-pos-y', 'hud-pos-z'].forEach((id) => {
             document.getElementById(id).addEventListener('change', () => {
@@ -395,7 +514,9 @@ window.MaterialMapperCameraModule = function ({
         bindHudControls();
         bindNumberDrag();
         controls.addEventListener('end', saveState);
+        window.addEventListener('resize', syncHudPosition);
         syncHudCollapsed();
+        syncHudPosition();
         initialized = true;
     }
 
@@ -409,10 +530,15 @@ window.MaterialMapperCameraModule = function ({
         applyModelRotationDeg,
         syncGroundToModel,
         toggleOrtho,
-        getHudState: () => ({ collapsed: hudCollapsed }),
+        getHudState: () => ({ collapsed: hudCollapsed, position: hudPosition ? { ...hudPosition } : null }),
         restoreHudState: (savedHudState) => {
-            if (!savedHudState || typeof savedHudState.collapsed !== 'boolean') return;
-            setHudCollapsed(savedHudState.collapsed, false);
+            if (!savedHudState) return;
+            if (typeof savedHudState.collapsed === 'boolean') {
+                setHudCollapsed(savedHudState.collapsed, false);
+            }
+            if (savedHudState.position && Number.isFinite(savedHudState.position.left) && Number.isFinite(savedHudState.position.top)) {
+                setHudPosition(savedHudState.position.left, savedHudState.position.top, false);
+            }
         },
     };
 };

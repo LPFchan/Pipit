@@ -578,7 +578,6 @@ window.MaterialMapperMaterialsModule = function ({
         const empty = document.getElementById('empty-state');
         empty.style.display = 'none';
         [...list.querySelectorAll('.part-row')].forEach(el => el.remove());
-        document.getElementById('reset-btn').style.display = '';
 
         const sortMode = getPartSortMode?.() ?? 'name-asc';
         const direction = sortMode === 'name-desc' ? -1 : 1;

@@ -16,10 +16,10 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     const scene  = new THREE.Scene();
     scene.background = null; // backdrop controlled by CSS on viewer-pane
 
-    const camera = new THREE.PerspectiveCamera(38, 1, 0.0001, 1000);
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 50);
     camera.position.set(0, 0, 1);
 
-    const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.0001, 1000);
+    const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 50);
     let isOrtho = false;
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -478,11 +478,141 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     let setProp = () => {}, selectMesh = () => false, clearSelection = () => {}, selectAllVisible = () => {}, syncSelectionEditor = () => {}, setVisibility = () => {}, syncShowAllBtn = () => {}, buildEditor = () => {}, buildPartsUI = () => {}, applyMaterials = () => {}, generateMaterialsJs = () => '', guessKey = fallbackGuessKey, updateCode = () => {};
     let loadBuffer = () => {};
     let importFromCode = () => ({ matCount: 0, ruleCount: 0 });
-    let saveLastFileToDB = () => {}, loadLastFileFromDB = () => {}, persistSaveState = () => {}, restoreState = () => false, suspendPersistence = () => {}, resumePersistence = () => {};
+    let saveLastFileToDB = () => {}, loadLastFileFromDB = () => {}, persistSaveState = () => {}, restoreState = () => false, capturePersistedState = () => null, applyPersistedState = () => false, suspendPersistence = () => {}, resumePersistence = () => {};
+
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
+    const HISTORY_LIMIT = 120;
+    const HISTORY_CAPTURE_DELAY_MS = 140;
+    let historyEntries = [];
+    let historyIndex = -1;
+    let historyCaptureTimer = 0;
+    let historySuspended = false;
+
+    function isEditableTarget(target = document.activeElement) {
+        if (!target) return false;
+        const tagName = target.tagName;
+        return target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+    }
+
+    function syncHistoryButtons() {
+        if (undoBtn) undoBtn.disabled = historyIndex <= 0;
+        if (redoBtn) redoBtn.disabled = historyIndex < 0 || historyIndex >= historyEntries.length - 1;
+    }
+
+    function clearPendingHistoryCapture() {
+        if (!historyCaptureTimer) return;
+        clearTimeout(historyCaptureTimer);
+        historyCaptureTimer = 0;
+    }
+
+    function commitHistorySnapshot(snapshot) {
+        if (!snapshot) {
+            syncHistoryButtons();
+            return false;
+        }
+
+        const serialized = JSON.stringify(snapshot);
+        if (historyEntries[historyIndex] === serialized) {
+            syncHistoryButtons();
+            return false;
+        }
+
+        historyEntries = historyEntries.slice(0, historyIndex + 1);
+        historyEntries.push(serialized);
+        if (historyEntries.length > HISTORY_LIMIT) {
+            historyEntries.shift();
+        }
+        historyIndex = historyEntries.length - 1;
+        syncHistoryButtons();
+        return true;
+    }
+
+    function captureHistorySnapshot() {
+        historyCaptureTimer = 0;
+        if (historySuspended || !partMap.size) {
+            syncHistoryButtons();
+            return;
+        }
+        commitHistorySnapshot(capturePersistedState?.());
+    }
+
+    function scheduleHistoryCapture() {
+        if (historySuspended || !partMap.size) return;
+        clearPendingHistoryCapture();
+        historyCaptureTimer = setTimeout(captureHistorySnapshot, HISTORY_CAPTURE_DELAY_MS);
+    }
+
+    function resetHistory(snapshot = capturePersistedState?.()) {
+        clearPendingHistoryCapture();
+        historyEntries = [];
+        historyIndex = -1;
+        commitHistorySnapshot(snapshot);
+        syncHistoryButtons();
+    }
+
+    function getStateRestoreCallbacks() {
+        return {
+            applyMaterials,
+            buildPartsUI,
+            buildEditor,
+            syncShowAllBtn,
+            setIsOrtho: (nextIsOrtho) => {
+                if (typeof nextIsOrtho !== 'boolean' || nextIsOrtho === isOrtho) return;
+                cameraModule?.toggleOrtho?.();
+            },
+            setHudXYZ: cameraModule?.setHudXYZ,
+            applyModelRotationDeg: cameraModule?.applyModelRotationDeg,
+            restoreHudState: cameraModule?.restoreHudState,
+            syncOrbitTarget: cameraModule?.syncOrbitTarget,
+            restoreLayoutState: shellModule?.restoreLayoutState,
+            restoreMaterialState: materialsModule?.restoreMaterialState,
+            mergeSceneState: sceneModule?.mergeState,
+            applySceneState: sceneModule?.applyAll,
+            syncScenePanel: sceneModule?.syncScenePanel,
+        };
+    }
+
+    function applyHistoryIndex(nextIndex) {
+        if (nextIndex < 0 || nextIndex >= historyEntries.length || nextIndex === historyIndex) return false;
+        const serialized = historyEntries[nextIndex];
+        if (!serialized) return false;
+
+        clearPendingHistoryCapture();
+        historySuspended = true;
+        let didApply = false;
+        suspendPersistence?.();
+        try {
+            const snapshot = JSON.parse(serialized);
+            didApply = !!applyPersistedState?.(snapshot, getStateRestoreCallbacks());
+            if (!didApply) return false;
+            historyIndex = nextIndex;
+            requestRender();
+            return true;
+        } finally {
+            resumePersistence?.();
+            if (didApply) persistSaveState?.();
+            historySuspended = false;
+            syncHistoryButtons();
+        }
+    }
+
+    function undo() {
+        return applyHistoryIndex(historyIndex - 1);
+    }
+
+    function redo() {
+        return applyHistoryIndex(historyIndex + 1);
+    }
 
     function saveState() {
         persistSaveState?.();
+        scheduleHistoryCapture();
     }
+
+    undoBtn?.addEventListener('click', undo);
+    redoBtn?.addEventListener('click', redo);
+    syncHistoryButtons();
 
     // ─────────────────────────────────────────────────────────────
     // Visibility toggle
@@ -503,6 +633,19 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         if (tag === 'INPUT' || tag === 'TEXTAREA') return;
         e.preventDefault();
         selectAllVisible();
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+        if (event.key.toLowerCase() !== 'z') return;
+        if (isEditableTarget(event.target)) return;
+
+        event.preventDefault();
+        if (event.shiftKey) {
+            redo();
+            return;
+        }
+        undo();
     });
 
     // ─────────────────────────────────────────────────────────────
@@ -573,22 +716,6 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     });
 
     // ─────────────────────────────────────────────────────────────
-    // Reset button
-    // ─────────────────────────────────────────────────────────────
-    document.getElementById('reset-btn').addEventListener('click', () => {
-        for (const entry of partMap.values()) {
-            entry.assignedKey = guessKey(entry.origName ?? '');
-            entry.visible = true;
-            entry.meshes.forEach(m => { m.visible = true; });
-        }
-        clearSelection();
-        applyMaterials();
-        buildPartsUI();
-        syncShowAllBtn();
-        saveState();
-    });
-
-    // ─────────────────────────────────────────────────────────────
     // Toast
     // ─────────────────────────────────────────────────────────────
     let toastTimer;
@@ -603,7 +730,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     // ─────────────────────────────────────────────────────────────
     // Export GLB (visible parts only)
     // ─────────────────────────────────────────────────────────────
-    document.getElementById('export-btn').addEventListener('click', () => toolsModule?.exportGLB());
+    document.getElementById('export-glb-btn').addEventListener('click', () => toolsModule?.exportGLB());
 
     // ─────────────────────────────────────────────────────────────
     // Auto Z-Fighting Fix
@@ -720,25 +847,10 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         resumePersistence: () => resumePersistence(),
         requestRender,
         getRestoreCallbacks: () => ({
-            applyMaterials,
-            buildPartsUI,
-            buildEditor,
-            syncShowAllBtn,
-            setIsOrtho: (nextIsOrtho) => {
-                if (typeof nextIsOrtho !== 'boolean' || nextIsOrtho === isOrtho) return;
-                cameraModule?.toggleOrtho?.();
-            },
-            setHudXYZ: cameraModule?.setHudXYZ,
-            applyModelRotationDeg: cameraModule?.applyModelRotationDeg,
-            restoreHudState: cameraModule?.restoreHudState,
-            syncOrbitTarget: cameraModule?.syncOrbitTarget,
-            restoreLayoutState: shellModule?.restoreLayoutState,
-            restoreMaterialState: materialsModule?.restoreMaterialState,
-            mergeSceneState: sceneModule?.mergeState,
-            applySceneState: sceneModule?.applyAll,
-            syncScenePanel: sceneModule?.syncScenePanel,
+            ...getStateRestoreCallbacks(),
         }),
         onModelLoaded: (fileName) => shellModule?.onModelLoaded(fileName),
+        onModelReady: () => resetHistory(),
         saveState,
         showToast,
     });
@@ -750,7 +862,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     materialsModule.init?.();
     ({ setProp, selectMesh, clearSelection, selectAllVisible, syncSelectionEditor, setVisibility, syncShowAllBtn, buildEditor, buildPartsUI, applyMaterials, generateMaterialsJs, guessKey, updateCode } = materialsModule);
     ({ loadBuffer, importFromCode } = loaderModule);
-    ({ saveLastFileToDB, loadLastFileFromDB, saveState: persistSaveState, restoreState, suspendWrites: suspendPersistence, resumeWrites: resumePersistence } = persistenceModule);
+    ({ saveLastFileToDB, loadLastFileFromDB, captureState: capturePersistedState, applyState: applyPersistedState, saveState: persistSaveState, restoreState, suspendWrites: suspendPersistence, resumeWrites: resumePersistence } = persistenceModule);
 
     const rawBuildPartsUI = buildPartsUI;
     buildPartsUI = (...args) => {

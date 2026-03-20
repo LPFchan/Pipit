@@ -9,6 +9,65 @@ window.MaterialMapperShellModule = function ({
     saveState,
     showToast,
 }) {
+    function bindHeaderMenus() {
+        const menus = [...document.querySelectorAll('[data-header-menu]')];
+
+        function closeMenu(menu) {
+            const button = menu?.querySelector('.header-menu-btn');
+            const popover = menu?.querySelector('.header-menu-popover');
+            if (!button || !popover) return;
+            button.setAttribute('aria-expanded', 'false');
+            popover.hidden = true;
+        }
+
+        function openMenu(menu) {
+            menus.forEach((entry) => {
+                if (entry !== menu) closeMenu(entry);
+            });
+            const button = menu?.querySelector('.header-menu-btn');
+            const popover = menu?.querySelector('.header-menu-popover');
+            if (!button || !popover) return;
+            button.setAttribute('aria-expanded', 'true');
+            popover.hidden = false;
+        }
+
+        menus.forEach((menu) => {
+            const button = menu.querySelector('.header-menu-btn');
+            const popover = menu.querySelector('.header-menu-popover');
+            if (!button || !popover) return;
+
+            closeMenu(menu);
+
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const isOpen = button.getAttribute('aria-expanded') === 'true';
+                if (isOpen) {
+                    closeMenu(menu);
+                    return;
+                }
+                openMenu(menu);
+            });
+
+            popover.addEventListener('click', (event) => {
+                const item = event.target.closest('.header-menu-item');
+                if (!item || item.disabled) return;
+                closeMenu(menu);
+            });
+        });
+
+        document.addEventListener('click', (event) => {
+            menus.forEach((menu) => {
+                if (menu.contains(event.target)) return;
+                closeMenu(menu);
+            });
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            menus.forEach(closeMenu);
+        });
+    }
+
     function getLayoutElements() {
         return {
             panelBody: document.getElementById('panel-body'),
@@ -67,8 +126,11 @@ window.MaterialMapperShellModule = function ({
 
     function bindFileLoading() {
         const fileInput = document.getElementById('file-input');
+        const openModelBtn = document.getElementById('import-open-model-btn');
         const viewerPane = document.getElementById('viewer-pane');
         const dropOverlay = document.getElementById('drop-overlay');
+
+        openModelBtn?.addEventListener('click', () => fileInput.click());
 
         fileInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
@@ -93,10 +155,10 @@ window.MaterialMapperShellModule = function ({
 
     function bindModals() {
         const codeModal = document.getElementById('code-modal');
-        const showCodeBtn = document.getElementById('show-code-btn');
+        const exportCodeBtn = document.getElementById('export-code-action-btn');
         const codeModalClose = document.getElementById('code-modal-close');
         const importModal = document.getElementById('import-modal');
-        const importCodeBtn = document.getElementById('import-code-btn');
+        const importCodeBtn = document.getElementById('import-code-action-btn');
         const importModalClose = document.getElementById('import-modal-close');
         const importApplyBtn = document.getElementById('import-apply-btn');
         const importFileBtn = document.getElementById('import-file-btn');
@@ -112,13 +174,13 @@ window.MaterialMapperShellModule = function ({
             showToast(`Imported: ${matCount} material${matCount !== 1 ? 's' : ''}, ${ruleCount} rule${ruleCount !== 1 ? 's' : ''}`);
         };
 
-        showCodeBtn.addEventListener('click', () => codeModal.classList.remove('hidden'));
+        exportCodeBtn?.addEventListener('click', () => codeModal.classList.remove('hidden'));
         codeModalClose.addEventListener('click', () => codeModal.classList.add('hidden'));
         codeModal.addEventListener('click', (event) => {
             if (event.target === codeModal) codeModal.classList.add('hidden');
         });
 
-        importCodeBtn.addEventListener('click', () => {
+        importCodeBtn?.addEventListener('click', () => {
             importTextarea.value = '';
             importModal.classList.remove('hidden');
             setTimeout(() => importTextarea.focus(), 50);
@@ -307,14 +369,16 @@ window.MaterialMapperShellModule = function ({
     }
 
     function onModelLoaded(fileName) {
+        const exportGlbBtn = document.getElementById('export-glb-btn');
         document.getElementById('drop-overlay').classList.add('hidden');
         document.getElementById('search-input').value = '';
-        document.getElementById('export-btn').style.display = '';
         document.getElementById('zfix-btn').style.display = '';
+        if (exportGlbBtn) exportGlbBtn.disabled = false;
         document.title = `Material Mapper — ${fileName}`;
     }
 
     function init() {
+        bindHeaderMenus();
         bindFileLoading();
         bindModals();
         bindPanelLayout();

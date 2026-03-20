@@ -30,16 +30,25 @@
     <div class="header-sub">Drop a .glb → assign materials → edit properties → copy generated code into assets/materials.js</div>
   </div>
   <div class="header-actions">
-    <label>
-      <input type="file" id="file-input" accept=".glb,.gltf" style="display:none">
-      <span class="btn btn-ghost">Open .glb / .gltf</span>
-    </label>
-    <button class="btn btn-ghost" id="reset-btn"  style="display:none">Reset assignments</button>
+    <input type="file" id="file-input" accept=".glb,.gltf" style="display:none">
+    <div class="header-menu" data-header-menu>
+      <button class="btn btn-ghost header-menu-btn" id="import-menu-btn" type="button" aria-expanded="false" aria-haspopup="menu" aria-controls="import-menu-popover">↑ Import ▾</button>
+      <div class="header-menu-popover" id="import-menu-popover" role="menu" aria-labelledby="import-menu-btn" hidden>
+        <button class="header-menu-item" id="import-open-model-btn" type="button" role="menuitem">Open .glb / .gltf</button>
+        <button class="header-menu-item" id="import-code-action-btn" type="button" role="menuitem">Import from code</button>
+      </div>
+    </div>
+    <button class="btn btn-ghost" id="undo-btn" type="button" title="Undo (Cmd/Ctrl+Z)" disabled>↶ Undo</button>
+    <button class="btn btn-ghost" id="redo-btn" type="button" title="Redo (Shift+Cmd/Ctrl+Z)" disabled>↷ Redo</button>
     <button class="btn btn-ghost" id="zfix-btn"   style="display:none">⚡ Auto Z-Fix</button>
-    <button class="btn btn-ghost" id="export-btn" style="display:none">Export GLB</button>
-    <button class="btn btn-ghost" id="import-code-btn">↑ Import</button>
+    <div class="header-menu" data-header-menu>
+      <button class="btn btn-ghost header-menu-btn" id="export-menu-btn" type="button" aria-expanded="false" aria-haspopup="menu" aria-controls="export-menu-popover">↓ Export ▾</button>
+      <div class="header-menu-popover" id="export-menu-popover" role="menu" aria-labelledby="export-menu-btn" hidden>
+        <button class="header-menu-item" id="export-code-action-btn" type="button" role="menuitem">Open generated code</button>
+        <button class="header-menu-item" id="export-glb-btn" type="button" role="menuitem" disabled>Export GLB</button>
+      </div>
+    </div>
     <button class="btn btn-ghost" id="iphone-preview-btn">📱 iPhone</button>
-    <button class="btn btn-ghost" id="show-code-btn">{ } Code</button>
   </div>
 </header>
 
@@ -56,9 +65,9 @@
 
     <!-- Camera HUD -->
     <div class="camera-hud" id="camera-hud">
-      <div class="hud-header">
+      <div class="hud-header" id="camera-hud-header" role="button" tabindex="0" aria-expanded="true" aria-controls="camera-hud-body" title="Collapse camera panel">
         <div class="hud-title">📷 Camera</div>
-        <button class="hud-collapse-btn" id="camera-hud-toggle-btn" type="button" aria-expanded="true" title="Collapse camera panel">▾</button>
+        <button class="hud-collapse-btn" id="camera-hud-toggle-btn" type="button" aria-expanded="true" aria-controls="camera-hud-body" title="Collapse camera panel">▾</button>
       </div>
       <div class="camera-hud-body" id="camera-hud-body">
         <div class="hud-row">
@@ -122,7 +131,7 @@
     <div class="drop-overlay" id="drop-overlay">
       <div class="drop-icon">◈</div>
       <div class="drop-title">Drop a .glb or .gltf file here</div>
-      <div class="drop-hint">or use the Open button above</div>
+      <div class="drop-hint">or use Import above</div>
     </div>
   </div>
 
@@ -377,7 +386,7 @@
       <button class="btn btn-accent" id="import-apply-btn" style="padding:3px 12px;font-size:11px">Apply</button>
       <button class="code-modal-close" id="import-modal-close" title="Close">✕</button>
     </div>
-    <textarea id="import-textarea" placeholder="Paste the output from { } Code here…" spellcheck="false"></textarea>
+    <textarea id="import-textarea" placeholder="Paste exported generated code here…" spellcheck="false"></textarea>
   </div>
 </div>
 

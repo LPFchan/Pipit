@@ -29,6 +29,7 @@ window.MaterialMapperLoaderModule = function ({
     requestRender,
     getRestoreCallbacks,
     onModelLoaded,
+    onModelReady,
     saveState,
     showToast,
 }) {
@@ -241,6 +242,7 @@ window.MaterialMapperLoaderModule = function ({
             }
             requestRender?.();
             resumePersistence?.();
+            onModelReady?.(fileName);
         }, (error) => {
             resumePersistence?.();
             console.error('[Material Mapper] GLTF parse error:', error);
