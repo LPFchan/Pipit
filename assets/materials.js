@@ -88,7 +88,7 @@ export const LED_MAX_INTENSITY = 5;
 export const VIEWER_CAMERA = {
     "useOrtho": false,
     "fov": 30,
-    // Wider than default 0.01: orbit/zoom (min dist ~0.3) brings corners very close to the eye;
+    // Wider than default 0.01: orbit/zoom (min dist ~0.6) brings corners close to the eye;
     // a razor near plane slices the mesh. 0.08 keeps depth precision fine at this scene scale.
     "near": 0.08,
     "far": 50,
