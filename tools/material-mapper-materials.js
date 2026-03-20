@@ -1,5 +1,137 @@
 'use strict';
 
+/** Appended to every downloaded materials.js (not regenerated per session). */
+const VIEWER_JS_RUNTIME_HELPERS = [
+    '/** Set html/body background (Safari / WKWebView). */',
+    'export function applyViewerBodyBackground(backgroundCss) {',
+    '    if (typeof document === \'undefined\') return;',
+    '    document.documentElement.style.background = backgroundCss;',
+    '    document.body.style.background = backgroundCss;',
+    '}',
+    '',
+    '/**',
+    ' * Apply VIEWER_SCENE to live Three.js objects. Call after RoomEnvironment PMREM is ready.',
+    ' */',
+    'export function applyViewerSceneRuntime(THREE, ctx, sceneCfg) {',
+    '    const s = sceneCfg;',
+    '    const { renderer, scene, envTexture, keyLight, fillLight, rimLight, ambientLight, groundPlane } = ctx;',
+    '',
+    '    const tmMap = {',
+    '        No: THREE.NoToneMapping,',
+    '        Linear: THREE.LinearToneMapping,',
+    '        Reinhard: THREE.ReinhardToneMapping,',
+    '        Cineon: THREE.CineonToneMapping,',
+    '        ACES: THREE.ACESFilmicToneMapping,',
+    '    };',
+    '    renderer.toneMapping = tmMap[s.renderer.toneMap] ?? THREE.ACESFilmicToneMapping;',
+    '    renderer.outputColorSpace = s.renderer.output === \'Linear\'',
+    '        ? THREE.LinearSRGBColorSpace',
+    '        : THREE.SRGBColorSpace;',
+    '    renderer.physicallyCorrectLights = !!s.renderer.physicallyCorrect;',
+    '    renderer.toneMappingExposure = s.tm.exposure;',
+    '    renderer.setClearColor(0x000000, 0);',
+    '    renderer.shadowMap.enabled = s.shadowMap.enabled;',
+    '    const shadowTypes = { PCF: THREE.PCFShadowMap, PCFSoft: THREE.PCFSoftShadowMap, VSM: THREE.VSMShadowMap };',
+    '    renderer.shadowMap.type = shadowTypes[s.shadowMap.type] ?? THREE.PCFSoftShadowMap;',
+    '',
+    '    const e = s.env;',
+    '    scene.environment = e.enabled ? envTexture : null;',
+    '    scene.environmentIntensity = e.intensity;',
+    '    const rx = THREE.MathUtils.degToRad(e.rotDeg[0]);',
+    '    const ry = THREE.MathUtils.degToRad(e.rotDeg[1]);',
+    '    const rz = THREE.MathUtils.degToRad(e.rotDeg[2]);',
+    '    if (scene.environmentRotation) scene.environmentRotation.set(rx, ry, rz);',
+    '    scene.background = e.enabled && e.useAsBackground ? envTexture : null;',
+    '    if (scene.backgroundRotation) scene.backgroundRotation.set(rx, ry, rz);',
+    '    scene.backgroundBlurriness = e.bgBlurriness;',
+    '    scene.backgroundIntensity = e.bgIntensity;',
+    '',
+    '    keyLight.color.set(s.key.color);',
+    '    keyLight.intensity = s.key.intensity;',
+    '    keyLight.position.set(s.key.px, s.key.py, s.key.pz);',
+    '    keyLight.castShadow = s.key.shadows;',
+    '    keyLight.shadow.mapSize.setScalar(s.shadow.mapSize);',
+    '    keyLight.shadow.camera.near = s.shadow.near;',
+    '    keyLight.shadow.camera.far = s.shadow.far;',
+    '    keyLight.shadow.camera.left = s.shadow.left;',
+    '    keyLight.shadow.camera.right = s.shadow.right;',
+    '    keyLight.shadow.camera.top = s.shadow.top;',
+    '    keyLight.shadow.camera.bottom = s.shadow.bottom;',
+    '    keyLight.shadow.radius = s.shadow.radius;',
+    '    keyLight.shadow.bias = s.shadow.bias;',
+    '    keyLight.shadow.camera.updateProjectionMatrix();',
+    '',
+    '    fillLight.color.set(s.fill.color);',
+    '    fillLight.intensity = s.fill.intensity;',
+    '    fillLight.position.set(s.fill.px, s.fill.py, s.fill.pz);',
+    '',
+    '    rimLight.color.set(s.rim.color);',
+    '    rimLight.intensity = s.rim.intensity;',
+    '    rimLight.position.set(s.rim.px, s.rim.py, s.rim.pz);',
+    '',
+    '    ambientLight.color.set(s.amb.color);',
+    '    ambientLight.intensity = s.amb.intensity;',
+    '',
+    '    groundPlane.visible = s.ground.visible;',
+    '    groundPlane.material.opacity = s.ground.opacity;',
+    '    if (groundPlane.geometry) groundPlane.geometry.dispose();',
+    '    groundPlane.geometry = new THREE.CircleGeometry(s.ground.radius, 64);',
+    '}',
+].join('\n');
+
+function defaultViewerCameraPayload() {
+    return {
+        useOrtho: false,
+        fov: 50,
+        near: 0.0001,
+        far: 1000,
+        position: [-0, -1.2865, -2.6566],
+        target: [0, 0, 0],
+        modelRotation: [0, 0, 0],
+    };
+}
+
+function defaultViewerScenePayload() {
+    return {
+        renderer: { toneMap: 'ACES', output: 'sRGB', physicallyCorrect: true },
+        bodyBackground: 'radial-gradient(ellipse at 50% 38%, #1c1e28 0%, #09090c 100%)',
+        env: {
+            enabled: true,
+            useAsBackground: false,
+            intensity: 1,
+            rotDeg: [0, 0, 0],
+            bgBlurriness: 0,
+            bgIntensity: 1,
+            roomEnvBlur: 0.04,
+        },
+        tm: { exposure: 0.95 },
+        shadowMap: { enabled: true, type: 'PCFSoft' },
+        key: {
+            color: '#fff8f0',
+            intensity: 2,
+            px: 1.5,
+            py: 2.5,
+            pz: 2,
+            shadows: true,
+        },
+        shadow: {
+            mapSize: 2048,
+            radius: 4,
+            bias: -0.0005,
+            near: 0.1,
+            far: 10,
+            left: -2,
+            right: 2,
+            top: 2,
+            bottom: -2,
+        },
+        fill: { color: '#b0c8ff', intensity: 0.55, px: -2, py: 1, pz: -1.5 },
+        rim: { color: '#dde8ff', intensity: 0.45, px: 0, py: -1, pz: -2 },
+        amb: { color: '#ffffff', intensity: 0.1 },
+        ground: { visible: true, opacity: 0.38, radius: 1.4, yPlaceholder: -0.52 },
+    };
+}
+
 /**
  * Material Mapper Materials Module
  * 
@@ -16,7 +148,9 @@
  *   - updatePartCount: callback function (or handled internally)
  *   - ensurePartVisible: callback to reveal a selected part in the filtered list
  *   - getPartSortMode: callback returning the current part sort mode
- *   - generateCameraCode: function that returns camera setup code
+ *   - generateCameraCode: function that returns camera setup code (clipboard / scene panel)
+ *   - getViewerCameraExportPayload: () => plain object for VIEWER_CAMERA in materials.js
+ *   - getViewerSceneExportPayload: () => plain object for VIEWER_SCENE (or null → defaults)
  */
 window.MaterialMapperMaterialsModule = function ({
     THREE,
@@ -29,7 +163,29 @@ window.MaterialMapperMaterialsModule = function ({
     ensurePartVisible,
     getPartSortMode,
     generateCameraCode,
+    getViewerCameraExportPayload,
+    getViewerSceneExportPayload,
 }) {
+    function resolveViewerCameraPayload() {
+        try {
+            if (typeof getViewerCameraExportPayload === 'function') {
+                const v = getViewerCameraExportPayload();
+                if (v && typeof v === 'object') return v;
+            }
+        } catch (e) { console.warn('[Material Mapper] viewer camera export', e); }
+        return defaultViewerCameraPayload();
+    }
+
+    function resolveViewerScenePayload() {
+        try {
+            if (typeof getViewerSceneExportPayload === 'function') {
+                const v = getViewerSceneExportPayload();
+                if (v && typeof v === 'object') return v;
+            }
+        } catch (e) { console.warn('[Material Mapper] viewer scene export', e); }
+        return defaultViewerScenePayload();
+    }
+
     const selectedParts = new Set();
     let primarySelected = null;
 
@@ -1111,7 +1267,8 @@ window.MaterialMapperMaterialsModule = function ({
             `// ── Find LED meshes (replaces emissive-scan in viewer.html) ─`,
             ...generateLedDetection().split('\n'),
             ``,
-            ...generateCameraCode().split('\n'),
+            `// ── Camera / scene live in VIEWER_CAMERA & VIEWER_SCENE (↓ Save materials.js) ─`,
+            `// ── Clipboard: ⎘ Copy camera | Scene tab → Copy scene code for viewer.html ─`,
         ];
 
         pre.innerHTML = allLines.map(hlLine).join('\n');
@@ -1144,6 +1301,8 @@ window.MaterialMapperMaterialsModule = function ({
 
         // Derive LED_MAX_INTENSITY from the ledMat emissiveIntensity value
         const ledIntensity = matProps[materialRoles.led ?? 'ledMat']?.emissiveIntensity ?? 7.7;
+        const camPayload = resolveViewerCameraPayload();
+        const scnPayload = resolveViewerScenePayload();
 
         return [
             `// materials.js — material definitions for Pipit's 3D viewer`,
@@ -1153,10 +1312,16 @@ window.MaterialMapperMaterialsModule = function ({
             ``,
             `import * as THREE from 'three';`,
             ``,
+            VIEWER_JS_RUNTIME_HELPERS,
+            ``,
             `// Max emissive intensity — keep in sync with KHR_materials_emissive_strength in Uguisu.glb.`,
             `export const LED_MAX_INTENSITY = ${ledIntensity};`,
             ``,
             `// ▼▼▼ START — generated by Material Mapper ▼▼▼`,
+            `export const VIEWER_CAMERA = ${JSON.stringify(camPayload, null, 4)};`,
+            ``,
+            `export const VIEWER_SCENE = ${JSON.stringify(scnPayload, null, 4)};`,
+            ``,
             matSection,
             ``,
             rulesSection,

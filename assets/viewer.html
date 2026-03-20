@@ -37,43 +37,48 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { MATERIAL_RULES, LED_MAX_INTENSITY } from './materials.js';
+import {
+    MATERIAL_RULES,
+    LED_MAX_INTENSITY,
+    VIEWER_CAMERA,
+    VIEWER_SCENE,
+    applyViewerBodyBackground,
+    applyViewerSceneRuntime,
+} from './materials.js';
 
 const statusEl = document.getElementById('status');
 statusEl.innerText = 'Initializing...';
+
+applyViewerBodyBackground(VIEWER_SCENE.bodyBackground);
 
 // ─── Renderer ────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.95;
-renderer.setClearColor(0x000000, 0); // transparent — CSS gradient shows through
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // ─── Scene / Camera ──────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
 
 // ─── Environment (IBL) ───────────────────────────────────────────────────────
-// Procedural RoomEnvironment gives physically-based reflections and diffuse
-// lighting on PBR materials without requiring an external HDR file.
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
 const roomEnv = new RoomEnvironment();
-const envTexture = pmremGenerator.fromScene(roomEnv, 0.04).texture;
-scene.environment = envTexture;
+const envBlur = VIEWER_SCENE.env.roomEnvBlur ?? 0.04;
+const envTexture = pmremGenerator.fromScene(roomEnv, envBlur).texture;
 roomEnv.dispose();
 pmremGenerator.dispose();
 
-// Seed camera at final position so OrbitControls has a non-zero spherical
-// offset from frame 1 (prevents a degenerate ortho frustum at startup).
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.0001, 1000);
-camera.position.set(-0.0000, -1.8538, -2.9860);
+const camera = new THREE.PerspectiveCamera(
+    VIEWER_CAMERA.fov,
+    window.innerWidth / window.innerHeight,
+    VIEWER_CAMERA.near,
+    VIEWER_CAMERA.far
+);
+camera.position.set(VIEWER_CAMERA.position[0], VIEWER_CAMERA.position[1], VIEWER_CAMERA.position[2]);
 
 // Orthographic camera — mirrors perspective camera; toggled by USE_ORTHO.
-const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.0001, 1000);
-let USE_ORTHO = true;
+const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, VIEWER_CAMERA.near, VIEWER_CAMERA.far);
+let USE_ORTHO = VIEWER_CAMERA.useOrtho;
 
 function syncOrthoCamera() {
     const dist = Math.max(0.001, camera.position.distanceTo(controls.target));
@@ -91,6 +96,7 @@ function syncOrthoCamera() {
 }
 
 const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(VIEWER_CAMERA.target[0], VIEWER_CAMERA.target[1], VIEWER_CAMERA.target[2]);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
 // Native touches never reach WebView (Swift overlay intercepts them).
@@ -135,40 +141,36 @@ function _scheduleReturn() {
     }, RETURN_DELAY_MS);
 }
 
-// ─── Lights ──────────────────────────────────────────────────────────────────
-// IBL handles ambient diffuse; directional lights add specular highlights and
-// cast shadows. Intensities are lower than without IBL to avoid overexposure.
-const keyLight = new THREE.DirectionalLight(0xfff8f0, 2.0);
-keyLight.position.set(1.5, 2.5, 2);
+// ─── Lights + renderer + IBL from VIEWER_SCENE (assets/materials.js) ─────────
+const keyLight = new THREE.DirectionalLight(0xffffff, 1);
 keyLight.castShadow = true;
-keyLight.shadow.mapSize.setScalar(2048);
-keyLight.shadow.camera.near = 0.1;
-keyLight.shadow.camera.far = 10;
-keyLight.shadow.camera.left   = -2;
-keyLight.shadow.camera.right  =  2;
-keyLight.shadow.camera.top    =  2;
-keyLight.shadow.camera.bottom = -2;
-keyLight.shadow.radius = 4;        // soft penumbra
-keyLight.shadow.bias   = -0.0005;
 scene.add(keyLight);
-const fillLight = new THREE.DirectionalLight(0xb0c8ff, 0.55);
-fillLight.position.set(-2, 1, -1.5);
+const fillLight = new THREE.DirectionalLight(0xffffff, 1);
 scene.add(fillLight);
-const rimLight = new THREE.DirectionalLight(0xdde8ff, 0.45);
-rimLight.position.set(0, -1, -2);
+const rimLight = new THREE.DirectionalLight(0xffffff, 1);
 scene.add(rimLight);
-scene.add(new THREE.AmbientLight(0xffffff, 0.1));
+const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+scene.add(ambientLight);
 
-// ─── Shadow-catcher floor ─────────────────────────────────────────────────────
-// Receives the key-light shadow only; transparent so the gradient BG shows.
 const groundPlane = new THREE.Mesh(
-    new THREE.CircleGeometry(1.4, 64),
-    new THREE.ShadowMaterial({ opacity: 0.38, transparent: true })
+    new THREE.CircleGeometry(1, 64),
+    new THREE.ShadowMaterial({ opacity: 0.5, transparent: true })
 );
 groundPlane.rotation.x = -Math.PI / 2;
-groundPlane.position.y = -0.52;   // updated to exact model bottom after load
+groundPlane.position.y = VIEWER_SCENE.ground.yPlaceholder;
 groundPlane.receiveShadow = true;
 scene.add(groundPlane);
+
+applyViewerSceneRuntime(THREE, {
+    renderer,
+    scene,
+    envTexture,
+    keyLight,
+    fillLight,
+    rimLight,
+    ambientLight,
+    groundPlane,
+}, VIEWER_SCENE);
 
 // ─── Placeholder cube (removed once GLB loads) ───────────────────────────────
 const cubeGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
@@ -219,24 +221,33 @@ loader.load(
         modelPivot.add(rootModel);
         scene.add(modelPivot);
 
-        // ── Camera (exported from material-mapper) ────────────────────────────
-        USE_ORTHO = false;
-        camera.fov = 50;
+        // ── Camera / model pose from VIEWER_CAMERA (materials.js) ─────────────
+        USE_ORTHO = VIEWER_CAMERA.useOrtho;
+        camera.fov = VIEWER_CAMERA.fov;
         camera.updateProjectionMatrix();
-        camera.position.set(-0.0000, -1.2865, -2.6566);
-        controls.target.set(0.0000, 0.0000, 0.0000);
+        camera.position.set(
+            VIEWER_CAMERA.position[0],
+            VIEWER_CAMERA.position[1],
+            VIEWER_CAMERA.position[2]
+        );
+        controls.target.set(
+            VIEWER_CAMERA.target[0],
+            VIEWER_CAMERA.target[1],
+            VIEWER_CAMERA.target[2]
+        );
         controls.update();
         if (USE_ORTHO) syncOrthoCamera();
 
-        // Save home state and switch to manual camera management (no more
-        // controls.update() calls; pan/zoom/return drive the camera directly).
         HOME_CAM_POS.copy(camera.position);
         HOME_CTRL_TARGET.copy(controls.target);
         _homeSet      = true;
         _manualCamera = true;
 
-        // ── Model rotation (exported from material-mapper) ────────────────────
-        rootModel.rotation.set(0.000000, 0.000000, 0.000000); // 0° 0° 0°
+        rootModel.rotation.set(
+            VIEWER_CAMERA.modelRotation[0],
+            VIEWER_CAMERA.modelRotation[1],
+            VIEWER_CAMERA.modelRotation[2]
+        );
 
         // ── Apply materials ───────────────────────────────────────────────────
         rootModel.traverse((obj) => {

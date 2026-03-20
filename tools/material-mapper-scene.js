@@ -472,6 +472,75 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         }
     }
 
+    /** Plain object for export into assets/materials.js as VIEWER_SCENE. */
+    function getViewerSceneExportPayload() {
+        const s = sceneState;
+        const bodyBackground = s.bg.style === 'gradient'
+            ? (s.bg.gradType === 'radial'
+                ? `radial-gradient(ellipse at 50% 38%, ${s.bg.color1} 0%, ${s.bg.color2} 100%)`
+                : `linear-gradient(180deg, ${s.bg.color1} 0%, ${s.bg.color2} 100%)`)
+            : s.bg.solidColor;
+        return {
+            renderer: {
+                toneMap: s.renderer.toneMap,
+                output: s.renderer.output,
+                physicallyCorrect: !!s.renderer.physicallyCorrect,
+            },
+            bodyBackground,
+            env: {
+                enabled: s.env.enabled,
+                useAsBackground: s.env.useAsBackground,
+                intensity: s.env.intensity,
+                rotDeg: [s.env.rotX, s.env.rotY, s.env.rotZ],
+                bgBlurriness: s.env.bgBlurriness,
+                bgIntensity: s.env.bgIntensity,
+                roomEnvBlur: 0.04,
+            },
+            tm: { exposure: s.tm.exposure },
+            shadowMap: { enabled: true, type: s.shadow.type },
+            key: {
+                color: s.key.color,
+                intensity: s.key.intensity,
+                px: s.key.px,
+                py: s.key.py,
+                pz: s.key.pz,
+                shadows: s.key.shadows,
+            },
+            shadow: {
+                mapSize: s.shadow.mapSize,
+                radius: s.shadow.radius,
+                bias: s.shadow.bias,
+                near: s.shadow.near,
+                far: s.shadow.far,
+                left: s.shadow.left,
+                right: s.shadow.right,
+                top: s.shadow.top,
+                bottom: s.shadow.bottom,
+            },
+            fill: {
+                color: s.fill.color,
+                intensity: s.fill.intensity,
+                px: s.fill.px,
+                py: s.fill.py,
+                pz: s.fill.pz,
+            },
+            rim: {
+                color: s.rim.color,
+                intensity: s.rim.intensity,
+                px: s.rim.px,
+                py: s.rim.py,
+                pz: s.rim.pz,
+            },
+            amb: { color: s.amb.color, intensity: s.amb.intensity },
+            ground: {
+                visible: s.ground.visible,
+                opacity: s.ground.opacity,
+                radius: s.ground.radius,
+                yPlaceholder: -0.52,
+            },
+        };
+    }
+
     function generateSceneCode() {
         const s = sceneState;
         const x = h => '0x' + h.replace('#', '');
@@ -569,5 +638,6 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         syncScenePanel,
         applyAll,
         generateSceneCode,
+        getViewerSceneExportPayload,
     };
 };

@@ -405,6 +405,30 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         cameraModule.fitCameraToModel(persist);
     }
 
+    /** Serialized for materials.js → VIEWER_CAMERA. */
+    function getViewerCameraExportPayload() {
+        const p = camera.position;
+        const t = controls.target;
+        const f4 = n => Math.round(n * 10000) / 10000;
+        let modelRotation = [0, 0, 0];
+        if (loadedModel) {
+            modelRotation = [
+                f4(loadedModel.rotation.x),
+                f4(loadedModel.rotation.y),
+                f4(loadedModel.rotation.z),
+            ];
+        }
+        return {
+            useOrtho: !!isOrtho,
+            fov: Math.round(camera.fov * 10) / 10,
+            near: camera.near,
+            far: camera.far,
+            position: [f4(p.x), f4(p.y), f4(p.z)],
+            target: [f4(t.x), f4(t.y), f4(t.z)],
+            modelRotation,
+        };
+    }
+
     function generateCameraCode() {
         const p  = camera.position;
         const t  = controls.target;
@@ -795,6 +819,8 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         ensurePartVisible,
         getPartSortMode,
         generateCameraCode: () => generateCameraCode(),
+        getViewerCameraExportPayload: () => getViewerCameraExportPayload(),
+        getViewerSceneExportPayload: () => sceneModule?.getViewerSceneExportPayload?.() ?? null,
     });
 
     // Persistence (state save/load + IDB caching)
