@@ -398,6 +398,8 @@ const buttonMat = new THREE.MeshPhysicalMaterial({
     color:                 0xffffff,
     roughness:             0.0,
     metalness:             0.04,
+    transmission:          0.55,
+    transparent:           true,
     polygonOffset:         true,
     polygonOffsetFactor:   -2.0,
     polygonOffsetUnits:    -10.0,
