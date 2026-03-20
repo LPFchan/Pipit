@@ -21,7 +21,7 @@ struct RootView: View {
                     Color(uiColor: .systemBackground).edgesIgnoringSafeArea(.all)
                     
                     ZStack {
-                        HomeView()
+                        HomeView(bleService: bleService)
                             .opacity(showSettings ? 0 : 1)
                             .allowsHitTesting(!showSettings)
                         

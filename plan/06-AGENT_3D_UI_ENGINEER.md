@@ -60,7 +60,7 @@ Pipit uses a single-screen utility model. The Home screen (key fob) is always th
     *   **Button Depression:** The moment the user touches the 3D model on screen, the tactile button geometry on the model MUST physically depress (move inward ~1-2mm). It must remain held down as long as the user's finger is on the screen, and spring back up upon release.
     *   **Short press (tap):** Triggers Unlock.
     *   **Long press (~700 ms hold):** Triggers Lock instantly at the 700ms mark (no release required).
-*   **Passive Interaction:** The model responds to device gyroscope input with a subtle parallax tilt (±5°).
+*   **Passive interaction:** Fixed lighting (no gyro parallax); orbit and pinch-zoom gestures on the 3D view.
 
 ### 2.3 3D Asset & Emissive LED Control
 *   Assets are `.glb` (Android) and `.usdz` (iOS). Target size < 5 MB.

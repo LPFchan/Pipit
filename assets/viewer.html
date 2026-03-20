@@ -137,7 +137,7 @@ const camera = new THREE.PerspectiveCamera(
 );
 camera.position.set(VIEWER_CAMERA.position[0], VIEWER_CAMERA.position[1], VIEWER_CAMERA.position[2]);
 
-// Orbit pan/zoom / home-return operate on this; parallax is applied on top each frame.
+// Orbit pan/zoom / home-return baseline; camera matches this each frame.
 const _orbitCamPos = new THREE.Vector3().copy(camera.position);
 
 // Orthographic camera — mirrors perspective camera; toggled by USE_ORTHO.
@@ -402,55 +402,9 @@ if (typeof colorSchemeMql.addEventListener === 'function') {
     colorSchemeMql.addListener(syncViewerToSystemColorScheme);
 }
 
-// ─── Device tilt parallax (Swift Core Motion → gravity in device frame) ──────
-const _tiltTarget = new THREE.Vector3();
-const _tiltSmoothed = new THREE.Vector3();
-const _vecZero = new THREE.Vector3();
-let _parallaxMotionEnabled = true;
-const TILT_INPUT_CLAMP = 0.14;
-const TILT_SMOOTH = 0.17;
-const PARALLAX_MAX = 0.034;
-const LIGHT_TILT_GAIN = 0.38;
-const _camRight = new THREE.Vector3();
-const _camUp = new THREE.Vector3();
-const _lightQuat = new THREE.Quaternion();
-const _eulerLight = new THREE.Euler(0, 0, 0, 'YXZ');
-
-function _tickTiltSmoothing() {
-    _tiltSmoothed.lerp(_tiltTarget, TILT_SMOOTH);
-    if (!_parallaxMotionEnabled) {
-        _tiltSmoothed.lerp(_vecZero, 0.22);
-    }
-}
-
-function _applyOrbitAndParallaxToCamera() {
+function _applyOrbitToCamera() {
     camera.position.copy(_orbitCamPos);
     camera.lookAt(controls.target);
-    const nx = THREE.MathUtils.clamp(_tiltSmoothed.x, -TILT_INPUT_CLAMP, TILT_INPUT_CLAMP);
-    const nz = THREE.MathUtils.clamp(_tiltSmoothed.z, -TILT_INPUT_CLAMP, TILT_INPUT_CLAMP);
-    if (nx * nx + nz * nz < 1e-12) return;
-    camera.updateMatrixWorld(true);
-    _camRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
-    _camUp.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
-    const scale = PARALLAX_MAX / TILT_INPUT_CLAMP;
-    camera.position.addScaledVector(_camRight, -nx * scale);
-    camera.position.addScaledVector(_camUp, nz * scale);
-}
-
-function _applyLightsFromTilt() {
-    const tlx = THREE.MathUtils.clamp(_tiltSmoothed.x, -TILT_INPUT_CLAMP, TILT_INPUT_CLAMP);
-    const tlz = THREE.MathUtils.clamp(_tiltSmoothed.z, -TILT_INPUT_CLAMP, TILT_INPUT_CLAMP);
-    const span = TILT_INPUT_CLAMP;
-    _eulerLight.set(
-        (tlz / span) * LIGHT_TILT_GAIN * 0.55,
-        (tlx / span) * LIGHT_TILT_GAIN,
-        0,
-        'YXZ'
-    );
-    _lightQuat.setFromEuler(_eulerLight);
-    keyLight.position.copy(_lightBaseKey).applyQuaternion(_lightQuat);
-    fillLight.position.copy(_lightBaseFill).applyQuaternion(_lightQuat);
-    rimLight.position.copy(_lightBaseRim).applyQuaternion(_lightQuat);
 }
 
 // ─── API state ────────────────────────────────────────────────────────────────
@@ -499,7 +453,7 @@ function getActiveCamera() {
     return USE_ORTHO ? orthoCamera : camera;
 }
 
-/** Matches main camera frustum but uses orbit baseline (no tilt parallax) for stable pan math. */
+/** Matches main camera frustum but uses orbit baseline for stable pan math. */
 function syncBaselineProjectionCamera() {
     const pc = _projCamForPan;
     pc.fov = camera.fov;
@@ -552,7 +506,7 @@ function _applyModelPivotWorldPosition() {
 
 /**
  * Pan the pivot along baseline camera right so the projected bounding box is centred horizontally.
- * Uses orbit pose without parallax; re-run after layout or Swift transform changes.
+ * Uses orbit pose only; re-run after layout or Swift transform changes.
  */
 function recalculateHorizontalPan() {
     if (!modelPivot) return;
@@ -779,15 +733,6 @@ function _tickPressSquishAnimation() {
     return true;
 }
 
-const TILT_SETTLE_EPS2 = 1e-8;
-
-function _tiltNeedsAnotherFrame() {
-    if (_parallaxMotionEnabled) {
-        return _tiltSmoothed.distanceToSquared(_tiltTarget) > TILT_SETTLE_EPS2;
-    }
-    return _tiltSmoothed.lengthSq() > TILT_SETTLE_EPS2;
-}
-
 let _renderQueued = false;
 
 function renderFrame() {
@@ -800,8 +745,6 @@ function renderFrame() {
         recalculateHorizontalPan();
     }
     const squishContinues = _tickPressSquishAnimation();
-    _tickTiltSmoothing();
-    _applyLightsFromTilt();
 
     if (_manualCamera) {
         if (_returning && _returnFrom.pos) {
@@ -820,16 +763,15 @@ function renderFrame() {
     } else {
         controls.update();
     }
-    _applyOrbitAndParallaxToCamera();
+    _applyOrbitToCamera();
     if (USE_ORTHO) syncOrthoCamera();
     _applyModelPivotDisplayPose();
     renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
     postButtonHitRegionIfNeeded();
 
     const returnAnimating = _returning && _returnFrom.pos;
-    const tiltContinues = _tiltNeedsAnotherFrame();
 
-    if (introContinues || squishContinues || returnAnimating || tiltContinues) {
+    if (introContinues || squishContinues || returnAnimating) {
         requestRender();
     }
 }
@@ -1337,29 +1279,6 @@ window.startRecoveryTriplePressDemo = () => {
 
     if (!modelPivot) return;
     _recoveryDemoRunCycle(_recoveryDemoGen);
-};
-
-/**
- * Device gravity from iOS Core Motion (G units), portrait orientation.
- * x / z drive parallax and subtle key/fill/rim light swing; y is unused here.
- */
-window.setDeviceTilt = (gx, gy, gz) => {
-    if (!_parallaxMotionEnabled) return;
-    _tiltTarget.set(
-        Math.max(-1, Math.min(1, Number(gx) || 0)),
-        Math.max(-1, Math.min(1, Number(gy) || 0)),
-        Math.max(-1, Math.min(1, Number(gz) || 0))
-    );
-    requestRender();
-};
-
-/** When false, tilt input is ignored and smoothed state eases to neutral. */
-window.setParallaxMotionEnabled = (enabled) => {
-    _parallaxMotionEnabled = !!enabled;
-    if (!_parallaxMotionEnabled) {
-        _tiltTarget.set(0, 0, 0);
-    }
-    requestRender();
 };
 
 /**

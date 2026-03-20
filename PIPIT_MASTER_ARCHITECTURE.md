@@ -562,7 +562,7 @@ The primary and only persistent screen. Stripped down to the essential interacti
   - **Lock flash (on 700 ms threshold):** LED flashes red once (same fade in/hold/fade out timing as unlock). Then returns to dark.
   - **Proximity auto-action:** When the background service triggers an auto-unlock or auto-lock, the model briefly plays the corresponding button-press + LED flash animation (without user touch) to communicate what happened.
     **Passive interactivity:**
-  - The model responds to device gyroscope input with a subtle parallax tilt (±5°), giving a sense of physical depth. This is purely cosmetic and can be disabled in Settings for users who find it distracting.
+  - The home fob uses fixed studio-style lighting (no device gyroscope / parallax). The user can orbit and pinch-zoom the 3D view with gestures.
 3. **Hint Label:** Below the model, a small secondary text label: *"Tap · Hold to lock"* (visible until the user performs their first intentional lock, then hidden permanently via `UserDefaults` / `SharedPreferences` flag).
 
 ---

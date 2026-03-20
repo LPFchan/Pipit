@@ -47,7 +47,7 @@ final class SettingsViewModel: ObservableObject {
         }
     }
 
-    enum QrType: Identifiable {
+    enum QrType: Identifiable, Equatable {
         case provisioning(title: String, body: String, payload: String, doneTitle: String, deleteLocalKeyOnDone: Bool)
         case transfer(title: String, body: String, payload: String)
 

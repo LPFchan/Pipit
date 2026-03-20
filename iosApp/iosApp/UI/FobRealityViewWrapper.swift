@@ -1,5 +1,4 @@
 import Combine
-import CoreMotion
 import SwiftUI
 import UIKit
 import WebKit
@@ -50,19 +49,6 @@ fileprivate final class CameraController {
             completionHandler: nil)
     }
 
-    func setDeviceTilt(gx: Double, gy: Double, gz: Double) {
-        webView?.evaluateJavaScript(
-            "if(window.setDeviceTilt)window.setDeviceTilt(\(gx),\(gy),\(gz));",
-            completionHandler: nil)
-    }
-
-    func setParallaxMotionEnabled(_ enabled: Bool) {
-        let e = enabled ? "true" : "false"
-        webView?.evaluateJavaScript(
-            "if(window.setParallaxMotionEnabled)window.setParallaxMotionEnabled(\(e));",
-            completionHandler: nil)
-    }
-
     /// Raycast in Three.js: true if the front-most surface at (nx, ny) is PCB or button, not enclosure.
     func queryFobInteractableAtNormalized(nx: CGFloat, ny: CGFloat, completion: @escaping (Bool) -> Void) {
         guard let wv = webView else {
@@ -88,91 +74,6 @@ fileprivate final class CameraController {
     }
 }
 
-// MARK: – Motion parallax (Core Motion → viewer.setDeviceTilt)
-
-/// UserDefaults key — keep in sync with Settings `AppStorage` and JS bridge policy.
-private let kFobMotionParallaxEnabledDefaultsKey = "fobMotionParallaxEnabled"
-
-fileprivate final class FobMotionParallaxCoordinator: ObservableObject {
-    private let motionManager = CMMotionManager()
-    private let motionQueue: OperationQueue = {
-        let q = OperationQueue()
-        q.name = "com.immogen.pipit.motionParallax"
-        q.maxConcurrentOperationCount = 1
-        return q
-    }()
-    private var reduceMotionObserver: NSObjectProtocol?
-    weak var cameraController: CameraController?
-    private var running = false
-
-    init() {
-        reduceMotionObserver = NotificationCenter.default.addObserver(
-            forName: UIAccessibility.reduceMotionStatusDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.refreshPolicy()
-        }
-    }
-
-    deinit {
-        stopMotionUpdates()
-        if let o = reduceMotionObserver {
-            NotificationCenter.default.removeObserver(o)
-        }
-    }
-
-    private var parallaxPreferenceOn: Bool {
-        UserDefaults.standard.object(forKey: kFobMotionParallaxEnabledDefaultsKey) as? Bool ?? true
-    }
-
-    /// Mirrored into the WebView whenever the page is ready (settings + a11y + hardware).
-    var webParallaxEnabled: Bool {
-        parallaxPreferenceOn
-            && !UIAccessibility.isReduceMotionEnabled
-            && motionManager.isDeviceMotionAvailable
-    }
-
-    private var shouldRunMotion: Bool { webParallaxEnabled }
-
-    func bind(cameraController: CameraController) {
-        self.cameraController = cameraController
-    }
-
-    func refreshPolicy() {
-        guard cameraController != nil else { return }
-        if shouldRunMotion {
-            startMotionUpdates()
-        } else {
-            stopMotionUpdates()
-        }
-        objectWillChange.send()
-    }
-
-    func handleDisappear() {
-        stopMotionUpdates()
-        cameraController?.setDeviceTilt(gx: 0, gy: 0, gz: 0)
-    }
-
-    private func startMotionUpdates() {
-        guard !running, motionManager.isDeviceMotionAvailable else { return }
-        running = true
-        motionManager.deviceMotionUpdateInterval = 1.0 / 30.0
-        motionManager.startDeviceMotionUpdates(using: .xArbitraryZVertical, to: motionQueue) { [weak self] data, _ in
-            guard let self = self, let g = data?.gravity else { return }
-            DispatchQueue.main.async {
-                guard self.running else { return }
-                self.cameraController?.setDeviceTilt(gx: g.x, gy: g.y, gz: g.z)
-            }
-        }
-    }
-
-    private func stopMotionUpdates() {
-        motionManager.stopDeviceMotionUpdates()
-        running = false
-    }
-}
-
 // MARK: – FobViewer
 
 /// Embedded Three.js fob viewer backed by WKWebView.
@@ -194,9 +95,6 @@ struct FobViewer: UIViewRepresentable {
     // ── Camera controller (JS bridge for pan / zoom) ────────────
     fileprivate var cameraController: CameraController?
 
-    /// Core Motion + settings gate for `window.setParallaxMotionEnabled` (see applyState).
-    var parallaxMotionJSEnabled: Bool = true
-
     /// Onboarding recovery sheet: transparent chrome + looping triple-press + rainbow LED (viewer.html).
     var recoverySheetDemoLoop: Bool = false
 
@@ -209,7 +107,6 @@ struct FobViewer: UIViewRepresentable {
         weak var webView: WKWebView?
         /// Last command id pushed to JS; prevents re-firing on unrelated SwiftUI updates.
         var lastLedCommandId: Int = -1
-        var lastParallaxJSPushed: Bool?
         var lastRecoveryDemoPushed: Bool?
 
         init(_ parent: FobViewer) { self.parent = parent }
@@ -223,7 +120,6 @@ struct FobViewer: UIViewRepresentable {
                 guard let wv = webView else { return }
                 // Reset so the current command fires again after a page reload.
                 lastLedCommandId = -1
-                lastParallaxJSPushed = nil
                 // Recovery demo JS is defined at end of module; first updateUIView often runs before it exists.
                 // Clear the latch so applyState re-sends chrome + start now that WK is ready.
                 if parent.recoverySheetDemoLoop {
@@ -283,14 +179,6 @@ struct FobViewer: UIViewRepresentable {
     /// JS command only when `ledCommand.id` has changed (prevents cancelling
     /// an in-progress animation on unrelated SwiftUI re-renders).
     func applyState(to webView: WKWebView, coordinator: Coordinator) {
-        if coordinator.lastParallaxJSPushed != parallaxMotionJSEnabled {
-            coordinator.lastParallaxJSPushed = parallaxMotionJSEnabled
-            let e = parallaxMotionJSEnabled ? "true" : "false"
-            webView.evaluateJavaScript(
-                "if(window.setParallaxMotionEnabled)window.setParallaxMotionEnabled(\(e));",
-                completionHandler: nil)
-        }
-
         if coordinator.lastRecoveryDemoPushed != recoverySheetDemoLoop {
             coordinator.lastRecoveryDemoPushed = recoverySheetDemoLoop
             if recoverySheetDemoLoop {
@@ -362,7 +250,6 @@ extension FobViewer {
             modelScale: 1.0,
             modelRotation: .zero,
             cameraController: nil,
-            parallaxMotionJSEnabled: false,
             recoverySheetDemoLoop: true
         )
     }
@@ -437,9 +324,6 @@ final class RecoveryFobWebViewPool: ObservableObject {
             wv.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             wv.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
-        wv.evaluateJavaScript(
-            "if(window.setParallaxMotionEnabled)window.setParallaxMotionEnabled(false);",
-            completionHandler: nil)
         let s = Self.uguisuDisplayScale
         let ox = Self.uguisuPivotOffsetX
         wv.evaluateJavaScript(
@@ -598,14 +482,10 @@ struct FobInteractiveViewer: View {
 
     // Camera orbit / zoom — driven by SwiftUI gestures, forwarded to JS.
     @State private var cameraController      = CameraController()
-    @StateObject private var motionParallax  = FobMotionParallaxCoordinator()
-    @AppStorage("fobMotionParallaxEnabled") private var motionParallaxEnabled = true
     @State private var lastOrbitTranslation: CGSize = .zero
     @State private var lastMagScale: CGFloat         = 1.0
     @State private var isPanning: Bool               = false
     @State private var orbitSuppressed: Bool         = false
-    /// While true, JS tilt parallax is off so Core Motion does not add “tilt” during app-switch swipes.
-    @State private var fingerDownParallaxSuspended: Bool = false
 
     var body: some View {
         GeometryReader { geo in
@@ -615,8 +495,7 @@ struct FobInteractiveViewer: View {
             modelPosition: .zero,
             modelScale: 1.0,
             modelRotation: .zero,
-            cameraController: cameraController,
-            parallaxMotionJSEnabled: motionParallax.webParallaxEnabled && !fingerDownParallaxSuspended
+            cameraController: cameraController
         )
         // A transparent overlay to capture touch events over the WebView
         .overlay(
@@ -628,9 +507,6 @@ struct FobInteractiveViewer: View {
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
-                            if !fingerDownParallaxSuspended {
-                                fingerDownParallaxSuspended = true
-                            }
                             if !sentSurfaceHitTestForDrag && !isPanning {
                                 sentSurfaceHitTestForDrag = true
                                 touchGeneration &+= 1
@@ -657,7 +533,6 @@ struct FobInteractiveViewer: View {
                             }
                         }
                         .onEnded { _ in
-                            fingerDownParallaxSuspended = false
                             sentSurfaceHitTestForDrag = false
                             surfaceHitTestInFlight = false
                             withAnimation(.easeIn(duration: 0.15)) { isPressed = false }
@@ -776,16 +651,6 @@ struct FobInteractiveViewer: View {
                         }
                 )
         )
-        .onAppear {
-            motionParallax.bind(cameraController: cameraController)
-            motionParallax.refreshPolicy()
-        }
-        .onDisappear {
-            motionParallax.handleDisappear()
-        }
-        .onChange(of: motionParallaxEnabled) { _ in
-            motionParallax.refreshPolicy()
-        }
         } // GeometryReader
     }
 }

@@ -1,9 +1,16 @@
 import SwiftUI
 
+/// MainActor + non-observed `bleService` keep sheet/bindings and the view body on one actor and avoid
+/// re-rendering Settings on every `IosBleProximityService` publish (management session churn).
+@MainActor
 struct SettingsView: View {
     @StateObject private var viewModel: SettingsViewModel
-    @EnvironmentObject private var bleService: IosBleProximityService
-    @AppStorage("fobMotionParallaxEnabled") private var fobMotionParallaxEnabled = true
+    /// Passed from `RootView`; not `@EnvironmentObject` so BLE RSSI / management state updates
+    /// do not invalidate this tree (was freezing the UI when opening Settings).
+    private let bleService: IosBleProximityService
+    /// Mirrors `viewModel.showQrSheet` so `.sheet(item:)` uses a plain `Binding`, not `$viewModel.showQrSheet`
+    /// (SwiftUI warns / will crash when a sheet reads MainActor-isolated storage via `Binding` off-actor).
+    @State private var presentedQrSheet: SettingsViewModel.QrType?
 
     private let slotCardStyle = SlotPresentationStyle.settingsGrouped
 
@@ -11,11 +18,13 @@ struct SettingsView: View {
         bleService: IosBleProximityService,
         onLocalKeyDeleted: @escaping () -> Void
     ) {
-        let vm = SettingsViewModel(
-            bleService: bleService,
-            onLocalKeyDeleted: onLocalKeyDeleted
+        self.bleService = bleService
+        _viewModel = StateObject(
+            wrappedValue: SettingsViewModel(
+                bleService: bleService,
+                onLocalKeyDeleted: onLocalKeyDeleted
+            )
         )
-        _viewModel = StateObject(wrappedValue: vm)
     }
 
     var body: some View {
@@ -37,8 +46,6 @@ struct SettingsView: View {
 
                     proximitySection
 
-                    fobPreviewSection
-
                     keysSection
 
                     #if targetEnvironment(simulator)
@@ -50,10 +57,17 @@ struct SettingsView: View {
                 .padding(.bottom, 36)
             }
             .onAppear {
+                presentedQrSheet = viewModel.showQrSheet
                 viewModel.onAppear()
             }
             .onDisappear {
                 viewModel.onDisappear()
+            }
+            .onChange(of: viewModel.showQrSheet) { _, new in
+                presentedQrSheet = new
+            }
+            .onChange(of: presentedQrSheet) { _, new in
+                if new == nil { viewModel.showQrSheet = nil }
             }
             .alert(
                 "Alert",
@@ -108,7 +122,7 @@ struct SettingsView: View {
                     EmptyView()
                 }
             }
-            .sheet(item: $viewModel.showQrSheet) { qrType in
+            .sheet(item: $presentedQrSheet) { qrType in
                 qrSheetContent(for: qrType)
             }
         }
@@ -221,31 +235,6 @@ struct SettingsView: View {
                 viewModel.backgroundUnlockToggled()
             }
         )
-    }
-
-    private var fobPreviewSection: some View {
-        settingsSection(
-            eyebrow: "Fob preview",
-            footer: "Uses device motion for a subtle tilt and lighting shift. Disabled when Reduce Motion is on in Accessibility."
-        ) {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Motion parallax")
-                        .font(.headline)
-
-                    Text(fobMotionParallaxEnabled ? "On" : "Off")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Toggle("", isOn: $fobMotionParallaxEnabled)
-                    .labelsHidden()
-            }
-            .padding(16)
-            .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        }
     }
 
     private var keysSection: some View {
@@ -694,24 +683,6 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(24)
-    }
-
-    private var managementStatusTextDisplay: String {
-        let state = bleService.managementState
-        switch state.connectionState {
-        case .disconnected:
-            return "Management session disconnected."
-        case .scanning:
-            return "Scanning for Guillemot management advertising."
-        case .connecting:
-            return "Connecting to management GATT."
-        case .discovering:
-            return "Discovering management characteristics."
-        case .ready:
-            return "Management session ready."
-        case .error:
-            return state.lastError ?? "Management session failed."
-        }
     }
 }
 
