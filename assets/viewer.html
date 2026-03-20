@@ -118,6 +118,7 @@ let _returning     = false;
 let _returnFrom    = { pos: null, target: null };
 let _returnStartTs = null;
 let _returnTimerId = null;
+let _renderQueued  = false;
 
 const RETURN_DELAY_MS = 1000;  // ms of inactivity before returning to home
 const RETURN_ANIM_MS  = 700;   // duration of the ease-out return animation
@@ -141,7 +142,67 @@ function _scheduleReturn() {
         _returning  = true;
         _returnFrom = { pos: camera.position.clone(), target: controls.target.clone() };
         _returnStartTs = null;
+        requestRender();
     }, RETURN_DELAY_MS);
+}
+
+const _preUpdateCameraPos = new THREE.Vector3();
+const _preUpdateTarget = new THREE.Vector3();
+const _preUpdateCameraQuat = new THREE.Quaternion();
+
+function renderFrame() {
+    _renderQueued = false;
+    let keepRendering = false;
+
+    if (cube.parent) {
+        cube.rotation.x += 0.01;
+        cube.rotation.y += 0.01;
+        keepRendering = true;
+    }
+
+    if (_manualCamera) {
+        if (_returning && _returnFrom.pos) {
+            const now = performance.now();
+            if (_returnStartTs === null) _returnStartTs = now;
+            const rawT = Math.min((now - _returnStartTs) / RETURN_ANIM_MS, 1.0);
+            const t = _easeOutCubic(rawT);
+            camera.position.lerpVectors(_returnFrom.pos, HOME_CAM_POS, t);
+            controls.target.lerpVectors(_returnFrom.target, HOME_CTRL_TARGET, t);
+            camera.lookAt(controls.target);
+            if (rawT >= 1.0) {
+                camera.position.copy(HOME_CAM_POS);
+                controls.target.copy(HOME_CTRL_TARGET);
+                camera.lookAt(controls.target);
+                _returning = false;
+            } else {
+                keepRendering = true;
+            }
+        }
+    } else {
+        _preUpdateCameraPos.copy(camera.position);
+        _preUpdateTarget.copy(controls.target);
+        _preUpdateCameraQuat.copy(camera.quaternion);
+
+        controls.update();
+
+        const controlsChanged =
+            _preUpdateCameraPos.distanceToSquared(camera.position) > 1e-12 ||
+            _preUpdateTarget.distanceToSquared(controls.target) > 1e-12 ||
+            (1 - Math.abs(_preUpdateCameraQuat.dot(camera.quaternion))) > 1e-12;
+
+        if (controlsChanged) keepRendering = true;
+    }
+
+    if (USE_ORTHO) syncOrthoCamera();
+    renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
+
+    if (keepRendering) requestRender();
+}
+
+function requestRender() {
+    if (_renderQueued) return;
+    _renderQueued = true;
+    requestAnimationFrame(renderFrame);
 }
 
 // ─── Lights + renderer + IBL from VIEWER_SCENE (assets/materials.js) ─────────
@@ -181,6 +242,7 @@ const cubeMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 const cube    = new THREE.Mesh(cubeGeo, cubeMat);
 scene.add(cube);
 statusEl.innerText = 'WebGL ready, loading model...';
+requestRender();
 
 // ─── API state ────────────────────────────────────────────────────────────────
 let modelPivot      = null;   // Wrapper Group — setModelTransform acts on this
@@ -334,12 +396,14 @@ loader.load(
         if (window.webkit?.messageHandlers?.modelReady) {
             window.webkit.messageHandlers.modelReady.postMessage(null);
         }
+        requestRender();
     },
     undefined,
     (err) => {
         statusEl.innerText = 'Load error: ' + err.message;
         statusEl.style.color = 'orange';
         console.error('[Pipit] GLB load error', err);
+        requestRender();
     }
 );
 
@@ -357,6 +421,7 @@ function _applyLedState(r, g, b, active, brightness) {
             mat.needsUpdate = true;
         }
     }
+    requestRender();
 }
 
 // ─── LED animation engine (mirrors firmware led_effects.h) ─────────────────────
@@ -552,6 +617,7 @@ window.setButtonDepth = (depth) => {
         buttonRestPos.y + buttonPressAxis.y * travel,
         buttonRestPos.z + buttonPressAxis.z * travel
     );
+    requestRender();
 };
 
 /**
@@ -563,6 +629,7 @@ window.setModelTransform = (px, py, pz, scale, rx, ry, rz) => {
     modelPivot.position.set(px, py, pz);
     modelPivot.scale.setScalar(scale);
     modelPivot.rotation.set(rx, ry, rz);
+    requestRender();
 };
 
 /**
@@ -587,6 +654,7 @@ window.orbitCamera = (dTheta, dPhi) => {
         target.z + radius * Math.sin(phi) * Math.cos(theta)
     );
     camera.lookAt(target);
+    requestRender();
 };
 
 /**
@@ -602,6 +670,7 @@ window.zoomCamera = (factor) => {
     const lookDir = new THREE.Vector3();
     camera.getWorldDirection(lookDir);
     camera.position.copy(controls.target).addScaledVector(lookDir, -newDist);
+    requestRender();
 };
 
 // ─── Resize ───────────────────────────────────────────────────────────────────
@@ -610,36 +679,7 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     if (USE_ORTHO) syncOrthoCamera();
-});
-
-// ─── Render loop ──────────────────────────────────────────────────────────────
-renderer.setAnimationLoop(() => {
-    if (cube.parent) {
-        cube.rotation.x += 0.01;
-        cube.rotation.y += 0.01;
-    }
-    if (_manualCamera) {
-        // Eased return-to-home animation.
-        if (_returning && _returnFrom.pos) {
-            const now = performance.now();
-            if (_returnStartTs === null) _returnStartTs = now;
-            const rawT = Math.min((now - _returnStartTs) / RETURN_ANIM_MS, 1.0);
-            const t    = _easeOutCubic(rawT);
-            camera.position.lerpVectors(_returnFrom.pos,    HOME_CAM_POS,     t);
-            controls.target.lerpVectors(_returnFrom.target, HOME_CTRL_TARGET, t);
-            camera.lookAt(controls.target);
-            if (rawT >= 1.0) {
-                camera.position.copy(HOME_CAM_POS);
-                controls.target.copy(HOME_CTRL_TARGET);
-                camera.lookAt(controls.target);
-                _returning = false;
-            }
-        }
-    } else {
-        controls.update();
-    }
-    if (USE_ORTHO) syncOrthoCamera();
-    renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
+    requestRender();
 });
 </script>
 </body>
