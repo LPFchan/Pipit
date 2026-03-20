@@ -118,11 +118,11 @@ export const VIEWER_SCENE = {
         "output": "sRGB",
         "physicallyCorrect": true
     },
-    "bodyBackground": "radial-gradient(ellipse at 50% 38%, #ffffff 0%, #a0a0a0 100%)",
+    "bodyBackground": "radial-gradient(ellipse at 50% 38%, #1c1e28 0%, #09090c 100%)",
     "env": {
         "enabled": true,
         "useAsBackground": false,
-        "intensity": 1,
+        "intensity": 0.65,
         "rotDeg": [
             0,
             0,
@@ -133,7 +133,7 @@ export const VIEWER_SCENE = {
         "roomEnvBlur": 0.04
     },
     "tm": {
-        "exposure": 0.95
+        "exposure": 0.7
     },
     "shadowMap": {
         "enabled": true,
@@ -141,9 +141,9 @@ export const VIEWER_SCENE = {
     },
     "key": {
         "color": "#fff8f0",
-        "intensity": 0,
-        "px": 1.2,
-        "py": 3.3,
+        "intensity": 3.1,
+        "px": 1.5,
+        "py": 2.5,
         "pz": 2,
         "shadows": true
     },
@@ -160,7 +160,7 @@ export const VIEWER_SCENE = {
     },
     "fill": {
         "color": "#b0c8ff",
-        "intensity": 0,
+        "intensity": 1.25,
         "px": -2,
         "py": 1,
         "pz": -1.5
@@ -181,6 +181,23 @@ export const VIEWER_SCENE = {
         "opacity": 0.17,
         "radius": 1.8,
         "yPlaceholder": -0.52
+    },
+    "post": {
+        "bloomEnabled": false,
+        "bloomStrength": 0.35,
+        "bloomRadius": 0.25,
+        "bloomThreshold": 0.72,
+        "ssaoEnabled": false,
+        "ssaoKernel": 16,
+        "ssaoMin": 0.005,
+        "ssaoMax": 0.18,
+        "vignetteEnabled": false,
+        "vignetteOffset": 1,
+        "vignetteDarkness": 1.25,
+        "gradeEnabled": false,
+        "gradeSaturation": 1,
+        "gradeContrast": 1,
+        "gradeBrightness": 0
     }
 };
 
@@ -191,7 +208,7 @@ export const VIEWER_SCENE_PRESETS = {
             "output": "sRGB",
             "physicallyCorrect": true
         },
-        "bodyBackground": "radial-gradient(ellipse at 50% 38%, #ffffff 0%, #a0a0a0 100%)",
+        "bodyBackground": "radial-gradient(ellipse at 50% 38%, #ffffff 0%, #b5b5b5 100%)",
         "env": {
             "enabled": true,
             "useAsBackground": false,
@@ -206,7 +223,7 @@ export const VIEWER_SCENE_PRESETS = {
             "roomEnvBlur": 0.04
         },
         "tm": {
-            "exposure": 0.95
+            "exposure": 1
         },
         "shadowMap": {
             "enabled": true,
@@ -254,6 +271,23 @@ export const VIEWER_SCENE_PRESETS = {
             "opacity": 0.17,
             "radius": 1.8,
             "yPlaceholder": -0.52
+        },
+        "post": {
+            "bloomEnabled": false,
+            "bloomStrength": 0.35,
+            "bloomRadius": 0.25,
+            "bloomThreshold": 0.72,
+            "ssaoEnabled": false,
+            "ssaoKernel": 16,
+            "ssaoMin": 0.005,
+            "ssaoMax": 0.18,
+            "vignetteEnabled": false,
+            "vignetteOffset": 1,
+            "vignetteDarkness": 1.25,
+            "gradeEnabled": false,
+            "gradeSaturation": 1,
+            "gradeContrast": 1,
+            "gradeBrightness": 0
         }
     },
     "dark": {
@@ -266,7 +300,7 @@ export const VIEWER_SCENE_PRESETS = {
         "env": {
             "enabled": true,
             "useAsBackground": false,
-            "intensity": 0.9,
+            "intensity": 0.65,
             "rotDeg": [
                 0,
                 0,
@@ -277,7 +311,7 @@ export const VIEWER_SCENE_PRESETS = {
             "roomEnvBlur": 0.04
         },
         "tm": {
-            "exposure": 0.85
+            "exposure": 0.7
         },
         "shadowMap": {
             "enabled": true,
@@ -325,6 +359,23 @@ export const VIEWER_SCENE_PRESETS = {
             "opacity": 0.17,
             "radius": 1.8,
             "yPlaceholder": -0.52
+        },
+        "post": {
+            "bloomEnabled": false,
+            "bloomStrength": 0.35,
+            "bloomRadius": 0.25,
+            "bloomThreshold": 0.72,
+            "ssaoEnabled": false,
+            "ssaoKernel": 16,
+            "ssaoMin": 0.005,
+            "ssaoMax": 0.18,
+            "vignetteEnabled": false,
+            "vignetteOffset": 1,
+            "vignetteDarkness": 1.25,
+            "gradeEnabled": false,
+            "gradeSaturation": 1,
+            "gradeContrast": 1,
+            "gradeBrightness": 0
         }
     }
 };
@@ -365,7 +416,7 @@ const ledMat = new THREE.MeshPhysicalMaterial({
 
 const ledCapMat = new THREE.MeshPhysicalMaterial({
     color:                 0xffffff,
-    roughness:             0.67,
+    roughness:             0.62,
     transmission:          1.0,
     thickness:             0.001,
     opacity:               0.88,
