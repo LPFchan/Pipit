@@ -5,8 +5,58 @@ window.MaterialMapperShellModule = function ({
     importFromCode,
     getPartMap,
     getSceneModule,
+    saveState,
     showToast,
 }) {
+    function getLayoutElements() {
+        return {
+            panelBody: document.getElementById('panel-body'),
+            layoutBtn: document.getElementById('layout-btn'),
+            editorSide: document.getElementById('editor-side'),
+            panelEl: document.getElementById('panel'),
+        };
+    }
+
+    function syncLayoutButton(isSide) {
+        const { layoutBtn } = getLayoutElements();
+        if (!layoutBtn) return;
+        layoutBtn.title = isSide ? 'Switch to stacked layout' : 'Switch to side-by-side layout';
+        layoutBtn.textContent = isSide ? '⊟' : '⊞';
+    }
+
+    function getLayoutState() {
+        const { panelBody, editorSide, panelEl } = getLayoutElements();
+        return {
+            mode: panelBody?.classList.contains('side-by-side') ? 'side-by-side' : 'stacked',
+            panelWidth: panelEl?.style.width || '',
+            editorWidth: editorSide?.style.width || '',
+            editorHeight: editorSide?.style.height || '',
+        };
+    }
+
+    function restoreLayoutState(savedLayout) {
+        if (!savedLayout) return;
+
+        const { panelBody, editorSide, panelEl } = getLayoutElements();
+        if (!panelBody || !editorSide || !panelEl) return;
+
+        const isSide = savedLayout.mode === 'side-by-side';
+        panelBody.classList.toggle('side-by-side', isSide);
+        syncLayoutButton(isSide);
+
+        panelEl.style.width = savedLayout.panelWidth || '';
+        editorSide.style.width = '';
+        editorSide.style.height = '';
+        editorSide.style.flex = '';
+
+        if (isSide) {
+            editorSide.style.width = savedLayout.editorWidth || '';
+            if (savedLayout.editorWidth) editorSide.style.flex = 'none';
+        } else {
+            editorSide.style.height = savedLayout.editorHeight || '';
+        }
+    }
+
     function bindFileLoading() {
         const fileInput = document.getElementById('file-input');
         const viewerPane = document.getElementById('viewer-pane');
@@ -84,11 +134,11 @@ window.MaterialMapperShellModule = function ({
 
         layoutBtn.addEventListener('click', () => {
             const isSide = panelBody.classList.toggle('side-by-side');
-            layoutBtn.title = isSide ? 'Switch to stacked layout' : 'Switch to side-by-side layout';
-            layoutBtn.textContent = isSide ? '⊟' : '⊞';
+            syncLayoutButton(isSide);
             editorSide.style.height = '';
             editorSide.style.width = '';
             editorSide.style.flex = '';
+            saveState?.();
         });
 
         panelResizeHandle.addEventListener('pointerdown', (event) => {
@@ -111,6 +161,7 @@ window.MaterialMapperShellModule = function ({
                 panelResizeHandle.classList.remove('dragging');
                 panelResizeHandle.removeEventListener('pointermove', onMove);
                 panelResizeHandle.removeEventListener('pointerup', onUp);
+                saveState?.();
             }
 
             panelResizeHandle.addEventListener('pointermove', onMove);
@@ -144,6 +195,7 @@ window.MaterialMapperShellModule = function ({
                 resizeHandle.classList.remove('dragging');
                 resizeHandle.removeEventListener('pointermove', onMove);
                 resizeHandle.removeEventListener('pointerup', onUp);
+                saveState?.();
             }
 
             resizeHandle.addEventListener('pointermove', onMove);
@@ -206,6 +258,8 @@ window.MaterialMapperShellModule = function ({
 
     return {
         init,
+        getLayoutState,
         onModelLoaded,
+        restoreLayoutState,
     };
 };

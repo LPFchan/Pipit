@@ -14,6 +14,33 @@ window.MaterialMapperCameraModule = function ({
     setIsOrtho,
 }) {
     let initialized = false;
+    let hudCollapsed = false;
+
+    function getHudElements() {
+        return {
+            hud: document.getElementById('camera-hud'),
+            toggleBtn: document.getElementById('camera-hud-toggle-btn'),
+        };
+    }
+
+    function syncHudCollapsed() {
+        const { hud, toggleBtn } = getHudElements();
+        if (!hud || !toggleBtn) return;
+        hud.classList.toggle('collapsed', hudCollapsed);
+        toggleBtn.textContent = hudCollapsed ? '▸' : '▾';
+        toggleBtn.setAttribute('aria-expanded', hudCollapsed ? 'false' : 'true');
+        toggleBtn.title = hudCollapsed ? 'Expand camera panel' : 'Collapse camera panel';
+    }
+
+    function setHudCollapsed(nextCollapsed, persist = true) {
+        hudCollapsed = !!nextCollapsed;
+        syncHudCollapsed();
+        if (persist) saveState();
+    }
+
+    function toggleHudCollapsed() {
+        setHudCollapsed(!hudCollapsed, true);
+    }
 
     function setHudXYZ(idX, idY, idZ, vec) {
         const f = (n) => (Math.round(n * 10000) / 10000).toString();
@@ -202,6 +229,8 @@ window.MaterialMapperCameraModule = function ({
             return true;
         };
 
+        bindIfPresent('camera-hud-toggle-btn', 'click', toggleHudCollapsed);
+
         ['hud-pos-x', 'hud-pos-y', 'hud-pos-z'].forEach((id) => {
             document.getElementById(id).addEventListener('change', () => {
                 const v = parseHudXYZ('hud-pos-x', 'hud-pos-y', 'hud-pos-z');
@@ -334,6 +363,7 @@ window.MaterialMapperCameraModule = function ({
         if (initialized) return;
         bindHudControls();
         bindNumberDrag();
+        syncHudCollapsed();
         initialized = true;
     }
 
@@ -346,5 +376,10 @@ window.MaterialMapperCameraModule = function ({
         fitCameraToModel,
         applyModelRotationDeg,
         toggleOrtho,
+        getHudState: () => ({ collapsed: hudCollapsed }),
+        restoreHudState: (savedHudState) => {
+            if (!savedHudState || typeof savedHudState.collapsed !== 'boolean') return;
+            setHudCollapsed(savedHudState.collapsed, false);
+        },
     };
 };

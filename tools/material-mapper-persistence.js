@@ -27,6 +27,8 @@ window.MaterialMapperPersistenceModule = function ({
     loadedFileName,
     loadedModel,
     isOrtho,
+    hudState,
+    shellState,
     camera,
     controls,
     sceneState,
@@ -79,6 +81,8 @@ window.MaterialMapperPersistenceModule = function ({
         const currentMatProps = resolve(matProps);
         const currentLoadedModel = resolve(loadedModel);
         const currentIsOrtho = resolve(isOrtho);
+        const currentHudState = resolve(hudState);
+        const currentShellState = resolve(shellState);
         const currentSceneState = resolve(sceneState);
 
         if (!currentFileName || partMap.size === 0 || !currentMatProps) return;
@@ -108,6 +112,8 @@ window.MaterialMapperPersistenceModule = function ({
                 y: currentLoadedModel.position.y,
                 z: currentLoadedModel.position.z,
             } : null,
+            hudState: currentHudState ? JSON.parse(JSON.stringify(currentHudState)) : null,
+            shellState: currentShellState ? JSON.parse(JSON.stringify(currentShellState)) : null,
             sceneState:    currentSceneState ? JSON.parse(JSON.stringify(currentSceneState)) : null,
         };
         try {
@@ -145,7 +151,9 @@ window.MaterialMapperPersistenceModule = function ({
             setIsOrtho,
             setHudXYZ,
             applyModelRotationDeg,
+            restoreHudState,
             syncOrbitTarget,
+            restoreLayoutState,
             mergeSceneState,
             applySceneState,
             syncScenePanel,
@@ -234,6 +242,14 @@ window.MaterialMapperPersistenceModule = function ({
                 if (mergeSceneState) mergeSceneState(saved.sceneState);
                 if (applySceneState) applySceneState();
                 if (syncScenePanel) syncScenePanel();
+            }
+
+            if (callbacks && saved.hudState && restoreHudState) {
+                restoreHudState(saved.hudState);
+            }
+
+            if (callbacks && saved.shellState && restoreLayoutState) {
+                restoreLayoutState(saved.shellState);
             }
 
             if (applyMaterials) applyMaterials();

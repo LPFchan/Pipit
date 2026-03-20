@@ -548,6 +548,8 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         loadedFileName: () => loadedFileName,
         loadedModel: () => loadedModel,
         isOrtho: () => isOrtho,
+        hudState: () => cameraModule?.getHudState?.() ?? null,
+        shellState: () => shellModule?.getLayoutState?.() ?? null,
         camera,
         controls,
         sceneState: () => sceneState,
@@ -590,7 +592,9 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
             },
             setHudXYZ: cameraModule?.setHudXYZ,
             applyModelRotationDeg: cameraModule?.applyModelRotationDeg,
+            restoreHudState: cameraModule?.restoreHudState,
             syncOrbitTarget: cameraModule?.syncOrbitTarget,
+            restoreLayoutState: shellModule?.restoreLayoutState,
             mergeSceneState: sceneModule?.mergeState,
             applySceneState: sceneModule?.applyAll,
             syncScenePanel: sceneModule?.syncScenePanel,
@@ -625,6 +629,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         importFromCode: (...args) => importFromCode(...args),
         getPartMap: () => partMap,
         getSceneModule: () => sceneModule,
+        saveState,
         showToast,
     });
     shellModule.init();

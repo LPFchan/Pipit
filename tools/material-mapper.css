@@ -319,6 +319,7 @@
       padding: 3px 6px; font-size: 11px; text-align: right;
       outline: none;
       /* hide native spin buttons */
+      appearance: textfield;
       -moz-appearance: textfield;
     }
     .prop-num::-webkit-inner-spin-button,
@@ -466,10 +467,51 @@
       z-index: 10;
       pointer-events: auto;
     }
+    .camera-hud.collapsed {
+      min-width: 0;
+      padding-bottom: 8px;
+    }
+    .camera-hud.collapsed .camera-hud-body { display: none; }
+    .hud-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
     .hud-title {
       font-size: 10px; font-weight: 700;
       text-transform: uppercase; letter-spacing: .07em;
-      color: var(--text-dim); padding-bottom: 2px;
+      color: var(--text-dim);
+      padding-bottom: 2px;
+      user-select: none;
+    }
+    .camera-hud-body {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .hud-collapse-btn {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--surface2);
+      color: var(--text-dim);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: color .12s, border-color .12s, background .12s;
+    }
+    .hud-collapse-btn:hover {
+      color: var(--text);
+      border-color: var(--accent);
+    }
+    .hud-collapse-btn:focus-visible {
+      outline: 1px solid var(--accent);
+      outline-offset: 1px;
     }
     .hud-row {
       display: grid; grid-template-columns: 46px 1fr; align-items: center; gap: 4px;
@@ -487,6 +529,7 @@
       padding: 2px 5px; font-size: 11px;
       font-family: 'SF Mono', Menlo, monospace;
       text-align: right; outline: none;
+      appearance: textfield;
       -moz-appearance: textfield;
     }
     .hud-fov-input::-webkit-inner-spin-button,
@@ -501,6 +544,7 @@
       padding: 2px 5px; font-size: 11px;
       font-family: 'SF Mono', Menlo, monospace;
       text-align: right; outline: none;
+      appearance: textfield;
       -moz-appearance: textfield;
     }
     .hud-xyz-input::-webkit-inner-spin-button,
