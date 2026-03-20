@@ -150,7 +150,7 @@ export const VIEWER_SCENE = {
         "shadows": true
     },
     "shadow": {
-        "mapSize": 1024,
+        "mapSize": 512,
         "radius": 8,
         "bias": -0.0005,
         "near": 0.1,
@@ -240,7 +240,7 @@ export const VIEWER_SCENE_PRESETS = {
             "shadows": true
         },
         "shadow": {
-            "mapSize": 1024,
+            "mapSize": 512,
             "radius": 8,
             "bias": -0.0005,
             "near": 0.1,
@@ -328,7 +328,7 @@ export const VIEWER_SCENE_PRESETS = {
             "shadows": true
         },
         "shadow": {
-            "mapSize": 1024,
+            "mapSize": 512,
             "radius": 8,
             "bias": -0.0005,
             "near": 0.1,
@@ -398,8 +398,6 @@ const buttonMat = new THREE.MeshPhysicalMaterial({
     color:                 0xffffff,
     roughness:             0.0,
     metalness:             0.04,
-    transmission:          0.55,
-    transparent:           true,
     polygonOffset:         true,
     polygonOffsetFactor:   -2.0,
     polygonOffsetUnits:    -10.0,
