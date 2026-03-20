@@ -285,6 +285,7 @@ window.MaterialMapperMaterialsModule = function ({
     let materialOrder = [];
     let materialRoles = { ...DEFAULT_MATERIAL_ROLES };
     let activeMaterialKey = null;
+    const expandedMaterialKeys = new Set();
 
     function cloneMaterialProps(props) {
         return JSON.parse(JSON.stringify(props));
@@ -385,6 +386,7 @@ window.MaterialMapperMaterialsModule = function ({
         materialOrder = [];
         materialRoles = { ...DEFAULT_MATERIAL_ROLES };
         activeMaterialKey = null;
+        expandedMaterialKeys.clear();
         for (const [key, props] of Object.entries(DEFAULT_MATERIAL_TEMPLATES)) {
             registerMaterial(key, props);
         }
@@ -902,6 +904,14 @@ window.MaterialMapperMaterialsModule = function ({
         updateCode();
     }
 
+    function getMaterialParts(matKey) {
+        const names = [];
+        for (const [name, entry] of partMap.entries()) {
+            if (entry.assignedKey === matKey) names.push(name);
+        }
+        return names.sort((a, b) => a.localeCompare(b));
+    }
+
     function getMaterialUsageCount(matKey) {
         let count = 0;
         for (const entry of partMap.values()) {
@@ -956,13 +966,59 @@ window.MaterialMapperMaterialsModule = function ({
             name.textContent = matKey;
             name.title = matKey;
 
-            const usage = document.createElement('div');
-            usage.className = 'material-usage';
-            const usageCount = getMaterialUsageCount(matKey);
-            usage.textContent = `${usageCount} part${usageCount !== 1 ? 's' : ''}`;
+            const parts = getMaterialParts(matKey);
+            const usageCount = parts.length;
+            const isExpanded = expandedMaterialKeys.has(matKey);
+
+            const usageBtn = document.createElement('button');
+            usageBtn.className = 'material-usage-btn';
+            usageBtn.textContent = usageCount === 0
+                ? '0 parts'
+                : `${usageCount} part${usageCount !== 1 ? 's' : ''} ${isExpanded ? '▴' : '▾'}`;
+            usageBtn.title = usageCount === 0 ? 'No parts assigned' : (isExpanded ? 'Collapse' : 'Show assigned parts');
+
+            const partsList = document.createElement('div');
+            partsList.className = `material-parts-list${isExpanded ? ' open' : ''}`;
+            for (const partName of parts) {
+                const item = document.createElement('div');
+                item.className = 'material-parts-item';
+                item.title = partName;
+                const itemLabel = document.createElement('span');
+                itemLabel.textContent = partName;
+                item.appendChild(itemLabel);
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    selectPart(partName);
+                });
+
+                const gotoBtn = document.createElement('button');
+                gotoBtn.className = 'material-parts-goto';
+                gotoBtn.textContent = '→';
+                gotoBtn.title = 'Go to part';
+                gotoBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    document.getElementById('tab-parts-btn')?.click();
+                    selectPart(partName);
+                });
+                item.appendChild(gotoBtn);
+                partsList.appendChild(item);
+            }
+
+            if (usageCount > 0) {
+                usageBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (expandedMaterialKeys.has(matKey)) {
+                        expandedMaterialKeys.delete(matKey);
+                    } else {
+                        expandedMaterialKeys.add(matKey);
+                    }
+                    buildMaterialsManagerUI({ scroll: false });
+                });
+            }
 
             meta.appendChild(name);
-            meta.appendChild(usage);
+            meta.appendChild(usageBtn);
+            meta.appendChild(partsList);
             row.appendChild(swatch);
             row.appendChild(meta);
             row.addEventListener('click', () => setActiveMaterialKey(matKey));
