@@ -5,33 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <style>
     * { margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; color-scheme: light dark; }
-    /* Opaque gradient is applied via #pipitViewerBackdrop after JS boots (avoids flash before fade). */
-    html, body { background: transparent; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: radial-gradient(ellipse at 50% 38%, #1c1e28 0%, #09090c 100%); }
     canvas { display: block; }
-    #pipitViewerBackdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.45s ease-out;
-    }
-    #status {
-      display: none;
-      position: absolute;
-      top: 80px;
-      left: 10px;
-      right: 10px;
-      color: #111827;
-      z-index: 999;
-      font-size: 12px;
-      pointer-events: none;
-      line-height: 1.35;
-    }
-    @media (prefers-color-scheme: dark) {
-      #status { color: white; }
-    }
+    #status { position: absolute; top: 80px; left: 10px; color: white; z-index: 999; font-size: 11px; pointer-events: none; }
   </style>
 
   <script>
@@ -47,133 +23,61 @@
   <script type="importmap">
   {
     "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      "three": "local://app/three.module.js",
+      "three/addons/": "local://app/three-addons/"
     }
   }
   </script>
 </head>
 <body>
-<script>
-(function () {
-    var h = (typeof location !== 'undefined' && location.hash) || '';
-    window.__pipitRecoveryEmbed = h.indexOf('pipitRecovery') >= 0;
-    window.__pipitShowFpsHud = h.indexOf('pipitFps') >= 0;
-    if (window.__pipitRecoveryEmbed) {
-        document.documentElement.style.background = 'transparent';
-        document.body.style.background = 'transparent';
-    }
-})();
-</script>
-<div id="pipitViewerBackdrop" aria-hidden="true"></div>
-<div id="status"></div>
+<div id="status">Loading...</div>
 
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import {
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import * as ViewerMaterials from './materials.js';
+
+const {
     MATERIAL_RULES,
     LED_MAX_INTENSITY,
     VIEWER_CAMERA,
-    VIEWER_SCENE_PRESETS,
+    VIEWER_SCENE,
     applyViewerBodyBackground,
     applyViewerSceneRuntime,
-} from './materials.js';
+} = ViewerMaterials;
 
-const RECOVERY_EMBED = typeof window !== 'undefined' && !!window.__pipitRecoveryEmbed;
-/** Skips radial page background while recovery sheet (or embed) is active. */
-let _recoveryDemoChromeActive = RECOVERY_EMBED;
-
-// ─── Optional FPS HUD: URL `#pipitFps` sets window.__pipitShowFpsHud, or toggle in Web Inspector ──
-function fpsHudEnabled() {
-    return typeof window !== 'undefined' && !!window.__pipitShowFpsHud;
-}
-
-let _fpsHudEl = null;
-let _fpsLastFrameTs = 0;
-
-function initFpsHudIfNeeded() {
-    if (!fpsHudEnabled() || _fpsHudEl) return;
-    _fpsHudEl = document.createElement('div');
-    _fpsHudEl.id = 'pipitFpsHud';
-    _fpsHudEl.setAttribute('aria-hidden', 'true');
-    Object.assign(_fpsHudEl.style, {
-        position: 'fixed',
-        top: 'max(10px, env(safe-area-inset-top, 0px))',
-        right: 'max(10px, env(safe-area-inset-right, 0px))',
-        zIndex: '10000',
-        font: '600 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-        padding: '5px 9px',
-        borderRadius: '8px',
-        pointerEvents: 'none',
-        background: 'rgba(15, 23, 42, 0.72)',
-        color: '#e2e8f0',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
-        WebkitFontSmoothing: 'antialiased',
-    });
-    _fpsHudEl.textContent = '… fps';
-    document.body.appendChild(_fpsHudEl);
-}
-
-/** Call once per completed WebGL frame (renderFrame). */
-function tickFpsHud() {
-    if (!fpsHudEnabled()) {
-        if (_fpsHudEl) {
-            _fpsHudEl.remove();
-            _fpsHudEl = null;
-            _fpsLastFrameTs = 0;
-        }
-        return;
-    }
-    if (!_fpsHudEl) initFpsHudIfNeeded();
-    if (!_fpsHudEl) return;
-    const now = performance.now();
-    if (_fpsLastFrameTs > 0) {
-        const dt = now - _fpsLastFrameTs;
-        if (dt > 0 && dt < 4000) {
-            const info = renderer.info.render;
-            _fpsHudEl.textContent = `${Math.round(1000 / dt)} fps | ${info.calls} dc | ${(info.triangles / 1000).toFixed(0)}k tris`;
-        } else if (dt >= 4000) {
-            _fpsHudEl.textContent = '0 fps';
-        }
-    }
-    _fpsLastFrameTs = now;
-}
-
-/** CSS-pixel layout of the WebGL canvas; `useInset` reserved if a future embed needs letterboxing. */
-let _vpLayout = {
-    fullW: 0,
-    fullH: 0,
-    offX: 0,
-    offY: 0,
-    vpW: 0,
-    vpH: 0,
-    useInset: false,
+const VIEWER_SCENE_PRESETS = ViewerMaterials.VIEWER_SCENE_PRESETS ?? null;
+const DEFAULT_VIEWER_POST = {
+    bloomEnabled: false,
+    bloomStrength: 0.35,
+    bloomRadius: 0.25,
+    bloomThreshold: 0.72,
+    ssaoEnabled: false,
+    ssaoKernel: 16,
+    ssaoMin: 0.005,
+    ssaoMax: 0.18,
+    vignetteEnabled: false,
+    vignetteOffset: 1.0,
+    vignetteDarkness: 1.25,
+    gradeEnabled: false,
+    gradeSaturation: 1.0,
+    gradeContrast: 1.0,
+    gradeBrightness: 0.0,
 };
 
-/** @returns {{ presetKey: 'light' | 'dark', sceneCfg: object }} */
-function viewerSceneForColorScheme() {
-    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const presetKey = dark ? 'dark' : 'light';
-    return { presetKey, sceneCfg: VIEWER_SCENE_PRESETS[presetKey] };
-}
-
 const statusEl = document.getElementById('status');
-const backdropEl = document.getElementById('pipitViewerBackdrop');
-statusEl.style.display = 'none';
-
-const initialAppearance = viewerSceneForColorScheme();
-document.documentElement.dataset.viewerTheme = initialAppearance.presetKey;
+statusEl.innerText = 'Initializing...';
 
 // ─── Renderer ────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
-renderer.domElement.style.background = 'transparent';
-renderer.domElement.style.position = 'relative';
-renderer.domElement.style.zIndex = '1';
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
 
 // ─── Scene / Camera ──────────────────────────────────────────────────────────
@@ -181,33 +85,160 @@ const scene = new THREE.Scene();
 
 // ─── Environment (IBL) ───────────────────────────────────────────────────────
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
-const roomEnv = new RoomEnvironment();
-const envBlur = initialAppearance.sceneCfg.env.roomEnvBlur ?? 0.04;
-const envTexture = pmremGenerator.fromScene(roomEnv, envBlur).texture;
-roomEnv.dispose();
-pmremGenerator.dispose();
+let envTarget = null;
+let envTexture = null;
+
+const colorSchemeQuery = window.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
+let activeScenePresetKey = null;
+let activeSceneConfig = VIEWER_SCENE;
+
+function getSystemScenePresetKey() {
+    return colorSchemeQuery?.matches ? 'dark' : 'light';
+}
+
+function resolveSystemSceneConfig() {
+    const presetKey = getSystemScenePresetKey();
+    const presetCfg = VIEWER_SCENE_PRESETS?.[presetKey];
+    return {
+        presetKey,
+        sceneCfg: presetCfg && typeof presetCfg === 'object' ? presetCfg : VIEWER_SCENE,
+    };
+}
+
+function rebuildEnvTexture(sceneCfg) {
+    if (envTarget) envTarget.dispose();
+    const roomEnv = new RoomEnvironment();
+    const envBlur = sceneCfg?.env?.roomEnvBlur ?? 0.04;
+    envTarget = pmremGenerator.fromScene(roomEnv, envBlur);
+    roomEnv.dispose();
+    envTexture = envTarget.texture;
+}
 
 const camera = new THREE.PerspectiveCamera(
     VIEWER_CAMERA.fov,
-    1,
+    window.innerWidth / window.innerHeight,
     VIEWER_CAMERA.near,
     VIEWER_CAMERA.far
 );
 camera.position.set(VIEWER_CAMERA.position[0], VIEWER_CAMERA.position[1], VIEWER_CAMERA.position[2]);
 
-// Orbit pan/zoom / home-return baseline; camera matches this each frame.
-const _orbitCamPos = new THREE.Vector3().copy(camera.position);
-const _orbitScratchOffset = new THREE.Vector3();
-const _orbitScratchDir = new THREE.Vector3();
-
 // Orthographic camera — mirrors perspective camera; toggled by USE_ORTHO.
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, VIEWER_CAMERA.near, VIEWER_CAMERA.far);
 let USE_ORTHO = VIEWER_CAMERA.useOrtho;
+let composer = null;
+let renderPass = null;
+let bloomPass = null;
+let ssaoPass = null;
+let postGradePass = null;
+
+const PostGradeVignetteShader = {
+    uniforms: {
+        tDiffuse:         { value: null },
+        gradeEnabled:     { value: 0 },
+        saturation:       { value: 1.0 },
+        contrast:         { value: 1.0 },
+        brightness:       { value: 0.0 },
+        vignetteEnabled:  { value: 0 },
+        vignetteOffset:   { value: 1.0 },
+        vignetteDarkness: { value: 1.25 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform int gradeEnabled;
+        uniform float saturation;
+        uniform float contrast;
+        uniform float brightness;
+        uniform int vignetteEnabled;
+        uniform float vignetteOffset;
+        uniform float vignetteDarkness;
+        varying vec2 vUv;
+        void main() {
+            vec4 c = texture2D(tDiffuse, vUv);
+            if (gradeEnabled == 1) {
+                float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+                c.rgb = mix(vec3(l), c.rgb, saturation);
+                c.rgb = (c.rgb - 0.5) * contrast + 0.5;
+                c.rgb += vec3(brightness);
+            }
+            if (vignetteEnabled == 1) {
+                vec2 uv = (vUv - vec2(0.5)) * vec2(vignetteOffset);
+                float vig = clamp(1.0 - dot(uv, uv) * vignetteDarkness, 0.0, 1.0);
+                c.rgb *= vig;
+            }
+            gl_FragColor = c;
+        }
+    `,
+};
+
+function setRenderSize(width, height) {
+    renderer.setSize(width, height);
+    if (composer) composer.setSize(width, height);
+    if (bloomPass?.setSize) bloomPass.setSize(width, height);
+    if (ssaoPass?.setSize) ssaoPass.setSize(width, height);
+}
+
+function shouldUseComposer() {
+    return !!(bloomPass?.enabled || ssaoPass?.enabled || postGradePass?.enabled);
+}
+
+function getScenePostConfig(sceneCfg) {
+    return { ...DEFAULT_VIEWER_POST, ...(sceneCfg?.post ?? {}) };
+}
+
+function applyScenePostFx(sceneCfg) {
+    const p = getScenePostConfig(sceneCfg);
+    bloomPass.enabled = !!p.bloomEnabled;
+    bloomPass.strength = p.bloomStrength;
+    bloomPass.radius = p.bloomRadius;
+    bloomPass.threshold = p.bloomThreshold;
+
+    ssaoPass.enabled = !!p.ssaoEnabled;
+    ssaoPass.kernelRadius = p.ssaoKernel;
+    ssaoPass.minDistance = p.ssaoMin;
+    ssaoPass.maxDistance = p.ssaoMax;
+
+    postGradePass.enabled = !!(p.vignetteEnabled || p.gradeEnabled);
+    postGradePass.uniforms.gradeEnabled.value = p.gradeEnabled ? 1 : 0;
+    postGradePass.uniforms.saturation.value = p.gradeSaturation;
+    postGradePass.uniforms.contrast.value = p.gradeContrast;
+    postGradePass.uniforms.brightness.value = p.gradeBrightness;
+    postGradePass.uniforms.vignetteEnabled.value = p.vignetteEnabled ? 1 : 0;
+    postGradePass.uniforms.vignetteOffset.value = p.vignetteOffset;
+    postGradePass.uniforms.vignetteDarkness.value = p.vignetteDarkness;
+}
+
+composer = new EffectComposer(renderer);
+renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.25, 0.72);
+bloomPass.enabled = false;
+composer.addPass(bloomPass);
+
+ssaoPass = new SSAOPass(scene, camera, 1, 1);
+ssaoPass.enabled = false;
+ssaoPass.kernelRadius = 16;
+ssaoPass.minDistance = 0.005;
+ssaoPass.maxDistance = 0.18;
+composer.addPass(ssaoPass);
+
+postGradePass = new ShaderPass(PostGradeVignetteShader);
+postGradePass.enabled = false;
+composer.addPass(postGradePass);
+
+setRenderSize(window.innerWidth, window.innerHeight);
 
 function syncOrthoCamera() {
     const dist = Math.max(0.001, camera.position.distanceTo(controls.target));
     const halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * dist;
-    const asp   = camera.aspect;
+    const asp   = window.innerWidth / window.innerHeight;
     orthoCamera.left   = -halfH * asp;
     orthoCamera.right  =  halfH * asp;
     orthoCamera.top    =  halfH;
@@ -230,59 +261,6 @@ controls.enabled = false;
 camera.lookAt(controls.target);
 if (USE_ORTHO) syncOrthoCamera();
 
-/** WKWebView `innerWidth`/`innerHeight` can disagree with laid-out CSS pixels — use layout box for recovery. */
-function embedLayoutPixels() {
-    const el = document.documentElement;
-    const body = document.body;
-    const w = Math.max(1, el.clientWidth || body?.clientWidth || window.innerWidth || 1);
-    const h = Math.max(1, el.clientHeight || body?.clientHeight || window.innerHeight || 1);
-    return { fullW: w, fullH: h };
-}
-
-function configureViewerLayout() {
-    const { fullW, fullH } = RECOVERY_EMBED
-        ? embedLayoutPixels()
-        : {
-              fullW: Math.max(window.innerWidth, 1),
-              fullH: Math.max(window.innerHeight, 1),
-          };
-    const safeH = Math.max(fullH, 1e-6);
-    _vpLayout = { fullW, fullH, offX: 0, offY: 0, vpW: fullW, vpH: fullH, useInset: false };
-    camera.aspect = fullW / safeH;
-    camera.updateProjectionMatrix();
-    renderer.setSize(fullW, fullH);
-    applyPreRenderViewport();
-    if (USE_ORTHO) syncOrthoCamera();
-}
-
-/**
- * Call each frame before render — setSize() resets the GL viewport to full canvas.
- * Three.js setViewport uses CSS pixels and multiplies by pixelRatio internally.
- */
-function applyPreRenderViewport() {
-    const { fullW, fullH } = _vpLayout;
-    renderer.setScissorTest(false);
-    renderer.setViewport(0, 0, fullW, fullH);
-}
-
-configureViewerLayout();
-
-if (RECOVERY_EMBED && typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(() => {
-        configureViewerLayout();
-        if (modelPivot) recalculateHorizontalPan();
-        requestRender();
-    }).observe(document.documentElement);
-}
-
-if (RECOVERY_EMBED) {
-    requestAnimationFrame(() => {
-        configureViewerLayout();
-        if (modelPivot) recalculateHorizontalPan();
-        requestRender();
-    });
-}
-
 // ─── Pan / Zoom / Auto-return ─────────────────────────────────────────────────
 // Camera is driven entirely from Swift gesture recognizers via orbitCamera() /
 // zoomCamera(). After RETURN_DELAY_MS of inactivity the camera smoothly eases
@@ -295,15 +273,12 @@ let _returning     = false;
 let _returnFrom    = { pos: null, target: null };
 let _returnStartTs = null;
 let _returnTimerId = null;
+let _renderQueued  = false;
 
 const RETURN_DELAY_MS = 1000;  // ms of inactivity before returning to home
 const RETURN_ANIM_MS  = 700;   // duration of the ease-out return animation
 
 function _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
-
-function _easeInOutCubic(t) {
-    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
 
 // Cancels any in-progress or scheduled return so pan/zoom resume cleanly.
 function _interruptReturn() {
@@ -320,13 +295,81 @@ function _scheduleReturn() {
     _returnTimerId = setTimeout(() => {
         _returnTimerId = null;
         _returning  = true;
-        _returnFrom = { pos: _orbitCamPos.clone(), target: controls.target.clone() };
+        _returnFrom = { pos: camera.position.clone(), target: controls.target.clone() };
         _returnStartTs = null;
         requestRender();
     }, RETURN_DELAY_MS);
 }
 
-// ─── Lights + renderer + IBL from materials.js (preset follows system appearance) ─
+const _preUpdateCameraPos = new THREE.Vector3();
+const _preUpdateTarget = new THREE.Vector3();
+const _preUpdateCameraQuat = new THREE.Quaternion();
+
+function renderFrame() {
+    _renderQueued = false;
+    let keepRendering = false;
+
+    if (cube.parent) {
+        cube.rotation.x += 0.01;
+        cube.rotation.y += 0.01;
+        keepRendering = true;
+    }
+
+    if (_manualCamera) {
+        if (_returning && _returnFrom.pos) {
+            const now = performance.now();
+            if (_returnStartTs === null) _returnStartTs = now;
+            const rawT = Math.min((now - _returnStartTs) / RETURN_ANIM_MS, 1.0);
+            const t = _easeOutCubic(rawT);
+            camera.position.lerpVectors(_returnFrom.pos, HOME_CAM_POS, t);
+            controls.target.lerpVectors(_returnFrom.target, HOME_CTRL_TARGET, t);
+            camera.lookAt(controls.target);
+            if (rawT >= 1.0) {
+                camera.position.copy(HOME_CAM_POS);
+                controls.target.copy(HOME_CTRL_TARGET);
+                camera.lookAt(controls.target);
+                _returning = false;
+            } else {
+                keepRendering = true;
+            }
+        }
+    } else {
+        _preUpdateCameraPos.copy(camera.position);
+        _preUpdateTarget.copy(controls.target);
+        _preUpdateCameraQuat.copy(camera.quaternion);
+
+        controls.update();
+
+        const controlsChanged =
+            _preUpdateCameraPos.distanceToSquared(camera.position) > 1e-12 ||
+            _preUpdateTarget.distanceToSquared(controls.target) > 1e-12 ||
+            (1 - Math.abs(_preUpdateCameraQuat.dot(camera.quaternion))) > 1e-12;
+
+        if (controlsChanged) keepRendering = true;
+    }
+
+    if (USE_ORTHO) syncOrthoCamera();
+    const activeCamera = USE_ORTHO ? orthoCamera : camera;
+    if (shouldUseComposer()) {
+        renderPass.camera = activeCamera;
+        ssaoPass.camera = activeCamera;
+        composer.render();
+    } else {
+        renderer.render(scene, activeCamera);
+    }
+
+    postButtonHitRegionIfNeeded();
+
+    if (keepRendering) requestRender();
+}
+
+function requestRender() {
+    if (_renderQueued) return;
+    _renderQueued = true;
+    requestAnimationFrame(renderFrame);
+}
+
+// ─── Lights + renderer + IBL from VIEWER_SCENE (assets/materials.js) ─────────
 const keyLight = new THREE.DirectionalLight(0xffffff, 1);
 keyLight.castShadow = true;
 scene.add(keyLight);
@@ -342,235 +385,80 @@ const groundPlane = new THREE.Mesh(
     new THREE.ShadowMaterial({ opacity: 0.5, transparent: true })
 );
 groundPlane.rotation.x = -Math.PI / 2;
-groundPlane.position.y = initialAppearance.sceneCfg.ground.yPlaceholder;
+groundPlane.position.y = VIEWER_SCENE.ground.yPlaceholder;
 groundPlane.receiveShadow = true;
 scene.add(groundPlane);
 
-const viewerRuntimeCtx = {
-    renderer,
-    scene,
-    envTexture,
-    keyLight,
-    fillLight,
-    rimLight,
-    ambientLight,
-    groundPlane,
-};
-
-applyViewerSceneRuntime(THREE, viewerRuntimeCtx, initialAppearance.sceneCfg);
-groundPlane.visible = false;
-
-const MODEL_INTRO_MS = 1000;
-/** Shadow-catcher opacity ramp after intro spin (avoids popping the floor in). */
-const GROUND_POST_INTRO_FADE_MS = 480;
-/**
- * Progress advances by (frame delta / MODEL_INTRO_MS) so duration matches real time at 60 Hz,
- * 120 Hz ProMotion, or variable refresh. Caps one RAF gap so a suspended WKWebView cannot
- * finish the whole intro in a single tick.
- */
-const MODEL_INTRO_MAX_DT_MS = 64;
-let _modelIntroActive = false;
-/** Non-null while ground ShadowMaterial opacity eases from 0 → scene target after intro. */
-let _groundPostIntroFadeStartTs = null;
-let _modelIntroLastTickTs = null;
-let _modelIntroT = 0;
-/** Eased progress in [0,1] for fade + slide + spin. */
-let _modelIntroEaseU = 1;
-let _introSlideDistance = 1.2;
-
-/** @returns {boolean} true while model intro should keep scheduling frames */
-function _tickModelIntro() {
-    if (!_modelIntroActive) {
-        _modelIntroEaseU = 1;
-        _modelIntroLastTickTs = null;
-        _modelIntroT = 0;
-        return false;
-    }
-    const now = performance.now();
-    if (_modelIntroLastTickTs === null) {
-        _modelIntroLastTickTs = now;
-        _modelIntroT = 0;
-        _modelIntroEaseU = _easeOutCubic(0);
-        renderer.domElement.style.opacity = '0';
-        return true;
-    }
-    let dt = now - _modelIntroLastTickTs;
-    _modelIntroLastTickTs = now;
-    if (dt < 0) dt = 0;
-    if (dt > MODEL_INTRO_MAX_DT_MS) dt = MODEL_INTRO_MAX_DT_MS;
-    _modelIntroT = Math.min(1, _modelIntroT + dt / MODEL_INTRO_MS);
-    const t = _modelIntroT;
-    _modelIntroEaseU = _easeOutCubic(t);
-    renderer.domElement.style.opacity = String(_modelIntroEaseU);
-    if (t >= 1.0) {
-        _modelIntroActive = false;
-        _modelIntroLastTickTs = null;
-        _modelIntroT = 0;
-        _modelIntroEaseU = 1;
-        renderer.domElement.style.opacity = '';
-        if (!RECOVERY_EMBED && modelPivot && !_recoveryDemoChromeActive) {
-            const gs = viewerSceneForColorScheme().sceneCfg.ground;
-            if (gs.visible) {
-                _groundPostIntroFadeStartTs = performance.now();
-                groundPlane.visible = true;
-                groundPlane.material.opacity = 0;
-            } else {
-                _groundPostIntroFadeStartTs = null;
-                groundPlane.visible = false;
-            }
-        }
-        return false;
-    }
-    return true;
-}
-
-/** @returns {boolean} true while ground fade needs another frame */
-function _tickGroundPostIntroFade() {
-    if (_groundPostIntroFadeStartTs === null) return false;
-    if (_recoveryDemoChromeActive) return false;
-    const gs = viewerSceneForColorScheme().sceneCfg.ground;
-    if (!gs.visible) {
-        groundPlane.visible = false;
-        _groundPostIntroFadeStartTs = null;
-        return false;
-    }
-    const elapsed = performance.now() - _groundPostIntroFadeStartTs;
-    const rawT = Math.min(elapsed / GROUND_POST_INTRO_FADE_MS, 1.0);
-    const t = _easeOutCubic(rawT);
-    groundPlane.visible = true;
-    groundPlane.material.opacity = gs.opacity * t;
-    if (rawT >= 1.0) {
-        groundPlane.material.opacity = gs.opacity;
-        _groundPostIntroFadeStartTs = null;
-        return false;
-    }
-    return true;
-}
-
-/** Keeps ground hidden during intro / pre-model; reapplies fade opacity after theme-driven runtime. */
-function _refreshGroundPlanePresentationAfterTheme() {
-    if (_recoveryDemoChromeActive) {
-        groundPlane.visible = false;
-        return;
-    }
-    if (!modelPivot && !RECOVERY_EMBED) {
-        groundPlane.visible = false;
-        return;
-    }
-    if (_modelIntroActive) {
-        groundPlane.visible = false;
-        return;
-    }
-    if (_groundPostIntroFadeStartTs !== null) {
-        const gs = viewerSceneForColorScheme().sceneCfg.ground;
-        if (!gs.visible) {
-            _groundPostIntroFadeStartTs = null;
-            groundPlane.visible = false;
-            return;
-        }
-        groundPlane.visible = true;
-        const elapsed = performance.now() - _groundPostIntroFadeStartTs;
-        const rawT = Math.min(elapsed / GROUND_POST_INTRO_FADE_MS, 1.0);
-        const t = _easeOutCubic(rawT);
-        groundPlane.material.opacity = gs.opacity * t;
-    }
-}
-
-function syncBackdropBackground(sceneCfg) {
-    if (!backdropEl || RECOVERY_EMBED || _recoveryDemoChromeActive) return;
-    backdropEl.style.background = sceneCfg.bodyBackground;
-}
-
-/** Main viewer only: radial page background fades in (empty scene, no cube). */
-function startBackdropIntroFade() {
-    if (RECOVERY_EMBED || _recoveryDemoChromeActive) return;
-    const { sceneCfg } = viewerSceneForColorScheme();
-    syncBackdropBackground(sceneCfg);
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            if (backdropEl) backdropEl.style.opacity = '1';
-        });
-    });
-}
-
-const _lightBaseKey = new THREE.Vector3();
-const _lightBaseFill = new THREE.Vector3();
-const _lightBaseRim = new THREE.Vector3();
-function cacheLightBasePositions() {
-    _lightBaseKey.copy(keyLight.position);
-    _lightBaseFill.copy(fillLight.position);
-    _lightBaseRim.copy(rimLight.position);
-}
-cacheLightBasePositions();
-
-const colorSchemeMql = window.matchMedia('(prefers-color-scheme: dark)');
-function syncViewerToSystemColorScheme() {
-    const { presetKey, sceneCfg } = viewerSceneForColorScheme();
-    if (!_recoveryDemoChromeActive) {
-        if (RECOVERY_EMBED) {
-            applyViewerBodyBackground(sceneCfg.bodyBackground);
-        } else {
-            syncBackdropBackground(sceneCfg);
-        }
-    }
-    applyViewerSceneRuntime(THREE, viewerRuntimeCtx, sceneCfg);
-    cacheLightBasePositions();
+function applySceneConfig(sceneCfg, presetKey) {
+    rebuildEnvTexture(sceneCfg);
+    activeScenePresetKey = presetKey;
+    activeSceneConfig = sceneCfg;
+    applyViewerBodyBackground(sceneCfg.bodyBackground);
+    statusEl.style.color = presetKey === 'dark' ? 'white' : '#111827';
+    applyScenePostFx(sceneCfg);
+    applyViewerSceneRuntime(THREE, {
+        renderer,
+        scene,
+        envTexture,
+        keyLight,
+        fillLight,
+        rimLight,
+        ambientLight,
+        groundPlane,
+    }, sceneCfg);
     document.documentElement.dataset.viewerTheme = presetKey;
-    if (_recoveryDemoChromeActive) {
-        document.documentElement.style.background = 'transparent';
-        document.body.style.background = 'transparent';
-        groundPlane.visible = false;
-    } else {
-        _refreshGroundPlanePresentationAfterTheme();
-    }
     requestRender();
 }
-if (typeof colorSchemeMql.addEventListener === 'function') {
-    colorSchemeMql.addEventListener('change', syncViewerToSystemColorScheme);
-} else if (typeof colorSchemeMql.addListener === 'function') {
-    colorSchemeMql.addListener(syncViewerToSystemColorScheme);
+
+function syncSceneToSystemColorScheme({ force = false } = {}) {
+    const { presetKey, sceneCfg } = resolveSystemSceneConfig();
+    if (!force && activeScenePresetKey === presetKey && activeSceneConfig === sceneCfg) return;
+    applySceneConfig(sceneCfg, presetKey);
 }
 
-function _applyOrbitToCamera() {
-    camera.position.copy(_orbitCamPos);
-    camera.lookAt(controls.target);
+syncSceneToSystemColorScheme({ force: true });
+
+if (colorSchemeQuery?.addEventListener) {
+    colorSchemeQuery.addEventListener('change', () => syncSceneToSystemColorScheme());
+} else if (colorSchemeQuery?.addListener) {
+    colorSchemeQuery.addListener(() => syncSceneToSystemColorScheme());
 }
+
+// ─── Placeholder cube (removed once GLB loads) ───────────────────────────────
+const cubeGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+const cubeMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const cube    = new THREE.Mesh(cubeGeo, cubeMat);
+scene.add(cube);
+statusEl.innerText = 'WebGL ready, loading model...';
+requestRender();
 
 // ─── API state ────────────────────────────────────────────────────────────────
 let modelPivot      = null;   // Wrapper Group — setModelTransform acts on this
-/** Child of modelPivot at mesh AABB center; intro Z spin applies here so the axis is geometric center. */
-let introSpinGroup  = null;
-let rootModel       = null;   // The raw GLTF scene (centred + scaled inside introSpinGroup or modelPivot)
-/** Swift `setModelTransform` position before horizontal auto-pan (world-space pivot). */
-const _swiftModelPos = new THREE.Vector3();
-/** Pivot position from Swift + horizontal pan only (intro slide applied on top each frame). */
-const _modelPivotRestPos = new THREE.Vector3();
-/** Swift Euler components (rad) on modelPivot; intro Z roll is on introSpinGroup when present. */
-let _swiftRotX = 0;
-let _swiftRotY = 0;
-let _swiftRotZ = 0;
-const _introCamUp = new THREE.Vector3();
-/** World offset along baseline camera right so projected mesh AABB is centred in NDC X. */
-let _horizontalPanWorld = 0;
-const _projCamForPan = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
-const _panRight = new THREE.Vector3();
-const _panCorner = new THREE.Vector3();
+let rootModel       = null;   // The raw GLTF scene (centred + scaled inside modelPivot)
 let ledMeshes       = [];     // Mesh objects whose material carries an emissive component
 let buttonObject    = null;   // Object3D for the physical button cap (KEY1)
 let buttonRestPos   = new THREE.Vector3();
+const raycaster     = new THREE.Raycaster();
+const pointerNdc    = new THREE.Vector2();
+const BUTTON_TRIGGER_PART_NAMES = new Set(['Uguisu_PCB']);
+const BUTTON_CLICK_MOVE_TOLERANCE_PX = 8;
+const BUTTON_CLICK_HOLD_MS = 110;
+const BUTTON_HIT_REGION_PADDING_PX = 12;
+const buttonHitObjects = [];
+let buttonPressReleaseTimerId = null;
+let pointerDownEvent = null;
+let lastPostedButtonHitRegionKey = '';
 // Button travel axis in rootModel local space.
 // KiCAD +Z points up (out of PCB surface toward user); pressing the cap moves in +Z.
 // After the 180° Z-rotation applied to rootModel, +Z local still maps to +Z world
 // (Z-rotation preserves the Z axis), which is "away from camera" = into the device. ✓
 let buttonPressAxis = new THREE.Vector3(0, 0, 1);
 
-// Meshes whose projected bounds define the Swift tap target (see postButtonHitRegionIfNeeded).
-const BUTTON_TRIGGER_PART_NAMES = new Set(['Uguisu_PCB']);
-const BUTTON_HIT_REGION_PADDING_PX = 12;
-const buttonHitObjects = [];
-let lastPostedButtonHitRegionKey = '';
-const surfaceRaycaster = new THREE.Raycaster();
-const _surfaceNdc = new THREE.Vector2();
+
+// Button physical travel calibrated from GLB bounding box:
+//   model longest dim (Y) = 54.4 mm (raw GLB metres), normalised to unit cube.
+//   0.3 mm physical travel → 0.3 / 54.4 = 0.005515 normalised units.
+const BUTTON_TRAVEL = 0.005515;
 
 function getMatchName(obj) {
     if (!obj) return '';
@@ -580,142 +468,6 @@ function getMatchName(obj) {
 
 function getActiveCamera() {
     return USE_ORTHO ? orthoCamera : camera;
-}
-
-/** Matches main camera frustum but uses orbit baseline for stable pan math. */
-function syncBaselineProjectionCamera() {
-    const pc = _projCamForPan;
-    pc.fov = camera.fov;
-    pc.aspect = camera.aspect;
-    pc.near = camera.near;
-    pc.far = camera.far;
-    pc.updateProjectionMatrix();
-    pc.position.copy(_orbitCamPos);
-    pc.lookAt(controls.target);
-    pc.updateMatrixWorld(true);
-    return pc;
-}
-
-/**
- * Horizontal midpoint of modelPivot AABB in NDC X (−1…1); 0 = screen centre.
- * @param {boolean} [skipWorldUpdate] if true, caller already called modelPivot.updateMatrixWorld(true).
- */
-function projectedHorizontalMidNdc(projCam, skipWorldUpdate) {
-    if (!skipWorldUpdate) modelPivot.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(modelPivot);
-    if (box.isEmpty()) return 0;
-    const { min, max } = box;
-    const corners = [
-        [min.x, min.y, min.z],
-        [min.x, min.y, max.z],
-        [min.x, max.y, min.z],
-        [min.x, max.y, max.z],
-        [max.x, min.y, min.z],
-        [max.x, min.y, max.z],
-        [max.x, max.y, min.z],
-        [max.x, max.y, max.z],
-    ];
-    let minPx = Infinity;
-    let maxPx = -Infinity;
-    for (const c of corners) {
-        _panCorner.set(c[0], c[1], c[2]);
-        _panCorner.project(projCam);
-        if (![_panCorner.x, _panCorner.y, _panCorner.z].every(Number.isFinite)) continue;
-        minPx = Math.min(minPx, _panCorner.x);
-        maxPx = Math.max(maxPx, _panCorner.x);
-    }
-    if (!Number.isFinite(minPx) || !Number.isFinite(maxPx)) return 0;
-    return (minPx + maxPx) * 0.5;
-}
-
-/** Uses current `_projCamForPan` (call `syncBaselineProjectionCamera()` first when orbit pose may have changed). */
-function _applyModelPivotWorldPositionNoProjSync() {
-    if (!modelPivot) return;
-    _panRight.setFromMatrixColumn(_projCamForPan.matrixWorld, 0).normalize();
-    _modelPivotRestPos.copy(_swiftModelPos).addScaledVector(_panRight, _horizontalPanWorld);
-    modelPivot.position.copy(_modelPivotRestPos);
-}
-
-function _applyModelPivotWorldPosition() {
-    if (!modelPivot) return;
-    syncBaselineProjectionCamera();
-    _applyModelPivotWorldPositionNoProjSync();
-}
-
-/**
- * Pan the pivot along baseline camera right so the projected bounding box is centred horizontally.
- * Uses orbit pose only; re-run after layout or Swift transform changes.
- */
-function recalculateHorizontalPan() {
-    if (!modelPivot) return;
-    // Pan solver must match what we render: during intro, Z roll changes projected width; if we pan
-    // for spin=0 the mesh swings outside the frustum (hard vertical clip on one side).
-    modelPivot.rotation.set(_swiftRotX, _swiftRotY, _swiftRotZ);
-    if (introSpinGroup) {
-        if (_modelIntroActive) {
-            introSpinGroup.rotation.set(0, 0, Math.PI * (1 - _modelIntroEaseU));
-        } else {
-            introSpinGroup.rotation.set(0, 0, 0);
-        }
-    }
-    if (USE_ORTHO) {
-        syncBaselineProjectionCamera();
-        _horizontalPanWorld = 0;
-        _applyModelPivotWorldPosition();
-        _applyModelPivotScale();
-        return;
-    }
-    // Orbit pose is fixed for the whole solve; sync once instead of per iteration (~22× cheaper).
-    syncBaselineProjectionCamera();
-    const projCam = _projCamForPan;
-    _horizontalPanWorld = 0;
-
-    for (let iter = 0; iter < 22; iter++) {
-        _applyModelPivotWorldPositionNoProjSync();
-        // Pan must match the pose we render: intro slide shifts the pivot along baseline cam-up;
-        // that has horizontal screen-space component when the camera is pitched, so solving pan
-        // without slide leaves the mesh clipped on one side until the slide eases off.
-        if (_modelIntroActive) {
-            const slide = (1 - _modelIntroEaseU) * _introSlideDistance;
-            _introCamUp.setFromMatrixColumn(_projCamForPan.matrixWorld, 1).normalize();
-            modelPivot.position.addScaledVector(_introCamUp, -slide);
-        }
-        modelPivot.updateMatrixWorld(true);
-        const mid = projectedHorizontalMidNdc(projCam, true);
-        if (Math.abs(mid) < 0.0009) break;
-
-        const box = new THREE.Box3().setFromObject(modelPivot);
-        const ctr = box.getCenter(_panCorner);
-        const dist = Math.max(0.001, ctr.distanceTo(projCam.position));
-        const vFovRad = THREE.MathUtils.degToRad(projCam.fov);
-        const halfWidthWorld = dist * Math.tan(vFovRad / 2) * projCam.aspect;
-        _horizontalPanWorld += -mid * halfWidthWorld * 0.9;
-    }
-    _applyModelPivotWorldPositionNoProjSync();
-    _applyModelPivotScale();
-}
-
-/** Apply rest pose + optional intro slide (camera-up) and Z spin about mesh center (introSpinGroup). */
-function _applyModelPivotDisplayPose() {
-    if (!modelPivot) return;
-    if (_modelIntroActive) {
-        const u = _modelIntroEaseU;
-        const spinZ = Math.PI * (1 - u);
-        const slide = (1 - u) * _introSlideDistance;
-        syncBaselineProjectionCamera();
-        _introCamUp.setFromMatrixColumn(_projCamForPan.matrixWorld, 1).normalize();
-        modelPivot.position.copy(_modelPivotRestPos).addScaledVector(_introCamUp, -slide);
-        modelPivot.rotation.set(_swiftRotX, _swiftRotY, _swiftRotZ);
-        if (introSpinGroup) {
-            introSpinGroup.rotation.set(0, 0, spinZ);
-        } else {
-            modelPivot.rotation.z = _swiftRotZ + spinZ;
-        }
-    } else {
-        modelPivot.position.copy(_modelPivotRestPos);
-        modelPivot.rotation.set(_swiftRotX, _swiftRotY, _swiftRotZ);
-        if (introSpinGroup) introSpinGroup.rotation.set(0, 0, 0);
-    }
 }
 
 function computeButtonHitRegion() {
@@ -759,22 +511,10 @@ function computeButtonHitRegion() {
     const rect = renderer.domElement.getBoundingClientRect();
     const padX = BUTTON_HIT_REGION_PADDING_PX / Math.max(rect.width, 1);
     const padY = BUTTON_HIT_REGION_PADDING_PX / Math.max(rect.height, 1);
-    let x = THREE.MathUtils.clamp((minX + 1) * 0.5 - padX, 0, 1);
-    let right = THREE.MathUtils.clamp((maxX + 1) * 0.5 + padX, 0, 1);
-    let y = THREE.MathUtils.clamp((1 - maxY) * 0.5 - padY, 0, 1);
-    let bottom = THREE.MathUtils.clamp((1 - minY) * 0.5 + padY, 0, 1);
-
-    if (_vpLayout.useInset) {
-        const { fullW, fullH, offX, offY, vpW, vpH } = _vpLayout;
-        const sx = fullW > 0 ? vpW / fullW : 1;
-        const sy = fullH > 0 ? vpH / fullH : 1;
-        const ox = fullW > 0 ? offX / fullW : 0;
-        const oy = fullH > 0 ? offY / fullH : 0;
-        x = THREE.MathUtils.clamp(ox + x * sx, 0, 1);
-        right = THREE.MathUtils.clamp(ox + right * sx, 0, 1);
-        y = THREE.MathUtils.clamp(oy + y * sy, 0, 1);
-        bottom = THREE.MathUtils.clamp(oy + bottom * sy, 0, 1);
-    }
+    const x = THREE.MathUtils.clamp((minX + 1) * 0.5 - padX, 0, 1);
+    const right = THREE.MathUtils.clamp((maxX + 1) * 0.5 + padX, 0, 1);
+    const y = THREE.MathUtils.clamp((1 - maxY) * 0.5 - padY, 0, 1);
+    const bottom = THREE.MathUtils.clamp((1 - minY) * 0.5 + padY, 0, 1);
 
     return {
         x,
@@ -784,39 +524,9 @@ function computeButtonHitRegion() {
     };
 }
 
-/** Normalized touch [0,1] top-left, same space as `buttonHitRegion` posted to Swift. */
-function normalizedPointInPcbHitRegion(u, v) {
-    const r = computeButtonHitRegion();
-    if (!r || r.width <= 0 || r.height <= 0) return false;
-    return u >= r.x && u <= r.x + r.width && v >= r.y && v <= r.y + r.height;
-}
-
-/** Housing-only: Body / Lid shells (and suffixed variants e.g. Body_1). Not KiCAD `Uguisu_*`. */
-function enclosureBlockingFromMatchName(n) {
-    if (!n) return false;
-    if (/^Uguisu_/.test(n)) return false;
-    return /^Body(?:_|$)/.test(n) || /^Lid(?:_|$)/.test(n);
-}
-
-/** First-hit surface is Body/Lid housing in front of the board, not the PCB stack or an SMD. */
-function isEnclosureBlockingSurfaceObject(obj) {
-    if (buttonObject) {
-        for (let o = obj; o != null; o = o.parent) {
-            if (o === buttonObject) return false;
-        }
-    }
-    for (let o = obj; o != null && o !== rootModel; o = o.parent) {
-        if (!o.isMesh) continue;
-        if (enclosureBlockingFromMatchName(getMatchName(o))) return true;
-    }
-    return false;
-}
-
 function postButtonHitRegionIfNeeded(force = false) {
     const handler = window.webkit?.messageHandlers?.buttonHitRegion;
     if (!handler) return;
-    // Pivot press-scale tweens every frame; skip posts until idle to avoid WK spam.
-    if (!force && _pressSquishStartTs !== null) return;
     const region = computeButtonHitRegion();
     const key = region
         ? [region.x, region.y, region.width, region.height].map((v) => v.toFixed(4)).join(',')
@@ -826,111 +536,55 @@ function postButtonHitRegionIfNeeded(force = false) {
     handler.postMessage(region);
 }
 
-// Button physical travel calibrated from GLB bounding box:
-//   model longest dim (Y) = 54.4 mm (raw GLB metres), normalised to unit cube.
-//   0.3 mm physical travel → 0.3 / 54.4 = 0.005515 normalised units.
-const BUTTON_TRAVEL = 0.005515;
-
-// Whole GLB pivot scales down slightly while “pressed”; radial page gradient is unaffected.
-const PRESS_MODEL_SCALE_DELTA = 0.02;
-const PRESS_MODEL_SCALE_MS = 115;
-let _modelBaseScale = 1.0;
-let _pressSquishFrom = 0;
-let _pressSquishTo = 0;
-let _pressSquishCurrent = 0;
-let _pressSquishStartTs = null;
-
-function _applyModelPivotScale() {
-    if (!modelPivot) return;
-    const mul = 1 - PRESS_MODEL_SCALE_DELTA * _pressSquishCurrent;
-    modelPivot.scale.setScalar(_modelBaseScale * mul);
-}
-
-function _beginPressSquishToward(targetDepth) {
-    if (!modelPivot) return;
-    const d = Math.max(0, Math.min(1, Number(targetDepth)));
-    if (_pressSquishStartTs === null && Math.abs(_pressSquishCurrent - d) < 1e-6) return;
-    _pressSquishFrom = _pressSquishCurrent;
-    _pressSquishTo = d;
-    _pressSquishStartTs = performance.now();
-}
-
-/** @returns {boolean} true if another frame is needed */
-function _tickPressSquishAnimation() {
-    if (_pressSquishStartTs === null || !modelPivot) return false;
-    const elapsed = performance.now() - _pressSquishStartTs;
-    const rawT = Math.min(elapsed / PRESS_MODEL_SCALE_MS, 1.0);
-    const t = _easeInOutCubic(rawT);
-    _pressSquishCurrent = _pressSquishFrom + (_pressSquishTo - _pressSquishFrom) * t;
-    _applyModelPivotScale();
-    if (rawT >= 1.0) {
-        _pressSquishCurrent = _pressSquishTo;
-        _applyModelPivotScale();
-        _pressSquishStartTs = null;
-        return false;
+function triggerButtonActivation({ holdMs = BUTTON_CLICK_HOLD_MS } = {}) {
+    if (!buttonObject) return;
+    if (buttonPressReleaseTimerId !== null) {
+        clearTimeout(buttonPressReleaseTimerId);
+        buttonPressReleaseTimerId = null;
     }
-    return true;
+    window.setButtonDepth(1);
+    buttonPressReleaseTimerId = window.setTimeout(() => {
+        buttonPressReleaseTimerId = null;
+        window.setButtonDepth(0);
+    }, holdMs);
 }
 
-let _renderQueued = false;
-
-function renderFrame() {
-    _renderQueued = false;
-
-    applyPreRenderViewport();
-
-    const introContinues = _tickModelIntro();
-    if (_modelIntroActive && modelPivot) {
-        recalculateHorizontalPan();
-    }
-    const groundFadeContinues = _tickGroundPostIntroFade();
-    const squishContinues = _tickPressSquishAnimation();
-
-    if (_manualCamera) {
-        if (_returning && _returnFrom.pos) {
-            const now = performance.now();
-            if (_returnStartTs === null) _returnStartTs = now;
-            const rawT = Math.min((now - _returnStartTs) / RETURN_ANIM_MS, 1.0);
-            const t = _easeOutCubic(rawT);
-            _orbitCamPos.lerpVectors(_returnFrom.pos, HOME_CAM_POS, t);
-            controls.target.lerpVectors(_returnFrom.target, HOME_CTRL_TARGET, t);
-            if (rawT >= 1.0) {
-                _orbitCamPos.copy(HOME_CAM_POS);
-                controls.target.copy(HOME_CTRL_TARGET);
-                _returning = false;
-            }
-        }
-    } else {
-        controls.update();
-    }
-    _applyOrbitToCamera();
-    if (USE_ORTHO) syncOrthoCamera();
-    _applyModelPivotDisplayPose();
-    renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
-    tickFpsHud();
-    postButtonHitRegionIfNeeded();
-
-    const returnAnimating = _returning && _returnFrom.pos;
-
-    if (introContinues || groundFadeContinues || squishContinues || returnAnimating) {
-        requestRender();
-    }
+function updatePointerNdc(clientX, clientY) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
 }
 
-function requestRender() {
-    if (_renderQueued) return;
-    _renderQueued = true;
-    requestAnimationFrame(renderFrame);
+function handlePointerActivate(event) {
+    if (!rootModel || !buttonObject || !pointerDownEvent) return;
+    const dx = event.clientX - pointerDownEvent.x;
+    const dy = event.clientY - pointerDownEvent.y;
+    pointerDownEvent = null;
+    if ((dx * dx + dy * dy) > (BUTTON_CLICK_MOVE_TOLERANCE_PX * BUTTON_CLICK_MOVE_TOLERANCE_PX)) return;
+
+    updatePointerNdc(event.clientX, event.clientY);
+    raycaster.setFromCamera(pointerNdc, getActiveCamera());
+    const hit = raycaster.intersectObject(rootModel, true)
+        .find(({ object }) => BUTTON_TRIGGER_PART_NAMES.has(getMatchName(object)));
+    if (hit) triggerButtonActivation();
 }
 
-startBackdropIntroFade();
-requestRender();
+renderer.domElement.addEventListener('pointerdown', (event) => {
+    pointerDownEvent = { x: event.clientX, y: event.clientY };
+});
+
+renderer.domElement.addEventListener('pointerup', handlePointerActivate);
+renderer.domElement.addEventListener('pointercancel', () => {
+    pointerDownEvent = null;
+});
+
 
 // ─── GLB loader ──────────────────────────────────────────────────────────────
 const loader = new GLTFLoader();
 loader.load(
     'local://app/Uguisu.glb',
     (gltf) => {
+        scene.remove(cube);
         rootModel = gltf.scene;
 
         // Normalise to unit cube — same convention as material-mapper.
@@ -942,7 +596,6 @@ loader.load(
         rootModel.scale.setScalar(1.0 / maxDim);
         rootModel.position.sub(center.multiplyScalar(1.0 / maxDim));
 
-        // Material-mapper export: final root pose in normalised space (replaces centring offset).
         const exportedModelPosition = Array.isArray(VIEWER_CAMERA.modelPosition)
             && VIEWER_CAMERA.modelPosition.length === 3
             && VIEWER_CAMERA.modelPosition.every(Number.isFinite)
@@ -972,24 +625,6 @@ loader.load(
         );
         modelPivot.updateMatrixWorld(true);
 
-        // Spin intro about mesh AABB center: offset rootModel so that center lies on this group's origin.
-        const spinBounds = new THREE.Box3().setFromObject(rootModel);
-        introSpinGroup = null;
-        if (!spinBounds.isEmpty()) {
-            const cWorld = spinBounds.getCenter(new THREE.Vector3());
-            const cLocal = new THREE.Vector3();
-            modelPivot.worldToLocal(cLocal.copy(cWorld));
-            const spin = new THREE.Group();
-            spin.name = 'introSpinGroup';
-            modelPivot.remove(rootModel);
-            spin.position.copy(cLocal);
-            rootModel.position.sub(cLocal);
-            spin.add(rootModel);
-            modelPivot.add(spin);
-            introSpinGroup = spin;
-        }
-        modelPivot.updateMatrixWorld(true);
-
         // ── Camera / model pose from VIEWER_CAMERA (materials.js) ─────────────
         USE_ORTHO = VIEWER_CAMERA.useOrtho;
         camera.fov = VIEWER_CAMERA.fov;
@@ -1005,10 +640,9 @@ loader.load(
             VIEWER_CAMERA.target[2]
         );
         camera.lookAt(controls.target);
-        _orbitCamPos.copy(camera.position);
         if (USE_ORTHO) syncOrthoCamera();
 
-        HOME_CAM_POS.copy(_orbitCamPos);
+        HOME_CAM_POS.copy(camera.position);
         HOME_CTRL_TARGET.copy(controls.target);
         _homeSet      = true;
         _manualCamera = true;
@@ -1045,68 +679,10 @@ loader.load(
         // Ensure LED starts OFF; Swift drives state via setLedState after modelReady.
         _applyLedState(0, 0, 0, false, 1.0);
 
-        // ── Batch static geometry by material to collapse ~680 draw calls → ~7 ─
-        // Interactive meshes (button hit objects, LEDs) stay as individual objects
-        // so raycasting and per-mesh property changes (emissive, visibility) work.
-        // Everything else is merged into one Mesh per material+attribute-signature
-        // bucket. This cuts shadow, transmission background, and main passes alike.
-        {
-            const _interactive = new Set([...buttonHitObjects, ...ledMeshes]);
-            // Bucket key = material uuid + sorted attribute names (mergeGeometries
-            // requires identical attribute sets within each group).
-            const _buckets = new Map();
-            rootModel.updateWorldMatrix(true, true);
-            const _rootInv = new THREE.Matrix4().copy(rootModel.matrixWorld).invert();
-
-            rootModel.traverse((obj) => {
-                if (!obj.isMesh) return;
-                if (_interactive.has(obj)) return;
-                obj.updateWorldMatrix(true, false);
-                const localMatrix = new THREE.Matrix4().multiplyMatrices(_rootInv, obj.matrixWorld);
-                const attrSig = Object.keys(obj.geometry.attributes).sort().join(',');
-                const key = obj.material.uuid + '|' + attrSig;
-                if (!_buckets.has(key)) _buckets.set(key, { mat: obj.material, items: [] });
-                _buckets.get(key).items.push({ geo: obj.geometry, matrix: localMatrix });
-                obj.visible = false;
-                obj.castShadow = false;
-                obj.receiveShadow = false;
-            });
-
-            const batchGroup = new THREE.Group();
-            batchGroup.name = 'batchedStatic';
-            for (const { mat, items } of _buckets.values()) {
-                const clones = items.map(({ geo, matrix }) => {
-                    const g = geo.clone();
-                    g.applyMatrix4(matrix);
-                    return g;
-                });
-                const merged = mergeGeometries(clones, false);
-                clones.forEach(g => g.dispose());
-                if (!merged) {
-                    // Attribute mismatch despite signature grouping — restore originals.
-                    console.warn('[Pipit] mergeGeometries null for', mat.uuid);
-                    rootModel.traverse((obj) => {
-                        if (!obj.isMesh || _interactive.has(obj) || obj.material !== mat) return;
-                        obj.visible = true;
-                        obj.castShadow = true;
-                        obj.receiveShadow = true;
-                    });
-                    continue;
-                }
-                const mesh = new THREE.Mesh(merged, mat);
-                mesh.castShadow = true;
-                mesh.receiveShadow = true;
-                batchGroup.add(mesh);
-            }
-            rootModel.add(batchGroup);
-
-            // Interactive meshes still participate in shadows.
-            for (const obj of _interactive) {
-                obj.castShadow = true;
-                obj.receiveShadow = true;
-            }
-            console.log(`[Pipit] Batched static geometry: ${_buckets.size} merged meshes`);
-        }
+        // ── Enable shadows on all meshes ─────────────────────────────────────
+        rootModel.traverse((obj) => {
+            if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; }
+        });
         // Snap shadow-catcher floor to the exact bottom of the normalised model.
         const modelBox = new THREE.Box3().setFromObject(modelPivot);
         groundPlane.position.y = modelBox.min.y - 0.008;
@@ -1132,26 +708,7 @@ loader.load(
             buttonRestPos.copy(buttonObject.position);
         }
 
-        if (!RECOVERY_EMBED) {
-            _modelPivotRestPos.set(0, 0, 0);
-            modelPivot.updateMatrixWorld(true);
-            const introBox = new THREE.Box3().setFromObject(modelPivot);
-            const introSz = introBox.getSize(new THREE.Vector3());
-            _introSlideDistance = 1.2 * Math.max(introSz.x, introSz.y, introSz.z, 0.35);
-            renderer.domElement.style.opacity = '0';
-            _modelIntroActive = true;
-            _modelIntroLastTickTs = null;
-            _modelIntroT = 0;
-            _modelIntroEaseU = 0;
-        } else {
-            _modelIntroActive = false;
-            renderer.domElement.style.opacity = '';
-            _groundPostIntroFadeStartTs = null;
-            const gs = viewerSceneForColorScheme().sceneCfg.ground;
-            groundPlane.visible = gs.visible;
-            groundPlane.material.opacity = gs.opacity;
-        }
-
+        statusEl.style.display = 'none';
         console.log('[Pipit] Model loaded. LED meshes:', ledMeshes.length,
             '| Button:', buttonObject ? buttonObject.name : 'NOT FOUND');
 
@@ -1159,20 +716,12 @@ loader.load(
         if (window.webkit?.messageHandlers?.modelReady) {
             window.webkit.messageHandlers.modelReady.postMessage(null);
         }
-        postButtonHitRegionIfNeeded(true);
         requestRender();
-        requestAnimationFrame(() => requestRender());
     },
     undefined,
     (err) => {
-        statusEl.style.display = 'block';
-        statusEl.innerText = 'Model load error: ' + err.message;
-        const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        statusEl.style.color = dark ? '#fca5a5' : '#b45309';
-        if (backdropEl && !RECOVERY_EMBED && !_recoveryDemoChromeActive) {
-            syncBackdropBackground(viewerSceneForColorScheme().sceneCfg);
-            backdropEl.style.opacity = '1';
-        }
+        statusEl.innerText = 'Load error: ' + err.message;
+        statusEl.style.color = 'orange';
         console.error('[Pipit] GLB load error', err);
         requestRender();
     }
@@ -1337,9 +886,8 @@ window.playLedLock = () => _flashOnce(255, 0, 0, 300, 150, 300);
 /**
  * Play the Window / triple-click rainbow sweep — mirrors firmware led::rainbow_sweep().
  * Full HSV hue rotation over 1500 ms.
- * @param {function} [onDone] optional callback when the sweep finishes
  */
-window.playLedWindow = (onDone) => _rainbowSweep(1500, 200, onDone);
+window.playLedWindow = () => _rainbowSweep(1500, 200);
 
 /**
  * Start the provisioning pulsed-blue blink loop — mirrors firmware led::prov_pulse().
@@ -1376,129 +924,23 @@ window.stopLedAnim = () => {
     _applyLedState(0, 0, 0, false, 1.0);
 };
 
-// ─── Onboarding recovery sheet: transparent chrome + triple-press demo loop ──
-let _recoveryDemoGen = 0;
-let _recoveryDemoTimeoutIds = [];
-let _recoveryDemoStoredGroundVisible = null;
-
-function _recoveryClearTimeouts() {
-    for (const id of _recoveryDemoTimeoutIds) clearTimeout(id);
-    _recoveryDemoTimeoutIds = [];
-}
-
-function _recoverySchedule(fn, ms) {
-    const id = setTimeout(() => {
-        const idx = _recoveryDemoTimeoutIds.indexOf(id);
-        if (idx >= 0) _recoveryDemoTimeoutIds.splice(idx, 1);
-        fn();
-    }, ms);
-    _recoveryDemoTimeoutIds.push(id);
-}
-
-/** Recovery sheet only: longer than `playLedWindow` (1500 ms) — fades eat ~400 ms of that, so the sweep feels short. */
-function _recoveryDemoPlayLedWindow(onDone) {
-    _rainbowSweep(1750, 200, onDone);
-}
-
-/**
- * Recovery sheet: transparent page + hide ground so only the fob shows over the sheet.
- */
-window.setRecoveryDemoChrome = (enabled) => {
-    const on = !!enabled;
-    _recoveryDemoChromeActive = on;
-    if (on) {
-        _groundPostIntroFadeStartTs = null;
-        if (_recoveryDemoStoredGroundVisible === null) {
-            _recoveryDemoStoredGroundVisible = groundPlane.visible;
-        }
-        document.documentElement.style.background = 'transparent';
-        document.body.style.background = 'transparent';
-        groundPlane.visible = false;
-        statusEl.style.display = 'none';
-    } else {
-        const { sceneCfg } = viewerSceneForColorScheme();
-        applyViewerBodyBackground(sceneCfg.bodyBackground);
-        document.documentElement.style.background = '';
-        document.body.style.background = '';
-        if (_recoveryDemoStoredGroundVisible !== null) {
-            groundPlane.visible = _recoveryDemoStoredGroundVisible;
-        }
-        _recoveryDemoStoredGroundVisible = null;
-        statusEl.style.display = 'none';
-    }
-    requestRender();
-};
-
-function _recoveryDemoRunCycle(gen) {
-    if (gen !== _recoveryDemoGen) return;
-
-    const pressHoldMs = 90;
-    const interPressGapMs = 145;
-    const multiClickWindowMs = 420;
-    const pauseAfterRainbowMs = 1300;
-
-    function afterThirdRelease() {
-        if (gen !== _recoveryDemoGen) return;
-        _recoverySchedule(() => {
-            if (gen !== _recoveryDemoGen) return;
-            _recoveryDemoPlayLedWindow(() => {
-                if (gen !== _recoveryDemoGen) return;
-                _recoverySchedule(() => _recoveryDemoRunCycle(gen), pauseAfterRainbowMs);
-            });
-        }, multiClickWindowMs);
-    }
-
-    function doPress(index) {
-        if (gen !== _recoveryDemoGen) return;
-        window.setButtonDepth(1);
-        _recoverySchedule(() => {
-            if (gen !== _recoveryDemoGen) return;
-            window.setButtonDepth(0);
-            if (index < 2) {
-                _recoverySchedule(() => doPress(index + 1), interPressGapMs);
-            } else {
-                afterThirdRelease();
-            }
-        }, pressHoldMs);
-    }
-    doPress(0);
-}
-
-window.stopRecoveryTriplePressDemo = () => {
-    _recoveryDemoGen++;
-    _recoveryClearTimeouts();
-    window.stopLedAnim();
-    if (window.setButtonDepth) window.setButtonDepth(0);
-};
-
-window.startRecoveryTriplePressDemo = () => {
-    _recoveryDemoGen++;
-    _recoveryClearTimeouts();
-    window.stopLedAnim();
-    if (window.setButtonDepth) window.setButtonDepth(0);
-
-    if (!modelPivot) return;
-    _recoveryDemoRunCycle(_recoveryDemoGen);
-};
-
 /**
  * Physically depress the button geometry on the 3D model.
  * Maps to the ALPS SKQGABE010 (KEY1) tactile switch cap travel.
  * @param {number} depth  0.0 = resting / 1.0 = fully depressed (0.3 mm physical)
  */
 window.setButtonDepth = (depth) => {
-    const d = Math.max(0, Math.min(1, depth));
-    if (buttonObject) {
-        const travel = d * BUTTON_TRAVEL;
-        buttonObject.position.set(
-            buttonRestPos.x + buttonPressAxis.x * travel,
-            buttonRestPos.y + buttonPressAxis.y * travel,
-            buttonRestPos.z + buttonPressAxis.z * travel
-        );
-    }
-    _beginPressSquishToward(d);
+    if (!buttonObject) return;
+    const travel = Math.max(0, Math.min(1, depth)) * BUTTON_TRAVEL;
+    buttonObject.position.set(
+        buttonRestPos.x + buttonPressAxis.x * travel,
+        buttonRestPos.y + buttonPressAxis.y * travel,
+        buttonRestPos.z + buttonPressAxis.z * travel
+    );
     requestRender();
 };
+
+window.activateButton = () => triggerButtonActivation();
 
 /**
  * Apply position / scale / rotation to the model pivot.
@@ -1506,128 +948,61 @@ window.setButtonDepth = (depth) => {
  */
 window.setModelTransform = (px, py, pz, scale, rx, ry, rz) => {
     if (!modelPivot) return;
-    _modelBaseScale = scale;
-    _swiftModelPos.set(px, py, pz);
-    _swiftRotX = Number(rx) || 0;
-    _swiftRotY = Number(ry) || 0;
-    _swiftRotZ = Number(rz) || 0;
-    _applyModelPivotScale();
-    recalculateHorizontalPan();
-    requestRender();
-};
-
-/**
- * Depth-aware hit test for Swift overlay (same coords as buttonHitRegion: normalized [0,1], origin top-left).
- * True when the touch lies in the projected `Uguisu_PCB` rect (same as button hit region) and the
- * closest surface along the ray is not enclosure housing in front of the board (SMDs need not be listed).
- */
-window.fobInteractableAtNormalized = (nx, ny) => {
-    if (!rootModel) return false;
-    const u = Math.max(0, Math.min(1, Number(nx)));
-    const v = Math.max(0, Math.min(1, Number(ny)));
-    if (!normalizedPointInPcbHitRegion(u, v)) return false;
-    let uVp = u;
-    let vVp = v;
-    if (_vpLayout.useInset) {
-        const { fullW, fullH, offX, offY, vpW, vpH } = _vpLayout;
-        const px = u * fullW;
-        const py = v * fullH;
-        if (px < offX || px > offX + vpW || py < offY || py > offY + vpH) return false;
-        uVp = (px - offX) / Math.max(vpW, 1e-6);
-        vVp = (py - offY) / Math.max(vpH, 1e-6);
-    }
-    _surfaceNdc.x = uVp * 2 - 1;
-    _surfaceNdc.y = -(vVp * 2 - 1);
-    surfaceRaycaster.setFromCamera(_surfaceNdc, getActiveCamera());
-    const hits = surfaceRaycaster.intersectObject(rootModel, true);
-    if (hits.length === 0) return false;
-    if (isEnclosureBlockingSurfaceObject(hits[0].object)) return false;
-    return true;
-};
-
-/**
- * dTheta: horizontal rotation (radians); dPhi: vertical rotation (radians).
- * Uses pooled vectors — no allocations.
- */
-function _orbitCameraCore(dTheta, dPhi) {
-    const target = controls.target;
-    const offset = _orbitScratchOffset.subVectors(_orbitCamPos, target);
-    const radius = Math.max(0.001, offset.length());
-    let theta = Math.atan2(offset.x, offset.z);
-    let phi   = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
-    theta += dTheta;
-    phi    = Math.max(0.05, Math.min(Math.PI - 0.05, phi + dPhi));
-    _orbitCamPos.set(
-        target.x + radius * Math.sin(phi) * Math.sin(theta),
-        target.y + radius * Math.cos(phi),
-        target.z + radius * Math.sin(phi) * Math.cos(theta)
-    );
-}
-
-/**
- * factor > 1.0 = zoom in (decrease distance), < 1.0 = zoom out.
- * Chaining zoomCamera(f1) then zoomCamera(f2) matches one call with factor f1*f2.
- */
-function _zoomCameraCore(factor) {
-    const target = controls.target;
-    const toCam = _orbitScratchDir.subVectors(_orbitCamPos, target);
-    const dist = Math.max(0.001, toCam.length());
-    toCam.multiplyScalar(1 / dist);
-    const newDist = Math.max(0.6, Math.min(8.0, dist / factor));
-    _orbitCamPos.copy(target).addScaledVector(toCam, newDist);
-}
-
-/**
- * Batched camera update for native coalescing (one WK round-trip per display tick).
- * zoomFactorProduct is the product of per-event MagnificationGesture deltas since last flush.
- */
-window.flushCameraGestures = (dTheta, dPhi, zoomFactorProduct) => {
-    const t = Number(dTheta) || 0;
-    const p = Number(dPhi) || 0;
-    let z = Number(zoomFactorProduct);
-    if (!Number.isFinite(z) || z <= 0) z = 1;
-    if (t === 0 && p === 0 && z === 1) return;
-    _scheduleReturn();
-    if (t !== 0 || p !== 0) _orbitCameraCore(t, p);
-    if (z !== 1) _zoomCameraCore(z);
+    modelPivot.position.set(px, py, pz);
+    modelPivot.scale.setScalar(scale);
+    modelPivot.rotation.set(rx, ry, rz);
     requestRender();
 };
 
 /**
  * Orbit the camera around the target by azimuth and polar angle deltas.
+ * dTheta: horizontal rotation (radians); dPhi: vertical rotation (radians).
  * Called from Swift DragGesture with pixel deltas converted to radians.
  */
 window.orbitCamera = (dTheta, dPhi) => {
     _scheduleReturn();
-    _orbitCameraCore(dTheta, dPhi);
+    const target = controls.target;
+    const offset = camera.position.clone().sub(target);
+    const radius = Math.max(0.001, offset.length());
+    // Decompose current position into spherical angles.
+    let theta = Math.atan2(offset.x, offset.z);
+    let phi   = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
+    // Apply deltas; clamp phi away from poles to avoid gimbal flip.
+    theta += dTheta;
+    phi    = Math.max(0.05, Math.min(Math.PI - 0.05, phi + dPhi));
+    camera.position.set(
+        target.x + radius * Math.sin(phi) * Math.sin(theta),
+        target.y + radius * Math.cos(phi),
+        target.z + radius * Math.sin(phi) * Math.cos(theta)
+    );
+    camera.lookAt(target);
     requestRender();
 };
 
 /**
  * Dolly the camera toward/away from the target.
+ * factor > 1.0 = zoom in (decrease distance), < 1.0 = zoom out.
  * Called from Swift MagnificationGesture incremental deltas.
  */
 window.zoomCamera = (factor) => {
     _scheduleReturn();
-    _zoomCameraCore(factor);
+    camera.updateMatrixWorld();
+    const dist    = camera.position.distanceTo(controls.target);
+    const newDist = Math.max(0.3, Math.min(8.0, dist / factor));
+    const lookDir = new THREE.Vector3();
+    camera.getWorldDirection(lookDir);
+    camera.position.copy(controls.target).addScaledVector(lookDir, -newDist);
     requestRender();
 };
 
 // ─── Resize ───────────────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
-    configureViewerLayout();
-    if (modelPivot) recalculateHorizontalPan();
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    setRenderSize(window.innerWidth, window.innerHeight);
+    if (USE_ORTHO) syncOrthoCamera();
     requestRender();
 });
-
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') requestRender();
-});
-
-/** Enable/disable FPS overlay at runtime (Safari Web Inspector / tests). */
-window.showPipitFpsHud = (visible) => {
-    window.__pipitShowFpsHud = !!visible;
-};
 </script>
 </body>
 </html>

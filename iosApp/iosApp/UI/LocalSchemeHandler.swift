@@ -4,17 +4,24 @@ import Foundation
 class LocalSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
         guard let url = urlSchemeTask.request.url else { return }
-        
-        let fileName = url.lastPathComponent
-        let ext = (fileName as NSString).pathExtension
-        let name = (fileName as NSString).deletingPathExtension
-        
+
         let bundle = Bundle.main
-        guard let fileURL = bundle.url(forResource: name, withExtension: ext) else {
-            NSLog("LocalSchemeHandler Error: File not found in bundle! name: \(name), ext: \(ext)")
+        guard let resourceBaseURL = bundle.resourceURL else {
+            urlSchemeTask.didFailWithError(NSError(domain: "LocalSchemeHandler", code: 500, userInfo: nil))
+            return
+        }
+
+        // Resolve by full URL path so subdirectory assets (e.g. three-addons/controls/OrbitControls.js) work.
+        let relativePath = url.path.hasPrefix("/") ? String(url.path.dropFirst()) : url.path
+        let fileURL = resourceBaseURL.appendingPathComponent(relativePath)
+
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            NSLog("LocalSchemeHandler Error: File not found in bundle! path: \(relativePath)")
             urlSchemeTask.didFailWithError(NSError(domain: "LocalSchemeHandler", code: 404, userInfo: nil))
             return
         }
+
+        let ext = fileURL.pathExtension
         
         do {
             let data = try Data(contentsOf: fileURL)
