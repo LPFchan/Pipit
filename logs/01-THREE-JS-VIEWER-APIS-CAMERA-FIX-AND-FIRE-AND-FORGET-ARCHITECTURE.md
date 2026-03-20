@@ -101,11 +101,19 @@ The previous value of `0.012` corresponded to ~0.65 mm, visually too much for a 
 
 ---
 
+## 10. Whole-model press scale (ease-in-out), single `viewer.html` source
+
+**What:** When Swift drives `setButtonDepth`, the viewer now tweens **`modelPivot`** scale by up to **2%** (`PRESS_MODEL_SCALE_DELTA = 0.02`) over **115 ms** with **`ease-in-out` cubic** easing, so the radial CSS gradient on `body` does not scale (only the GLB pivot does). `setModelTransform` stores the Swift-supplied scale as **`_modelBaseScale`** and applies **`_modelBaseScale * (1 - delta * press)`** via `_applyModelPivotScale()`.
+
+**Where to edit:** `assets/viewer.html` only. `iosApp/iosApp/Resources/viewer.html` is a **symlink** to `../../../assets/viewer.html` (same for `materials.js` and `Uguisu.glb`). Do not copy over the symlink with a duplicate file.
+
+---
+
 ## Files changed this session
 
 | File | Change |
 |---|---|
-| `assets/viewer.html` | JS APIs, camera params, button travel axis/direction/magnitude, ortho guard |
+| `assets/viewer.html` | JS APIs, camera params, button travel axis/direction/magnitude, ortho guard, press-scale tween on `modelPivot` |
 | `iosApp/iosApp/UI/FobRealityViewWrapper.swift` | `modelReady` coordinator, removed `isUnlocked`, zeroed model rotation |
 | `iosApp/iosApp/UI/HomeView.swift` | Removed state tracking, fire-and-forget wiring |
 | `iosApp/iosApp/UI/FobRealityView.swift` | **Deleted** |

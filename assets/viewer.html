@@ -5,9 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <style>
     * { margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: radial-gradient(ellipse at 50% 38%, #1c1e28 0%, #09090c 100%); }
+    html, body { width: 100%; height: 100%; overflow: hidden; color-scheme: light dark; }
+    /* Match VIEWER_SCENE_PRESETS until JS runs */
+    html, body { background: radial-gradient(ellipse at 50% 38%, #ffffff 0%, #b5b5b5 100%); }
+    @media (prefers-color-scheme: dark) {
+      html, body { background: radial-gradient(ellipse at 50% 38%, #1c1e28 0%, #09090c 100%); }
+    }
     canvas { display: block; }
-    #status { position: absolute; top: 80px; left: 10px; color: white; z-index: 999; font-size: 11px; pointer-events: none; }
+    #status { position: absolute; top: 80px; left: 10px; color: #111827; z-index: 999; font-size: 11px; pointer-events: none; }
+    @media (prefers-color-scheme: dark) {
+      #status { color: white; }
+    }
   </style>
 
   <script>
@@ -23,8 +31,8 @@
   <script type="importmap">
   {
     "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js",
-            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.171.0/examples/jsm/"
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
     }
   }
   </script>
@@ -37,47 +45,34 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import * as ViewerMaterials from './materials.js';
-
-const {
+import {
     MATERIAL_RULES,
     LED_MAX_INTENSITY,
     VIEWER_CAMERA,
-    VIEWER_SCENE,
+    VIEWER_SCENE_PRESETS,
     applyViewerBodyBackground,
     applyViewerSceneRuntime,
-} = ViewerMaterials;
+} from './materials.js';
 
-const VIEWER_SCENE_PRESETS = ViewerMaterials.VIEWER_SCENE_PRESETS ?? null;
-const DEFAULT_VIEWER_POST = {
-    bloomEnabled: false,
-    bloomStrength: 0.35,
-    bloomRadius: 0.25,
-    bloomThreshold: 0.72,
-    ssaoEnabled: false,
-    ssaoKernel: 16,
-    ssaoMin: 0.005,
-    ssaoMax: 0.18,
-    vignetteEnabled: false,
-    vignetteOffset: 1.0,
-    vignetteDarkness: 1.25,
-    gradeEnabled: false,
-    gradeSaturation: 1.0,
-    gradeContrast: 1.0,
-    gradeBrightness: 0.0,
-};
+/** @returns {{ presetKey: 'light' | 'dark', sceneCfg: object }} */
+function viewerSceneForColorScheme() {
+    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const presetKey = dark ? 'dark' : 'light';
+    return { presetKey, sceneCfg: VIEWER_SCENE_PRESETS[presetKey] };
+}
 
 const statusEl = document.getElementById('status');
 statusEl.innerText = 'Initializing...';
 
+const initialAppearance = viewerSceneForColorScheme();
+applyViewerBodyBackground(initialAppearance.sceneCfg.bodyBackground);
+statusEl.style.color = initialAppearance.presetKey === 'dark' ? 'white' : '#111827';
+document.documentElement.dataset.viewerTheme = initialAppearance.presetKey;
+
 // ─── Renderer ────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // ─── Scene / Camera ──────────────────────────────────────────────────────────
@@ -85,34 +80,11 @@ const scene = new THREE.Scene();
 
 // ─── Environment (IBL) ───────────────────────────────────────────────────────
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
-let envTarget = null;
-let envTexture = null;
-
-const colorSchemeQuery = window.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
-let activeScenePresetKey = null;
-let activeSceneConfig = VIEWER_SCENE;
-
-function getSystemScenePresetKey() {
-    return colorSchemeQuery?.matches ? 'dark' : 'light';
-}
-
-function resolveSystemSceneConfig() {
-    const presetKey = getSystemScenePresetKey();
-    const presetCfg = VIEWER_SCENE_PRESETS?.[presetKey];
-    return {
-        presetKey,
-        sceneCfg: presetCfg && typeof presetCfg === 'object' ? presetCfg : VIEWER_SCENE,
-    };
-}
-
-function rebuildEnvTexture(sceneCfg) {
-    if (envTarget) envTarget.dispose();
-    const roomEnv = new RoomEnvironment();
-    const envBlur = sceneCfg?.env?.roomEnvBlur ?? 0.04;
-    envTarget = pmremGenerator.fromScene(roomEnv, envBlur);
-    roomEnv.dispose();
-    envTexture = envTarget.texture;
-}
+const roomEnv = new RoomEnvironment();
+const envBlur = initialAppearance.sceneCfg.env.roomEnvBlur ?? 0.04;
+const envTexture = pmremGenerator.fromScene(roomEnv, envBlur).texture;
+roomEnv.dispose();
+pmremGenerator.dispose();
 
 const camera = new THREE.PerspectiveCamera(
     VIEWER_CAMERA.fov,
@@ -125,115 +97,6 @@ camera.position.set(VIEWER_CAMERA.position[0], VIEWER_CAMERA.position[1], VIEWER
 // Orthographic camera — mirrors perspective camera; toggled by USE_ORTHO.
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, VIEWER_CAMERA.near, VIEWER_CAMERA.far);
 let USE_ORTHO = VIEWER_CAMERA.useOrtho;
-let composer = null;
-let renderPass = null;
-let bloomPass = null;
-let ssaoPass = null;
-let postGradePass = null;
-
-const PostGradeVignetteShader = {
-    uniforms: {
-        tDiffuse:         { value: null },
-        gradeEnabled:     { value: 0 },
-        saturation:       { value: 1.0 },
-        contrast:         { value: 1.0 },
-        brightness:       { value: 0.0 },
-        vignetteEnabled:  { value: 0 },
-        vignetteOffset:   { value: 1.0 },
-        vignetteDarkness: { value: 1.25 },
-    },
-    vertexShader: `
-        varying vec2 vUv;
-        void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `,
-    fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform int gradeEnabled;
-        uniform float saturation;
-        uniform float contrast;
-        uniform float brightness;
-        uniform int vignetteEnabled;
-        uniform float vignetteOffset;
-        uniform float vignetteDarkness;
-        varying vec2 vUv;
-        void main() {
-            vec4 c = texture2D(tDiffuse, vUv);
-            if (gradeEnabled == 1) {
-                float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-                c.rgb = mix(vec3(l), c.rgb, saturation);
-                c.rgb = (c.rgb - 0.5) * contrast + 0.5;
-                c.rgb += vec3(brightness);
-            }
-            if (vignetteEnabled == 1) {
-                vec2 uv = (vUv - vec2(0.5)) * vec2(vignetteOffset);
-                float vig = clamp(1.0 - dot(uv, uv) * vignetteDarkness, 0.0, 1.0);
-                c.rgb *= vig;
-            }
-            gl_FragColor = c;
-        }
-    `,
-};
-
-function setRenderSize(width, height) {
-    renderer.setSize(width, height);
-    if (composer) composer.setSize(width, height);
-    if (bloomPass?.setSize) bloomPass.setSize(width, height);
-    if (ssaoPass?.setSize) ssaoPass.setSize(width, height);
-}
-
-function shouldUseComposer() {
-    return !!(bloomPass?.enabled || ssaoPass?.enabled || postGradePass?.enabled);
-}
-
-function getScenePostConfig(sceneCfg) {
-    return { ...DEFAULT_VIEWER_POST, ...(sceneCfg?.post ?? {}) };
-}
-
-function applyScenePostFx(sceneCfg) {
-    const p = getScenePostConfig(sceneCfg);
-    bloomPass.enabled = !!p.bloomEnabled;
-    bloomPass.strength = p.bloomStrength;
-    bloomPass.radius = p.bloomRadius;
-    bloomPass.threshold = p.bloomThreshold;
-
-    ssaoPass.enabled = !!p.ssaoEnabled;
-    ssaoPass.kernelRadius = p.ssaoKernel;
-    ssaoPass.minDistance = p.ssaoMin;
-    ssaoPass.maxDistance = p.ssaoMax;
-
-    postGradePass.enabled = !!(p.vignetteEnabled || p.gradeEnabled);
-    postGradePass.uniforms.gradeEnabled.value = p.gradeEnabled ? 1 : 0;
-    postGradePass.uniforms.saturation.value = p.gradeSaturation;
-    postGradePass.uniforms.contrast.value = p.gradeContrast;
-    postGradePass.uniforms.brightness.value = p.gradeBrightness;
-    postGradePass.uniforms.vignetteEnabled.value = p.vignetteEnabled ? 1 : 0;
-    postGradePass.uniforms.vignetteOffset.value = p.vignetteOffset;
-    postGradePass.uniforms.vignetteDarkness.value = p.vignetteDarkness;
-}
-
-composer = new EffectComposer(renderer);
-renderPass = new RenderPass(scene, camera);
-composer.addPass(renderPass);
-
-bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.25, 0.72);
-bloomPass.enabled = false;
-composer.addPass(bloomPass);
-
-ssaoPass = new SSAOPass(scene, camera, 1, 1);
-ssaoPass.enabled = false;
-ssaoPass.kernelRadius = 16;
-ssaoPass.minDistance = 0.005;
-ssaoPass.maxDistance = 0.18;
-composer.addPass(ssaoPass);
-
-postGradePass = new ShaderPass(PostGradeVignetteShader);
-postGradePass.enabled = false;
-composer.addPass(postGradePass);
-
-setRenderSize(window.innerWidth, window.innerHeight);
 
 function syncOrthoCamera() {
     const dist = Math.max(0.001, camera.position.distanceTo(controls.target));
@@ -273,12 +136,15 @@ let _returning     = false;
 let _returnFrom    = { pos: null, target: null };
 let _returnStartTs = null;
 let _returnTimerId = null;
-let _renderQueued  = false;
 
 const RETURN_DELAY_MS = 1000;  // ms of inactivity before returning to home
 const RETURN_ANIM_MS  = 700;   // duration of the ease-out return animation
 
 function _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+function _easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
 
 // Cancels any in-progress or scheduled return so pan/zoom resume cleanly.
 function _interruptReturn() {
@@ -297,79 +163,10 @@ function _scheduleReturn() {
         _returning  = true;
         _returnFrom = { pos: camera.position.clone(), target: controls.target.clone() };
         _returnStartTs = null;
-        requestRender();
     }, RETURN_DELAY_MS);
 }
 
-const _preUpdateCameraPos = new THREE.Vector3();
-const _preUpdateTarget = new THREE.Vector3();
-const _preUpdateCameraQuat = new THREE.Quaternion();
-
-function renderFrame() {
-    _renderQueued = false;
-    let keepRendering = false;
-
-    if (cube.parent) {
-        cube.rotation.x += 0.01;
-        cube.rotation.y += 0.01;
-        keepRendering = true;
-    }
-
-    if (_manualCamera) {
-        if (_returning && _returnFrom.pos) {
-            const now = performance.now();
-            if (_returnStartTs === null) _returnStartTs = now;
-            const rawT = Math.min((now - _returnStartTs) / RETURN_ANIM_MS, 1.0);
-            const t = _easeOutCubic(rawT);
-            camera.position.lerpVectors(_returnFrom.pos, HOME_CAM_POS, t);
-            controls.target.lerpVectors(_returnFrom.target, HOME_CTRL_TARGET, t);
-            camera.lookAt(controls.target);
-            if (rawT >= 1.0) {
-                camera.position.copy(HOME_CAM_POS);
-                controls.target.copy(HOME_CTRL_TARGET);
-                camera.lookAt(controls.target);
-                _returning = false;
-            } else {
-                keepRendering = true;
-            }
-        }
-    } else {
-        _preUpdateCameraPos.copy(camera.position);
-        _preUpdateTarget.copy(controls.target);
-        _preUpdateCameraQuat.copy(camera.quaternion);
-
-        controls.update();
-
-        const controlsChanged =
-            _preUpdateCameraPos.distanceToSquared(camera.position) > 1e-12 ||
-            _preUpdateTarget.distanceToSquared(controls.target) > 1e-12 ||
-            (1 - Math.abs(_preUpdateCameraQuat.dot(camera.quaternion))) > 1e-12;
-
-        if (controlsChanged) keepRendering = true;
-    }
-
-    if (USE_ORTHO) syncOrthoCamera();
-    const activeCamera = USE_ORTHO ? orthoCamera : camera;
-    if (shouldUseComposer()) {
-        renderPass.camera = activeCamera;
-        ssaoPass.camera = activeCamera;
-        composer.render();
-    } else {
-        renderer.render(scene, activeCamera);
-    }
-
-    postButtonHitRegionIfNeeded();
-
-    if (keepRendering) requestRender();
-}
-
-function requestRender() {
-    if (_renderQueued) return;
-    _renderQueued = true;
-    requestAnimationFrame(renderFrame);
-}
-
-// ─── Lights + renderer + IBL from VIEWER_SCENE (assets/materials.js) ─────────
+// ─── Lights + renderer + IBL from materials.js (preset follows system appearance) ─
 const keyLight = new THREE.DirectionalLight(0xffffff, 1);
 keyLight.castShadow = true;
 scene.add(keyLight);
@@ -385,43 +182,35 @@ const groundPlane = new THREE.Mesh(
     new THREE.ShadowMaterial({ opacity: 0.5, transparent: true })
 );
 groundPlane.rotation.x = -Math.PI / 2;
-groundPlane.position.y = VIEWER_SCENE.ground.yPlaceholder;
+groundPlane.position.y = initialAppearance.sceneCfg.ground.yPlaceholder;
 groundPlane.receiveShadow = true;
 scene.add(groundPlane);
 
-function applySceneConfig(sceneCfg, presetKey) {
-    rebuildEnvTexture(sceneCfg);
-    activeScenePresetKey = presetKey;
-    activeSceneConfig = sceneCfg;
+const viewerRuntimeCtx = {
+    renderer,
+    scene,
+    envTexture,
+    keyLight,
+    fillLight,
+    rimLight,
+    ambientLight,
+    groundPlane,
+};
+
+applyViewerSceneRuntime(THREE, viewerRuntimeCtx, initialAppearance.sceneCfg);
+
+const colorSchemeMql = window.matchMedia('(prefers-color-scheme: dark)');
+function syncViewerToSystemColorScheme() {
+    const { presetKey, sceneCfg } = viewerSceneForColorScheme();
     applyViewerBodyBackground(sceneCfg.bodyBackground);
+    applyViewerSceneRuntime(THREE, viewerRuntimeCtx, sceneCfg);
     statusEl.style.color = presetKey === 'dark' ? 'white' : '#111827';
-    applyScenePostFx(sceneCfg);
-    applyViewerSceneRuntime(THREE, {
-        renderer,
-        scene,
-        envTexture,
-        keyLight,
-        fillLight,
-        rimLight,
-        ambientLight,
-        groundPlane,
-    }, sceneCfg);
     document.documentElement.dataset.viewerTheme = presetKey;
-    requestRender();
 }
-
-function syncSceneToSystemColorScheme({ force = false } = {}) {
-    const { presetKey, sceneCfg } = resolveSystemSceneConfig();
-    if (!force && activeScenePresetKey === presetKey && activeSceneConfig === sceneCfg) return;
-    applySceneConfig(sceneCfg, presetKey);
-}
-
-syncSceneToSystemColorScheme({ force: true });
-
-if (colorSchemeQuery?.addEventListener) {
-    colorSchemeQuery.addEventListener('change', () => syncSceneToSystemColorScheme());
-} else if (colorSchemeQuery?.addListener) {
-    colorSchemeQuery.addListener(() => syncSceneToSystemColorScheme());
+if (typeof colorSchemeMql.addEventListener === 'function') {
+    colorSchemeMql.addEventListener('change', syncViewerToSystemColorScheme);
+} else if (typeof colorSchemeMql.addListener === 'function') {
+    colorSchemeMql.addListener(syncViewerToSystemColorScheme);
 }
 
 // ─── Placeholder cube (removed once GLB loads) ───────────────────────────────
@@ -430,7 +219,6 @@ const cubeMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 const cube    = new THREE.Mesh(cubeGeo, cubeMat);
 scene.add(cube);
 statusEl.innerText = 'WebGL ready, loading model...';
-requestRender();
 
 // ─── API state ────────────────────────────────────────────────────────────────
 let modelPivot      = null;   // Wrapper Group — setModelTransform acts on this
@@ -438,16 +226,6 @@ let rootModel       = null;   // The raw GLTF scene (centred + scaled inside mod
 let ledMeshes       = [];     // Mesh objects whose material carries an emissive component
 let buttonObject    = null;   // Object3D for the physical button cap (KEY1)
 let buttonRestPos   = new THREE.Vector3();
-const raycaster     = new THREE.Raycaster();
-const pointerNdc    = new THREE.Vector2();
-const BUTTON_TRIGGER_PART_NAMES = new Set(['Uguisu_PCB']);
-const BUTTON_CLICK_MOVE_TOLERANCE_PX = 8;
-const BUTTON_CLICK_HOLD_MS = 110;
-const BUTTON_HIT_REGION_PADDING_PX = 12;
-const buttonHitObjects = [];
-let buttonPressReleaseTimerId = null;
-let pointerDownEvent = null;
-let lastPostedButtonHitRegionKey = '';
 // Button travel axis in rootModel local space.
 // KiCAD +Z points up (out of PCB surface toward user); pressing the cap moves in +Z.
 // After the 180° Z-rotation applied to rootModel, +Z local still maps to +Z world
@@ -460,124 +238,46 @@ let buttonPressAxis = new THREE.Vector3(0, 0, 1);
 //   0.3 mm physical travel → 0.3 / 54.4 = 0.005515 normalised units.
 const BUTTON_TRAVEL = 0.005515;
 
-function getMatchName(obj) {
-    if (!obj) return '';
-    const isParentRoot = !obj.parent || obj.parent === rootModel;
-    return (!isParentRoot && obj.parent?.name) ? obj.parent.name : obj.name;
+// Whole GLB pivot scales down slightly while “pressed”; radial page gradient is unaffected.
+const PRESS_MODEL_SCALE_DELTA = 0.02;
+const PRESS_MODEL_SCALE_MS = 115;
+let _modelBaseScale = 1.0;
+let _pressSquishFrom = 0;
+let _pressSquishTo = 0;
+let _pressSquishCurrent = 0;
+let _pressSquishStartTs = null;
+
+function _applyModelPivotScale() {
+    if (!modelPivot) return;
+    const mul = 1 - PRESS_MODEL_SCALE_DELTA * _pressSquishCurrent;
+    modelPivot.scale.setScalar(_modelBaseScale * mul);
 }
 
-function getActiveCamera() {
-    return USE_ORTHO ? orthoCamera : camera;
+function _beginPressSquishToward(targetDepth) {
+    if (!modelPivot) return;
+    const d = Math.max(0, Math.min(1, Number(targetDepth)));
+    if (_pressSquishStartTs === null && Math.abs(_pressSquishCurrent - d) < 1e-6) return;
+    _pressSquishFrom = _pressSquishCurrent;
+    _pressSquishTo = d;
+    _pressSquishStartTs = performance.now();
 }
 
-function computeButtonHitRegion() {
-    const targetObjects = buttonHitObjects.length > 0
-        ? buttonHitObjects
-        : (buttonObject ? [buttonObject] : []);
-    if (targetObjects.length === 0) return null;
-
-    const box = new THREE.Box3().makeEmpty();
-    for (const obj of targetObjects) box.expandByObject(obj);
-    if (box.isEmpty()) return null;
-
-    const activeCamera = getActiveCamera();
-    const { min, max } = box;
-    const corners = [
-        new THREE.Vector3(min.x, min.y, min.z),
-        new THREE.Vector3(min.x, min.y, max.z),
-        new THREE.Vector3(min.x, max.y, min.z),
-        new THREE.Vector3(min.x, max.y, max.z),
-        new THREE.Vector3(max.x, min.y, min.z),
-        new THREE.Vector3(max.x, min.y, max.z),
-        new THREE.Vector3(max.x, max.y, min.z),
-        new THREE.Vector3(max.x, max.y, max.z),
-    ];
-
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const corner of corners) {
-        const projected = corner.project(activeCamera);
-        if (![projected.x, projected.y, projected.z].every(Number.isFinite)) continue;
-        minX = Math.min(minX, projected.x);
-        maxX = Math.max(maxX, projected.x);
-        minY = Math.min(minY, projected.y);
-        maxY = Math.max(maxY, projected.y);
+/** @returns {boolean} true if another frame is needed */
+function _tickPressSquishAnimation() {
+    if (_pressSquishStartTs === null || !modelPivot) return false;
+    const elapsed = performance.now() - _pressSquishStartTs;
+    const rawT = Math.min(elapsed / PRESS_MODEL_SCALE_MS, 1.0);
+    const t = _easeInOutCubic(rawT);
+    _pressSquishCurrent = _pressSquishFrom + (_pressSquishTo - _pressSquishFrom) * t;
+    _applyModelPivotScale();
+    if (rawT >= 1.0) {
+        _pressSquishCurrent = _pressSquishTo;
+        _applyModelPivotScale();
+        _pressSquishStartTs = null;
+        return false;
     }
-
-    if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
-
-    const rect = renderer.domElement.getBoundingClientRect();
-    const padX = BUTTON_HIT_REGION_PADDING_PX / Math.max(rect.width, 1);
-    const padY = BUTTON_HIT_REGION_PADDING_PX / Math.max(rect.height, 1);
-    const x = THREE.MathUtils.clamp((minX + 1) * 0.5 - padX, 0, 1);
-    const right = THREE.MathUtils.clamp((maxX + 1) * 0.5 + padX, 0, 1);
-    const y = THREE.MathUtils.clamp((1 - maxY) * 0.5 - padY, 0, 1);
-    const bottom = THREE.MathUtils.clamp((1 - minY) * 0.5 + padY, 0, 1);
-
-    return {
-        x,
-        y,
-        width: Math.max(0, right - x),
-        height: Math.max(0, bottom - y),
-    };
+    return true;
 }
-
-function postButtonHitRegionIfNeeded(force = false) {
-    const handler = window.webkit?.messageHandlers?.buttonHitRegion;
-    if (!handler) return;
-    const region = computeButtonHitRegion();
-    const key = region
-        ? [region.x, region.y, region.width, region.height].map((v) => v.toFixed(4)).join(',')
-        : 'null';
-    if (!force && key === lastPostedButtonHitRegionKey) return;
-    lastPostedButtonHitRegionKey = key;
-    handler.postMessage(region);
-}
-
-function triggerButtonActivation({ holdMs = BUTTON_CLICK_HOLD_MS } = {}) {
-    if (!buttonObject) return;
-    if (buttonPressReleaseTimerId !== null) {
-        clearTimeout(buttonPressReleaseTimerId);
-        buttonPressReleaseTimerId = null;
-    }
-    window.setButtonDepth(1);
-    buttonPressReleaseTimerId = window.setTimeout(() => {
-        buttonPressReleaseTimerId = null;
-        window.setButtonDepth(0);
-    }, holdMs);
-}
-
-function updatePointerNdc(clientX, clientY) {
-    const rect = renderer.domElement.getBoundingClientRect();
-    pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-    pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-}
-
-function handlePointerActivate(event) {
-    if (!rootModel || !buttonObject || !pointerDownEvent) return;
-    const dx = event.clientX - pointerDownEvent.x;
-    const dy = event.clientY - pointerDownEvent.y;
-    pointerDownEvent = null;
-    if ((dx * dx + dy * dy) > (BUTTON_CLICK_MOVE_TOLERANCE_PX * BUTTON_CLICK_MOVE_TOLERANCE_PX)) return;
-
-    updatePointerNdc(event.clientX, event.clientY);
-    raycaster.setFromCamera(pointerNdc, getActiveCamera());
-    const hit = raycaster.intersectObject(rootModel, true)
-        .find(({ object }) => BUTTON_TRIGGER_PART_NAMES.has(getMatchName(object)));
-    if (hit) triggerButtonActivation();
-}
-
-renderer.domElement.addEventListener('pointerdown', (event) => {
-    pointerDownEvent = { x: event.clientX, y: event.clientY };
-});
-
-renderer.domElement.addEventListener('pointerup', handlePointerActivate);
-renderer.domElement.addEventListener('pointercancel', () => {
-    pointerDownEvent = null;
-});
-
 
 // ─── GLB loader ──────────────────────────────────────────────────────────────
 const loader = new GLTFLoader();
@@ -595,19 +295,6 @@ loader.load(
         const maxDim = Math.max(size.x, size.y, size.z) || 1;
         rootModel.scale.setScalar(1.0 / maxDim);
         rootModel.position.sub(center.multiplyScalar(1.0 / maxDim));
-
-        const exportedModelPosition = Array.isArray(VIEWER_CAMERA.modelPosition)
-            && VIEWER_CAMERA.modelPosition.length === 3
-            && VIEWER_CAMERA.modelPosition.every(Number.isFinite)
-            ? VIEWER_CAMERA.modelPosition
-            : null;
-        if (exportedModelPosition) {
-            rootModel.position.set(
-                exportedModelPosition[0],
-                exportedModelPosition[1],
-                exportedModelPosition[2]
-            );
-        }
 
         // Wrap in pivot so setModelTransform can freely reposition / rotate the model
         // without overwriting the centring offset stored in rootModel.position.
@@ -653,23 +340,19 @@ loader.load(
             // Material mapper groups by parent Group name (Onshape/KiCAD Layout A) or by the
             // mesh's own name (Layout B / flat).  Mirror that same name-selection here so the
             // MATERIAL_RULES keys always resolve to the right mesh.
-            const nameToMatch = getMatchName(obj);
+            const isParentRoot = !obj.parent || obj.parent === rootModel;
+            const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
             const rule = MATERIAL_RULES.find(r =>
                 typeof r.match === 'string' ? nameToMatch === r.match : r.match.test(nameToMatch));
             if (rule) { obj.material = rule.mat; obj.material.needsUpdate = true; }
-        });
-
-        buttonHitObjects.length = 0;
-        rootModel.traverse((obj) => {
-            if (!obj.isMesh) return;
-            if (BUTTON_TRIGGER_PART_NAMES.has(getMatchName(obj))) buttonHitObjects.push(obj);
         });
 
         // ── Find LED meshes (by name, after material application) ─────────────
         const LED_NAMES = new Set(['LED', 'LED_1', 'LED_2', 'LED_3', 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08_1']);
         rootModel.traverse((obj) => {
             if (!obj.isMesh) return;
-            const nameToMatch = getMatchName(obj);
+            const isParentRoot = !obj.parent || obj.parent === rootModel;
+            const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
             if (LED_NAMES.has(nameToMatch)) {
                 ledMeshes.push(obj);
                 console.log('[Pipit] LED mesh:', nameToMatch);
@@ -716,14 +399,12 @@ loader.load(
         if (window.webkit?.messageHandlers?.modelReady) {
             window.webkit.messageHandlers.modelReady.postMessage(null);
         }
-        requestRender();
     },
     undefined,
     (err) => {
         statusEl.innerText = 'Load error: ' + err.message;
         statusEl.style.color = 'orange';
         console.error('[Pipit] GLB load error', err);
-        requestRender();
     }
 );
 
@@ -741,7 +422,6 @@ function _applyLedState(r, g, b, active, brightness) {
             mat.needsUpdate = true;
         }
     }
-    requestRender();
 }
 
 // ─── LED animation engine (mirrors firmware led_effects.h) ─────────────────────
@@ -930,17 +610,17 @@ window.stopLedAnim = () => {
  * @param {number} depth  0.0 = resting / 1.0 = fully depressed (0.3 mm physical)
  */
 window.setButtonDepth = (depth) => {
-    if (!buttonObject) return;
-    const travel = Math.max(0, Math.min(1, depth)) * BUTTON_TRAVEL;
-    buttonObject.position.set(
-        buttonRestPos.x + buttonPressAxis.x * travel,
-        buttonRestPos.y + buttonPressAxis.y * travel,
-        buttonRestPos.z + buttonPressAxis.z * travel
-    );
-    requestRender();
+    const d = Math.max(0, Math.min(1, depth));
+    if (buttonObject) {
+        const travel = d * BUTTON_TRAVEL;
+        buttonObject.position.set(
+            buttonRestPos.x + buttonPressAxis.x * travel,
+            buttonRestPos.y + buttonPressAxis.y * travel,
+            buttonRestPos.z + buttonPressAxis.z * travel
+        );
+    }
+    _beginPressSquishToward(d);
 };
-
-window.activateButton = () => triggerButtonActivation();
 
 /**
  * Apply position / scale / rotation to the model pivot.
@@ -948,10 +628,10 @@ window.activateButton = () => triggerButtonActivation();
  */
 window.setModelTransform = (px, py, pz, scale, rx, ry, rz) => {
     if (!modelPivot) return;
+    _modelBaseScale = scale;
     modelPivot.position.set(px, py, pz);
-    modelPivot.scale.setScalar(scale);
     modelPivot.rotation.set(rx, ry, rz);
-    requestRender();
+    _applyModelPivotScale();
 };
 
 /**
@@ -976,7 +656,6 @@ window.orbitCamera = (dTheta, dPhi) => {
         target.z + radius * Math.sin(phi) * Math.cos(theta)
     );
     camera.lookAt(target);
-    requestRender();
 };
 
 /**
@@ -992,16 +671,45 @@ window.zoomCamera = (factor) => {
     const lookDir = new THREE.Vector3();
     camera.getWorldDirection(lookDir);
     camera.position.copy(controls.target).addScaledVector(lookDir, -newDist);
-    requestRender();
 };
 
 // ─── Resize ───────────────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
-    setRenderSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(window.innerWidth, window.innerHeight);
     if (USE_ORTHO) syncOrthoCamera();
-    requestRender();
+});
+
+// ─── Render loop ──────────────────────────────────────────────────────────────
+renderer.setAnimationLoop(() => {
+    if (cube.parent) {
+        cube.rotation.x += 0.01;
+        cube.rotation.y += 0.01;
+    }
+    _tickPressSquishAnimation();
+    if (_manualCamera) {
+        // Eased return-to-home animation.
+        if (_returning && _returnFrom.pos) {
+            const now = performance.now();
+            if (_returnStartTs === null) _returnStartTs = now;
+            const rawT = Math.min((now - _returnStartTs) / RETURN_ANIM_MS, 1.0);
+            const t    = _easeOutCubic(rawT);
+            camera.position.lerpVectors(_returnFrom.pos,    HOME_CAM_POS,     t);
+            controls.target.lerpVectors(_returnFrom.target, HOME_CTRL_TARGET, t);
+            camera.lookAt(controls.target);
+            if (rawT >= 1.0) {
+                camera.position.copy(HOME_CAM_POS);
+                controls.target.copy(HOME_CTRL_TARGET);
+                camera.lookAt(controls.target);
+                _returning = false;
+            }
+        }
+    } else {
+        controls.update();
+    }
+    if (USE_ORTHO) syncOrthoCamera();
+    renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
 });
 </script>
 </body>
