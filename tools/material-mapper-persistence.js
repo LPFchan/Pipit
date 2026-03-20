@@ -26,6 +26,7 @@ window.MaterialMapperPersistenceModule = function ({
     MAT_OBJ,
     loadedFileName,
     loadedModel,
+    isOrtho,
     camera,
     controls,
     sceneState,
@@ -77,6 +78,7 @@ window.MaterialMapperPersistenceModule = function ({
         const currentFileName = resolve(loadedFileName);
         const currentMatProps = resolve(matProps);
         const currentLoadedModel = resolve(loadedModel);
+        const currentIsOrtho = resolve(isOrtho);
         const currentSceneState = resolve(sceneState);
 
         if (!currentFileName || partMap.size === 0 || !currentMatProps) return;
@@ -94,7 +96,7 @@ window.MaterialMapperPersistenceModule = function ({
                 position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
                 target:   { x: controls.target.x,  y: controls.target.y,  z: controls.target.z  },
                 fov:      camera.fov,
-                isOrtho:  false, // to be set by caller if needed
+                isOrtho:  !!currentIsOrtho,
             },
             modelRotation: currentLoadedModel ? {
                 x: THREE.MathUtils.radToDeg(currentLoadedModel.rotation.x),

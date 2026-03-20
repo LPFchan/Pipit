@@ -146,21 +146,11 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         const hits = raycaster.intersectObjects(pickable, false);
         if (!hits.length) {
             // Click on empty space → deselect all
-            selectedParts.clear();
-            primarySelected = null;
-            document.querySelectorAll('.part-row').forEach(r => r.classList.remove('selected'));
-            clearOutlines();
-            buildEditor(null);
+            clearSelection();
             return;
         }
 
-        const hit = hits[0].object;
-        for (const [displayName, entry] of partMap) {
-            if (entry.meshes.includes(hit)) {
-                selectPart(displayName, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
-                break;
-            }
-        }
+        selectMesh(hits[0].object, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
     });
 
     // iPhone 16 Pro logical resolution: 393 × 852 pt
@@ -347,37 +337,6 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         return lines.join('\n');
     }
 
-    function generateApplyLoop() {
-        return [
-            `rootModel.traverse((obj) => {`,
-            `    if (!obj.isMesh) return;`,
-            `    // Layout A (named parent group) or Layout B (flat mesh) — mirror mapper's name selection.`,
-            `    const isParentRoot = !obj.parent || obj.parent === rootModel;`,
-            `    const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;`,
-            `    const rule = MATERIAL_RULES.find(r =>`,
-            `        typeof r.match === 'string' ? nameToMatch === r.match : r.match.test(nameToMatch));`,
-            `    if (rule) { obj.material = rule.mat; obj.material.needsUpdate = true; }`,
-            `});`,
-        ].join('\n');
-    }
-
-    function generateLedDetection() {
-        const ledNames = [];
-        for (const [displayName, entry] of partMap) {
-            if (entry.assignedKey === 'ledMat') ledNames.push(entry.origName ?? displayName);
-        }
-        const setLiteral = ledNames.map(n => `'${n.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(', ');
-        return [
-            `const LED_NAMES = new Set([${setLiteral}]);`,
-            `rootModel.traverse((obj) => {`,
-            `    if (!obj.isMesh) return;`,
-            `    const isParentRoot = !obj.parent || obj.parent === rootModel;`,
-            `    const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;`,
-            `    if (LED_NAMES.has(nameToMatch)) ledMeshes.push(obj);`,
-            `});`,
-        ].join('\n');
-    }
-
     function applyModelRotationDeg(x, y, z, persist = true) {
         if (!cameraModule) return;
         cameraModule.applyModelRotationDeg(x, y, z, persist);
@@ -400,13 +359,14 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     let partMap         = new Map();   // displayName → { mesh, origMat, origName, assignedKey, visible }
     let loadedModel     = null;
     let loadedFileName  = 'model';
-    let selectedParts   = new Set();   // set of selected displayNames
-    let primarySelected = null;        // the anchor/primary for editor + shift-range
     let cameraModule    = null;
     let sceneModule     = null;
     let sceneState      = null;
     let materialsModule = null;
     let persistenceModule = null;
+    let loaderModule    = null;
+    let shellModule     = null;
+    let toolsModule     = null;
 
     function fallbackGuessKey(name) {
         const normalizedName = String(name || '').toLowerCase();
@@ -421,74 +381,20 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
 
     // Module functions — declared here, assigned after modules init
     let matProps, MAT_OBJ, MAT_SCHEMA;
-    let setProp = () => {}, selectPart = () => {}, setVisibility = () => {}, syncShowAllBtn = () => {}, buildEditor = () => {}, buildPartsUI = () => {}, applyMaterials = () => {}, guessKey = fallbackGuessKey, updateCode = () => {};
+    let setProp = () => {}, selectMesh = () => false, clearSelection = () => {}, selectAllVisible = () => {}, syncSelectionEditor = () => {}, setVisibility = () => {}, syncShowAllBtn = () => {}, buildEditor = () => {}, buildPartsUI = () => {}, applyMaterials = () => {}, generateMaterialsJs = () => '', guessKey = fallbackGuessKey, updateCode = () => {};
+    let loadBuffer = () => {};
+    let importFromCode = () => ({ matCount: 0, ruleCount: 0 });
     let saveLastFileToDB = () => {}, loadLastFileFromDB = () => {}, persistSaveState = () => {}, restoreState = () => false;
 
-    // ─────────────────────────────────────────────────────────────
-    // Outline highlight
-    // Technique: invisible back-face mesh parented to the selected
-    // mesh, scaled slightly larger.  Works with WebGPU renderer
-    // without any post-processing pass.
-    // ─────────────────────────────────────────────────────────────
-    const outlineMat = new THREE.MeshBasicMaterial({
-        color:     0x4d7aff,
-        side:      THREE.BackSide,
-        depthTest: true,
-        toneMapped: false,
-    });
-
-    const _outlineHosts = new Set();   // meshes currently hosting outline children
-
-    function clearOutlines() {
-        for (const mesh of _outlineHosts) {
-            mesh.children
-                .filter(c => c.userData.isOutline)
-                .forEach(c => mesh.remove(c));
-        }
-        _outlineHosts.clear();
+    function saveState() {
+        persistSaveState?.();
     }
-
-    function addOutline(mesh) {
-        if (!mesh || _outlineHosts.has(mesh)) return;
-        const ol = new THREE.Mesh(mesh.geometry, outlineMat);
-        ol.scale.setScalar(1.035);
-        ol.userData.isOutline = true;
-        mesh.add(ol);
-        _outlineHosts.add(mesh);
-    }
-
-    function setOutlines(names) {
-        clearOutlines();
-        for (const name of names) {
-            const entry = partMap.get(name);
-            if (entry) entry.meshes.forEach(addOutline);
-        }
-    }
-
-    // Material selection and UI management functions are delegated to materialsModule
-    // (selectPart, applyMaterials, setProp, buildEditor, buildPartsUI, etc.)
-
-    // ─────────────────────────────────────────────────────────────
-    // guessKey removed - delegated to materialsModule
-
-    // ─────────────────────────────────────────────────────────────
-    // applyMaterials removed - delegated to materialsModule
-
-    // ─────────────────────────────────────────────────────────────
-    // setProp removed - delegated to materialsModule
-
-    // ─────────────────────────────────────────────────────────────
-    // buildEditor removed - delegated to materialsModule
 
     // ─────────────────────────────────────────────────────────────
     // Visibility toggle
     // ─────────────────────────────────────────────────────────────
     const EYE_OPEN_SVG = `<svg width="14" height="10" viewBox="0 0 14 10" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 5C2.6 2 4.6 1 7 1C9.4 1 11.4 2 13 5C11.4 8 9.4 9 7 9C4.6 9 2.6 8 1 5Z" stroke="currentColor" stroke-width="1.3"/><circle cx="7" cy="5" r="1.8" fill="currentColor"/></svg>`;
     const EYE_SHUT_SVG = `<svg width="14" height="10" viewBox="0 0 14 10" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 5C2.6 2 4.6 1 7 1C9.4 1 11.4 2 13 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="2" y1="9" x2="12" y2="1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
-
-    
-
-    
 
     document.getElementById('show-all-btn').addEventListener('click', () => {
         for (const [name] of partMap) setVisibility(name, true);
@@ -502,19 +408,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         const tag = document.activeElement?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA') return;
         e.preventDefault();
-
-        const visibleRows = [...document.querySelectorAll('.part-row:not(.hidden)')];
-        selectedParts.clear();
-        visibleRows.forEach(r => selectedParts.add(r.dataset.name));
-        if (!primarySelected || !selectedParts.has(primarySelected))
-            primarySelected = visibleRows[0]?.dataset.name ?? null;
-
-        document.querySelectorAll('.part-row').forEach(r => {
-            r.classList.toggle('selected', selectedParts.has(r.dataset.name));
-        });
-        setOutlines(selectedParts);
-        const primaryEntry = primarySelected ? partMap.get(primarySelected) : null;
-        buildEditor(primaryEntry?.assignedKey ?? null, selectedParts.size);
+        selectAllVisible();
     });
 
     // ─────────────────────────────────────────────────────────────
@@ -539,26 +433,6 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         updatePartCount();
     });
 
-    // ─────────────────────────────────────────────────────────────
-    // Generate code output
-    // Outputs updated material definitions + MATERIAL_RULES
-    // ─────────────────────────────────────────────────────────────
-    
-
-    
-
-    // Three.js MeshPhysicalMaterial defaults — skip these in generated code
-    const PROP_DEFAULTS = {
-        emissive: '#000000', emissiveIntensity: 0, transmission: 0,
-        thickness: 0, ior: 1.5, opacity: 1, transparent: false,
-        toneMapped: true, side: 'Front', metalness: 0,
-        polygonOffset: false, polygonOffsetFactor: 0, polygonOffsetUnits: 0,
-    };
-
-    
-
-    
-
     document.getElementById('save-materials-btn').addEventListener('click', () => {
         if (partMap.size === 0) { showToast('Load a model first'); return; }
         const content = generateMaterialsJs();
@@ -581,171 +455,12 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
             entry.visible = true;
             entry.meshes.forEach(m => { m.visible = true; });
         }
-        clearOutlines();
-        selectedParts.clear();
-        primarySelected = null;
+        clearSelection();
         applyMaterials();
         buildPartsUI();
         syncShowAllBtn();
-        buildEditor(null);
         saveState();
     });
-
-    // ─────────────────────────────────────────────────────────────
-    // GLTF loading
-    // ─────────────────────────────────────────────────────────────
-    const loader = new GLTFLoader();
-
-    function loadBuffer(buffer, fileName) {
-        loader.parse(buffer, '', (gltf) => {
-            clearOutlines();
-            if (loadedModel) scene.remove(loadedModel);
-            partMap.clear();
-            selectedParts.clear();
-            primarySelected = null;
-
-            const model = gltf.scene;
-
-            // ── Group face-group meshes into logical parts ───────────────────
-            // Onshape glTF exports come in two layouts:
-            //   A) Part = parent Group → N child Meshes (one per face group)
-            //   B) Flat: N Mesh siblings all sharing the same name (same part)
-            // We group by parent UUID (layout A) or by parentUUID+name (layout B).
-            const groupMap = new Map();   // key → { rawName, meshes, origMats }
-
-            model.traverse((child) => {
-                if (!child.isMesh) return;
-                const parent      = child.parent;
-                const sceneRoot   = parent === model || parent === gltf.scene || !parent;
-
-                const ownName  = child.name?.trim() || '';
-                const parentName = (!sceneRoot && parent.name?.trim()) || '';
-
-                let groupKey, rawName;
-                if (!sceneRoot && parentName) {
-                    // Layout A: named parent group → use parent UUID
-                    groupKey = parent.uuid;
-                    rawName  = parentName;
-                } else {
-                    // Layout B (flat) or unknown: group siblings with identical names
-                    groupKey = (sceneRoot ? (parent?.uuid ?? 'root') : parent.uuid) + '|' + (ownName || child.uuid);
-                    rawName  = ownName;
-                }
-
-                if (!groupMap.has(groupKey)) {
-                    groupMap.set(groupKey, { rawName, meshes: [], origMats: [] });
-                }
-                const g = groupMap.get(groupKey);
-                g.meshes.push(child);
-                g.origMats.push(child.material);
-            });
-
-            // ── Deduplicate display names ────────────────────────────────────
-            const nameCounts = {};
-            for (const { rawName, meshes, origMats } of groupMap.values()) {
-                let displayName = rawName || '(unnamed)';
-                if (nameCounts[displayName] === undefined) {
-                    nameCounts[displayName] = 0;
-                } else {
-                    nameCounts[displayName]++;
-                    displayName = `${displayName} (${nameCounts[displayName]})`;
-                }
-
-                partMap.set(displayName, {
-                    meshes,
-                    origMats,
-                    origName:    rawName,
-                    assignedKey: guessKey(rawName),
-                    visible:     true,
-                });
-            }
-
-            // Fit model to unit cube
-            const box    = new THREE.Box3().setFromObject(model);
-            const size   = box.getSize(new THREE.Vector3());
-            const centre = box.getCenter(new THREE.Vector3());
-            const maxDim = Math.max(size.x, size.y, size.z) || 1;
-            const scale  = 1.0 / maxDim;
-            model.scale.setScalar(scale);
-            model.position.sub(centre.multiplyScalar(scale));
-
-            scene.add(model);
-            loadedModel = model;
-
-            fitCameraToModel();
-            const hudFovEl = document.getElementById('hud-fov');
-            if (hudFovEl) hudFovEl.value = Math.round(camera.fov);
-
-            // Enable shadows on all loaded meshes + snap ground to model bottom
-            model.traverse(c => {
-                if (c.isMesh && !c.userData.isOutline) {
-                    c.castShadow    = true;
-                    c.receiveShadow = true;
-                }
-            });
-            const _mbox = new THREE.Box3().setFromObject(model);
-            groundMesh.position.y = _mbox.min.y - 0.008;
-
-            document.getElementById('drop-overlay').classList.add('hidden');
-            document.getElementById('search-input').value = '';
-            document.getElementById('export-btn').style.display = '';
-            document.getElementById('zfix-btn').style.display   = '';
-            document.title = `Material Mapper — ${fileName}`;
-            loadedFileName = fileName;
-            saveLastFileToDB(fileName, buffer);
-
-            const didRestore = restoreState(fileName, {
-                applyMaterials,
-                buildPartsUI,
-                buildEditor,
-                syncShowAllBtn,
-                setIsOrtho: (nextIsOrtho) => {
-                    if (typeof nextIsOrtho !== 'boolean' || nextIsOrtho === isOrtho) return;
-                    cameraModule?.toggleOrtho?.();
-                },
-                setHudXYZ: cameraModule?.setHudXYZ,
-                applyModelRotationDeg: cameraModule?.applyModelRotationDeg,
-                syncOrbitTarget: cameraModule?.syncOrbitTarget,
-                mergeSceneState: sceneModule?.mergeState,
-                applySceneState: sceneModule?.applyAll,
-                syncScenePanel: sceneModule?.syncScenePanel,
-            });
-            if (!didRestore) {
-                applyMaterials();
-                buildPartsUI();
-                syncShowAllBtn();
-                buildEditor(null);
-            }
-            if (didRestore) showToast('Session restored');
-
-        }, (err) => {
-            console.error('[Material Mapper] GLTF parse error:', err);
-            alert('Could not load model:\n' + (err?.message ?? String(err)));
-        });
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // File input + drag-drop
-    // ─────────────────────────────────────────────────────────────
-    document.getElementById('file-input').addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        file.arrayBuffer().then(buf => loadBuffer(buf, file.name));
-        e.target.value = '';
-    });
-
-    const viewerPane  = document.getElementById('viewer-pane');
-    const dropOverlay = document.getElementById('drop-overlay');
-
-    viewerPane.addEventListener('dragover',  (e) => { e.preventDefault(); dropOverlay.classList.add('drag-active'); });
-    viewerPane.addEventListener('dragleave', ()  => dropOverlay.classList.remove('drag-active'));
-    viewerPane.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropOverlay.classList.remove('drag-active');
-        const file = e.dataTransfer.files[0];
-        if (file) file.arrayBuffer().then(buf => loadBuffer(buf, file.name));
-    });
-    dropOverlay.addEventListener('click', () => document.getElementById('file-input').click());
 
     // ─────────────────────────────────────────────────────────────
     // Toast
@@ -760,130 +475,9 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Code modal
-    // ─────────────────────────────────────────────────────────────
-    const codeModal      = document.getElementById('code-modal');
-    const showCodeBtn    = document.getElementById('show-code-btn');
-    const codeModalClose = document.getElementById('code-modal-close');
-
-    showCodeBtn.addEventListener('click', () => codeModal.classList.remove('hidden'));
-    codeModalClose.addEventListener('click', () => codeModal.classList.add('hidden'));
-    codeModal.addEventListener('click', (e) => {
-        if (e.target === codeModal) codeModal.classList.add('hidden');
-    });
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') codeModal.classList.add('hidden');
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // Layout toggle (stacked ↔ side-by-side)
-    // ─────────────────────────────────────────────────────────────
-    const panelBody  = document.getElementById('panel-body');
-    const layoutBtn  = document.getElementById('layout-btn');
-    const editorSide = document.getElementById('editor-side');
-
-    layoutBtn.addEventListener('click', () => {
-        const isSide = panelBody.classList.toggle('side-by-side');
-        layoutBtn.title = isSide ? 'Switch to stacked layout' : 'Switch to side-by-side layout';
-        layoutBtn.textContent = isSide ? '⊟' : '⊞';
-        // Reset any inline sizes set by drag so flex takes over
-        editorSide.style.height = '';
-        editorSide.style.width  = '';
-        editorSide.style.flex   = '';
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // Panel (viewer ↔ panel) resize handle drag
-    // ─────────────────────────────────────────────────────────────
-    const panelEl           = document.getElementById('panel');
-    const panelResizeHandle = document.getElementById('panel-resize-handle');
-
-    panelResizeHandle.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        panelResizeHandle.classList.add('dragging');
-        panelResizeHandle.setPointerCapture(e.pointerId);
-
-        const startX    = e.clientX;
-        const startW    = panelEl.offsetWidth;
-        const layoutW   = panelEl.parentElement.offsetWidth;
-        const MIN = 200, MAX = layoutW * 0.70;
-
-        function onMove(ev) {
-            const newW = Math.max(MIN, Math.min(MAX, startW - (ev.clientX - startX)));
-            panelEl.style.width = newW + 'px';
-        }
-        function onUp() {
-            panelResizeHandle.classList.remove('dragging');
-            panelResizeHandle.removeEventListener('pointermove', onMove);
-            panelResizeHandle.removeEventListener('pointerup', onUp);
-        }
-        panelResizeHandle.addEventListener('pointermove', onMove);
-        panelResizeHandle.addEventListener('pointerup', onUp);
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // Resize handle drag (parts ↔ editor within panel)
-    // ─────────────────────────────────────────────────────────────
-    const resizeHandle = document.getElementById('resize-handle');
-
-    resizeHandle.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        resizeHandle.classList.add('dragging');
-        resizeHandle.setPointerCapture(e.pointerId);
-
-        const isSide     = panelBody.classList.contains('side-by-side');
-        const startPos   = isSide ? e.clientX : e.clientY;
-        const startSize  = isSide ? editorSide.offsetWidth : editorSide.offsetHeight;
-        const panelSize  = isSide ? panelBody.offsetWidth : panelBody.offsetHeight;
-        const MIN = 80, MAX_FRAC = 0.85;
-
-        function onMove(ev) {
-            const delta = isSide ? (startPos - ev.clientX) : (startPos - ev.clientY);
-            const newSize = Math.max(MIN, Math.min(panelSize * MAX_FRAC, startSize + delta));
-            if (isSide) {
-                editorSide.style.flex  = 'none';
-                editorSide.style.width = newSize + 'px';
-            } else {
-                editorSide.style.height = newSize + 'px';
-            }
-        }
-
-        function onUp() {
-            resizeHandle.classList.remove('dragging');
-            resizeHandle.removeEventListener('pointermove', onMove);
-            resizeHandle.removeEventListener('pointerup', onUp);
-        }
-
-        resizeHandle.addEventListener('pointermove', onMove);
-        resizeHandle.addEventListener('pointerup', onUp);
-    });
-
-    // ─────────────────────────────────────────────────────────────
     // Export GLB (visible parts only)
     // ─────────────────────────────────────────────────────────────
-    document.getElementById('export-btn').addEventListener('click', () => {
-        if (!loadedModel) return;
-        // Temporarily hide outline meshes so they're not baked in
-        const outlines = [];
-        loadedModel.traverse(c => {
-            if (c.userData.isOutline) { outlines.push(c); c.visible = false; }
-        });
-        const exporter = new GLTFExporter();
-        exporter.parse(loadedModel, (glb) => {
-            outlines.forEach(c => { c.visible = true; });
-            const base = loadedFileName.replace(/\.[^.]+$/, '');
-            const blob = new Blob([glb], { type: 'model/gltf-binary' });
-            const url  = URL.createObjectURL(blob);
-            const a    = document.createElement('a');
-            a.href = url; a.download = base + '_visible.glb'; a.click();
-            URL.revokeObjectURL(url);
-            showToast('GLB exported!');
-        }, (err) => {
-            outlines.forEach(c => { c.visible = true; });
-            console.error('[Export GLB]', err);
-            showToast('Export failed — see console');
-        }, { binary: true, onlyVisible: true });
-    });
+    document.getElementById('export-btn').addEventListener('click', () => toolsModule?.exportGLB());
 
     // ─────────────────────────────────────────────────────────────
     // Auto Z-Fighting Fix
@@ -894,221 +488,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
     // factor at least 1 step more negative than the larger mesh's
     // material. Re-runs correctly even when offset is already set.
     // ─────────────────────────────────────────────────────────────
-    document.getElementById('zfix-btn').addEventListener('click', autoFixZFighting);
-
-    function autoFixZFighting() {
-        if (!loadedModel) return;
-
-        loadedModel.updateMatrixWorld(true);
-
-        // Collect all non-outline meshes with world-space AABBs
-        const items = [];
-        loadedModel.traverse(c => {
-            if (!c.isMesh || c.userData.isOutline || !c.geometry) return;
-            c.geometry.computeBoundingBox();
-            const box = c.geometry.boundingBox.clone().applyMatrix4(c.matrixWorld);
-            items.push({ mesh: c, box });
-        });
-
-        // Reverse map: mesh UUID → partMap displayName
-        const meshToPartName = new Map();
-        for (const [name, entry] of partMap) {
-            for (const m of entry.meshes) meshToPartName.set(m.uuid, name);
-        }
-
-        // Collect unique coplanar pairs as { winnerKey, loserKey }
-        const pairs = [];
-        const seenPairs = new Set();
-        let sameMaterialPairs = 0;
-        let keepPairs = 0;
-
-        console.group('[Z-Fix] Detection pass');
-        console.log(`Meshes scanned: ${items.length}`);
-
-        for (let i = 0; i < items.length; i++) {
-            for (let j = i + 1; j < items.length; j++) {
-                const a = items[i], b = items[j];
-                if (!a.box.intersectsBox(b.box)) continue;
-
-                // Intersection size
-                const ix = Math.min(a.box.max.x, b.box.max.x) - Math.max(a.box.min.x, b.box.min.x);
-                const iy = Math.min(a.box.max.y, b.box.max.y) - Math.max(a.box.min.y, b.box.min.y);
-                const iz = Math.min(a.box.max.z, b.box.max.z) - Math.max(a.box.min.z, b.box.min.z);
-                const dims = [ix, iy, iz].sort((x, y) => x - y); // ascending
-
-                // Coplanar: thinnest dimension is < 1 % of largest
-                if (dims[2] < 1e-9 || dims[0] / dims[2] > 0.01) continue;
-
-                // Smaller volume mesh sits on top (winner)
-                const sizeA = a.box.getSize(new THREE.Vector3());
-                const sizeB = b.box.getSize(new THREE.Vector3());
-                const volA  = sizeA.x * sizeA.y * sizeA.z;
-                const volB  = sizeB.x * sizeB.y * sizeB.z;
-                const [winner, loser] = volA <= volB ? [a, b] : [b, a];
-
-                const winName = meshToPartName.get(winner.mesh.uuid);
-                const losName = meshToPartName.get(loser.mesh.uuid);
-
-                const winKey = winName ? partMap.get(winName)?.assignedKey : null;
-                const losKey = losName ? partMap.get(losName)?.assignedKey : null;
-
-                // Log every detected coplanar pair regardless of material state
-                console.log(`Coplanar pair — dims:[${dims.map(d=>d.toFixed(5)).join(', ')}] ratio:${(dims[0]/dims[2]).toFixed(4)}`, {
-                    winner: winName ?? '(unmapped)', winnerMat: winKey ?? '?', volWinner: volA <= volB ? volA : volB,
-                    loser:  losName ?? '(unmapped)', loserMat:  losKey ?? '?', volLoser:  volA <= volB ? volB : volA,
-                });
-
-                if (!winName || !losName) continue;
-                if (!winKey || !losKey) continue;
-
-                if (winKey === '_keep' || losKey === '_keep') {
-                    keepPairs++;
-                    continue;
-                }
-                if (!(winKey in matProps) || !(losKey in matProps)) continue;
-
-                if (winKey === losKey) {
-                    sameMaterialPairs++;
-                    console.warn(`  → same material (${winKey}) on both sides — can't fix with polygon offset`);
-                    continue;
-                }
-
-                const pairId = [winKey, losKey].sort().join('||');
-                if (seenPairs.has(pairId)) continue;
-                seenPairs.add(pairId);
-                pairs.push({ winnerKey: winKey, loserKey: losKey });
-            }
-        }
-        console.groupEnd();
-
-        // For each pair, ensure winner's factor is more negative than loser's.
-        // If already correct, leave untouched. Always enables polygonOffset on winner.
-        let count = 0;
-        // Reset all factors to 0 first so repeated runs don't cascade to
-        // increasingly negative values (-68, -82, etc.)
-        for (const key of Object.keys(matProps)) {
-            if (matProps[key].polygonOffsetFactor !== 0) setProp(key, 'polygonOffsetFactor', 0);
-            if (matProps[key].polygonOffsetUnits  !== 0) setProp(key, 'polygonOffsetUnits',  0);
-            if (matProps[key].polygonOffset)             setProp(key, 'polygonOffset', false);
-        }
-
-        // Snapshot factors NOW (all 0 after reset) so mid-loop setProp calls
-        // can't cascade into later pairs within the same run.
-        const factorSnapshot = {};
-        for (const key of Object.keys(matProps)) factorSnapshot[key] = 0;
-
-        console.group('[Z-Fix] Apply pass');
-        for (const { winnerKey, loserKey } of pairs) {
-            const loserFactor  = factorSnapshot[loserKey];
-            const neededFactor = loserFactor - 2;
-
-            console.log(`${winnerKey}(snap:${factorSnapshot[winnerKey]}) vs ${loserKey}(snap:${loserFactor}) → setting winner to ${neededFactor}`);
-
-            setProp(winnerKey, 'polygonOffset',       true);
-            setProp(winnerKey, 'polygonOffsetFactor',  neededFactor);
-            setProp(winnerKey, 'polygonOffsetUnits',   neededFactor);
-            count++;
-        }
-        console.groupEnd();
-
-        // Refresh editor panel if a material is open
-        const pEntry = primarySelected ? partMap.get(primarySelected) : null;
-        if (pEntry?.assignedKey) buildEditor(pEntry.assignedKey, selectedParts.size);
-
-        const notes = [
-            sameMaterialPairs > 0 ? `${sameMaterialPairs} same-material pair${sameMaterialPairs !== 1 ? 's' : ''} can't be auto-fixed (assign separate materials)` : '',
-            keepPairs > 0         ? `${keepPairs} pair${keepPairs !== 1 ? 's' : ''} use _keep material (reassign to fix)` : '',
-        ].filter(Boolean).join('; ');
-
-        const noPairs = pairs.length === 0 && sameMaterialPairs === 0 && keepPairs === 0;
-        showToast(
-            noPairs  ? 'No coplanar overlap detected — check console for details' :
-            count > 0 ? `Z-fix: updated ${count} material${count !== 1 ? 's' : ''}${notes ? ` · ${notes}` : ''}` :
-                        `Offsets already correct${notes ? ` · ${notes}` : ''}`
-        );
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // State persistence (localStorage)
-    // Keyed by filename so each model has its own saved state.
-    // ─────────────────────────────────────────────────────────────
-    const STORAGE_KEY = 'material-mapper-v1';
-
-    // ── Last-file cache (IndexedDB, no size cap) ────────────────────────
-    const IDB_NAME  = 'material-mapper-files';
-    const IDB_STORE = 'files';
-
-    
-
-    
-
-    
-
-    function saveState() {
-        if (!loadedFileName || partMap.size === 0) return;
-        const assignments = {};
-        const visibility  = {};
-        for (const [name, entry] of partMap) {
-            assignments[name] = entry.assignedKey;
-            if (!entry.visible) visibility[name] = false;
-        }
-        const state = {
-            matProps:    JSON.parse(JSON.stringify(matProps)),
-            assignments,
-            visibility,
-            camera: {
-                position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-                target:   { x: controls.target.x,  y: controls.target.y,  z: controls.target.z  },
-                fov:      camera.fov,
-                isOrtho,
-            },
-            modelRotation: loadedModel ? {
-                x: THREE.MathUtils.radToDeg(loadedModel.rotation.x),
-                y: THREE.MathUtils.radToDeg(loadedModel.rotation.y),
-                z: THREE.MathUtils.radToDeg(loadedModel.rotation.z),
-            } : null,
-            modelPosition: loadedModel ? {
-                x: loadedModel.position.x,
-                y: loadedModel.position.y,
-                z: loadedModel.position.z,
-            } : null,
-            sceneState:    JSON.parse(JSON.stringify(sceneState)),
-        };
-        try {
-            const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-            all[loadedFileName] = state;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
-        } catch (e) { console.warn('[State] save failed', e); }
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Import from code — parse generated code and restore state
-    // ─────────────────────────────────────────────────────────────
-    
-
-    const importModal     = document.getElementById('import-modal');
-    const importCodeBtn   = document.getElementById('import-code-btn');
-    const importModalClose = document.getElementById('import-modal-close');
-    const importApplyBtn  = document.getElementById('import-apply-btn');
-    const importTextarea  = document.getElementById('import-textarea');
-
-    importCodeBtn.addEventListener('click', () => {
-        importTextarea.value = '';
-        importModal.classList.remove('hidden');
-        setTimeout(() => importTextarea.focus(), 50);
-    });
-    importModalClose.addEventListener('click', () => importModal.classList.add('hidden'));
-    importModal.addEventListener('click', (e) => { if (e.target === importModal) importModal.classList.add('hidden'); });
-
-    importApplyBtn.addEventListener('click', () => {
-        const text = importTextarea.value.trim();
-        if (!text) return;
-        const { matCount, ruleCount } = importFromCode(text);
-        importModal.classList.add('hidden');
-        showToast(`Imported: ${matCount} material${matCount !== 1 ? 's' : ''}, ${ruleCount} rule${ruleCount !== 1 ? 's' : ''}`);
-    });
-
-    
+    document.getElementById('zfix-btn').addEventListener('click', () => toolsModule?.autoFixZFighting());
 
     cameraModule = window.MaterialMapperCameraModule({
         THREE,
@@ -1153,9 +533,6 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         THREE,
         partMap,
         loadedModel: () => loadedModel,
-        selectedParts,
-        primarySelected: () => primarySelected,
-        setPrimarySelected: (value) => { primarySelected = value; },
         saveState: () => saveState(),
         showToast,
         updatePartCount: () => updatePartCount(),
@@ -1164,12 +541,13 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
 
     // Persistence (state save/load + IDB caching)
     persistenceModule = window.MaterialMapperPersistenceModule({
-        loadBuffer,
+        loadBuffer: (...args) => loadBuffer(...args),
         partMap,
         matProps: () => materialsModule.getMatProps(),
         MAT_OBJ: () => materialsModule.getMAT_OBJ(),
         loadedFileName: () => loadedFileName,
         loadedModel: () => loadedModel,
+        isOrtho: () => isOrtho,
         camera,
         controls,
         sceneState: () => sceneState,
@@ -1178,45 +556,78 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         importFromCode: (text) => importFromCode(text),
     });
 
+    loaderModule = window.MaterialMapperLoaderModule({
+        THREE,
+        GLTFLoader,
+        scene,
+        camera,
+        groundMesh,
+        partMap,
+        getLoadedModel: () => loadedModel,
+        setLoadedModel: (value) => { loadedModel = value; },
+        setLoadedFileName: (value) => { loadedFileName = value; },
+        resetSelection: () => clearSelection(),
+        guessKey: (name) => guessKey(name),
+        fitCameraToModel,
+        applyMaterials: () => applyMaterials(),
+        buildPartsUI: () => buildPartsUI(),
+        syncShowAllBtn: () => syncShowAllBtn(),
+        buildEditor: (...args) => buildEditor(...args),
+        syncEditor: () => syncSelectionEditor(),
+        updateCode: () => updateCode(),
+        getMatProps: () => matProps,
+        getMAT_OBJ: () => MAT_OBJ,
+        saveLastFileToDB: (...args) => saveLastFileToDB(...args),
+        restoreState: (...args) => restoreState(...args),
+        getRestoreCallbacks: () => ({
+            applyMaterials,
+            buildPartsUI,
+            buildEditor,
+            syncShowAllBtn,
+            setIsOrtho: (nextIsOrtho) => {
+                if (typeof nextIsOrtho !== 'boolean' || nextIsOrtho === isOrtho) return;
+                cameraModule?.toggleOrtho?.();
+            },
+            setHudXYZ: cameraModule?.setHudXYZ,
+            applyModelRotationDeg: cameraModule?.applyModelRotationDeg,
+            syncOrbitTarget: cameraModule?.syncOrbitTarget,
+            mergeSceneState: sceneModule?.mergeState,
+            applySceneState: sceneModule?.applyAll,
+            syncScenePanel: sceneModule?.syncScenePanel,
+        }),
+        onModelLoaded: (fileName) => shellModule?.onModelLoaded(fileName),
+        saveState,
+        showToast,
+    });
+
     // Extract and bind module methods
     matProps = materialsModule.getMatProps();
     MAT_OBJ = materialsModule.getMAT_OBJ();
     MAT_SCHEMA = materialsModule.getMAT_SCHEMA();
-    ({ setProp, selectPart, setVisibility, syncShowAllBtn, buildEditor, buildPartsUI, applyMaterials, guessKey, updateCode } = materialsModule);
+    ({ setProp, selectMesh, clearSelection, selectAllVisible, syncSelectionEditor, setVisibility, syncShowAllBtn, buildEditor, buildPartsUI, applyMaterials, generateMaterialsJs, guessKey, updateCode } = materialsModule);
+    ({ loadBuffer, importFromCode } = loaderModule);
     ({ saveLastFileToDB, loadLastFileFromDB, saveState: persistSaveState, restoreState } = persistenceModule);
 
-    // Override app-level saveState to also call persistence module
-    const originalSaveState = saveState;
-    saveState = function() {
-        originalSaveState();
-        persistSaveState?.();
-    };
-
-    // Tab switching
-    document.getElementById('tab-parts-btn').addEventListener('click', () => {
-        document.getElementById('panel-body').style.display   = '';
-        document.getElementById('scene-panel').style.display  = 'none';
-        document.getElementById('tab-parts-btn').classList.add('active');
-        document.getElementById('tab-scene-btn').classList.remove('active');
-        document.getElementById('layout-btn').style.display   = '';
-        const anyHidden = [...partMap.values()].some(e => !e.visible);
-        document.getElementById('show-all-btn').style.display = anyHidden ? '' : 'none';
-        // update part-count visibility
-        document.getElementById('part-count').style.display   = '';
-    });
-    document.getElementById('tab-scene-btn').addEventListener('click', () => {
-        document.getElementById('panel-body').style.display   = 'none';
-        document.getElementById('scene-panel').style.display  = '';
-        document.getElementById('tab-scene-btn').classList.add('active');
-        document.getElementById('tab-parts-btn').classList.remove('active');
-        document.getElementById('layout-btn').style.display   = 'none';
-        document.getElementById('show-all-btn').style.display = 'none';
-        document.getElementById('part-count').style.display   = 'none';
+    toolsModule = window.MaterialMapperToolsModule({
+        THREE,
+        GLTFExporter,
+        getLoadedModel: () => loadedModel,
+        getLoadedFileName: () => loadedFileName,
+        partMap,
+        getMatProps: () => matProps,
+        setProp,
+        syncEditor: () => syncSelectionEditor(),
+        showToast,
     });
 
-    document.getElementById('sp-copy-code-btn').addEventListener('click', () => {
-        navigator.clipboard.writeText(sceneModule.generateSceneCode()).then(() => showToast('Scene code copied!'));
+    shellModule = window.MaterialMapperShellModule({
+        loadBuffer: (...args) => loadBuffer(...args),
+        importFromCode: (...args) => importFromCode(...args),
+        getPartMap: () => partMap,
+        getSceneModule: () => sceneModule,
+        showToast,
     });
+    shellModule.init();
 
     // Auto-reload last opened file on page open
     loadLastFileFromDB();

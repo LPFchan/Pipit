@@ -11,9 +11,6 @@
  *   - THREE: Three.js library
  *   - partMap: Map of displayName → { meshes, origMats, origName, assignedKey, visible }
  *   - loadedModel: current Three.js model or null
- *   - selectedParts: Set of selected displayNames
- *   - primarySelected: string (displayName) or getter function returning it
- *   - setPrimarySelected: setter function for the current primary selection
  *   - saveState: callback function
  *   - showToast: callback function
  *   - updatePartCount: callback function (or handled internally)
@@ -23,20 +20,21 @@ window.MaterialMapperMaterialsModule = function ({
     THREE,
     partMap,
     loadedModel,
-    selectedParts,
-    primarySelected,
-    setPrimarySelected,
     saveState,
     showToast,
     updatePartCount,
     generateCameraCode,
 }) {
-    const getPrimarySelected = typeof primarySelected === 'function'
-        ? primarySelected
-        : () => primarySelected;
-    const assignPrimarySelected = typeof setPrimarySelected === 'function'
-        ? setPrimarySelected
-        : (value) => { primarySelected = value; };
+    const selectedParts = new Set();
+    let primarySelected = null;
+
+    function getPrimarySelected() {
+        return primarySelected;
+    }
+
+    function assignPrimarySelected(value) {
+        primarySelected = value;
+    }
 
     // ─────────────────────────────────────────────────────────────
     // Material property store + schema
@@ -150,6 +148,63 @@ window.MaterialMapperMaterialsModule = function ({
             const entry = partMap.get(name);
             if (entry) entry.meshes.forEach(addOutline);
         }
+    }
+
+    function syncSelectionUI({ scroll = true } = {}) {
+        const currentPrimarySelected = getPrimarySelected();
+
+        document.querySelectorAll('.part-row').forEach((row) => {
+            row.classList.toggle('selected', selectedParts.has(row.dataset.name));
+        });
+
+        if (scroll && currentPrimarySelected) {
+            const row = document.querySelector(`.part-row[data-name="${CSS.escape(currentPrimarySelected)}"]`);
+            if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+
+        setOutlines(selectedParts);
+        const primaryEntry = currentPrimarySelected ? partMap.get(currentPrimarySelected) : null;
+        buildEditor(primaryEntry?.assignedKey ?? null, selectedParts.size);
+    }
+
+    function clearSelection() {
+        selectedParts.clear();
+        assignPrimarySelected(null);
+        document.querySelectorAll('.part-row').forEach((row) => row.classList.remove('selected'));
+        clearOutlines();
+        buildEditor(null);
+    }
+
+    function selectAllVisible() {
+        const visibleRows = [...document.querySelectorAll('.part-row:not(.hidden)')];
+        if (!visibleRows.length) {
+            clearSelection();
+            return;
+        }
+
+        selectedParts.clear();
+        visibleRows.forEach((row) => selectedParts.add(row.dataset.name));
+        if (!getPrimarySelected() || !selectedParts.has(getPrimarySelected())) {
+            assignPrimarySelected(visibleRows[0]?.dataset.name ?? null);
+        }
+        syncSelectionUI();
+    }
+
+    function selectMesh(mesh, modifiers = {}) {
+        if (!mesh) return false;
+        for (const [displayName, entry] of partMap) {
+            if (entry.meshes.includes(mesh)) {
+                selectPart(displayName, modifiers);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function syncSelectionEditor() {
+        const currentPrimarySelected = getPrimarySelected();
+        const primaryEntry = currentPrimarySelected ? partMap.get(currentPrimarySelected) : null;
+        buildEditor(primaryEntry?.assignedKey ?? null, selectedParts.size);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -371,25 +426,7 @@ window.MaterialMapperMaterialsModule = function ({
             assignPrimarySelected(currentPrimarySelected);
         }
 
-        currentPrimarySelected = getPrimarySelected();
-
-        // Sync row highlights
-        document.querySelectorAll('.part-row').forEach(r => {
-            r.classList.toggle('selected', selectedParts.has(r.dataset.name));
-        });
-
-        // Scroll primary into view
-        if (currentPrimarySelected) {
-            const row = document.querySelector(`.part-row[data-name="${CSS.escape(currentPrimarySelected)}"]`);
-            if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }
-
-        // Outlines
-        setOutlines(selectedParts);
-
-        // Editor: primary's material, annotated with selection count
-        const primaryEntry = currentPrimarySelected ? partMap.get(currentPrimarySelected) : null;
-        buildEditor(primaryEntry?.assignedKey ?? null, selectedParts.size);
+        syncSelectionUI();
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -763,6 +800,10 @@ window.MaterialMapperMaterialsModule = function ({
 
         // Part selection
         selectPart,
+        selectMesh,
+        clearSelection,
+        selectAllVisible,
+        syncSelectionEditor,
         setVisibility,
         syncShowAllBtn,
         clearOutlines,
