@@ -159,6 +159,7 @@ window.MaterialMapperShellModule = function ({
         const codeModalClose = document.getElementById('code-modal-close');
         const importModal = document.getElementById('import-modal');
         const importCodeBtn = document.getElementById('import-code-action-btn');
+        const importMaterialsBtn = document.getElementById('import-materials-action-btn');
         const importModalClose = document.getElementById('import-modal-close');
         const importApplyBtn = document.getElementById('import-apply-btn');
         const importFileBtn = document.getElementById('import-file-btn');
@@ -184,6 +185,10 @@ window.MaterialMapperShellModule = function ({
             importTextarea.value = '';
             importModal.classList.remove('hidden');
             setTimeout(() => importTextarea.focus(), 50);
+        });
+        importMaterialsBtn?.addEventListener('click', () => {
+            importFileInput.value = '';
+            importFileInput.click();
         });
         importModalClose.addEventListener('click', () => importModal.classList.add('hidden'));
         importModal.addEventListener('click', (event) => {
@@ -364,7 +369,7 @@ window.MaterialMapperShellModule = function ({
         copySceneCodeBtn.addEventListener('click', () => {
             const sceneModule = getSceneModule();
             if (!sceneModule) return;
-            navigator.clipboard.writeText(sceneModule.generateSceneCode()).then(() => showToast('Scene code copied!'));
+            navigator.clipboard.writeText(sceneModule.generateSceneCode()).then(() => showToast('Scene and preset code copied!'));
         });
     }
 

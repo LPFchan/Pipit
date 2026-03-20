@@ -92,8 +92,8 @@ export const VIEWER_CAMERA = {
     "far": 50,
     "position": [
         0,
-        4.5887,
-        -2.0054
+        4.6027,
+        -1.9751
     ],
     "target": [
         0,
@@ -118,7 +118,7 @@ export const VIEWER_SCENE = {
         "output": "sRGB",
         "physicallyCorrect": true
     },
-    "bodyBackground": "linear-gradient(180deg, #b1b1b1 0%, #ffffff 100%)",
+    "bodyBackground": "radial-gradient(ellipse at 50% 38%, #ffffff 0%, #a0a0a0 100%)",
     "env": {
         "enabled": true,
         "useAsBackground": false,
@@ -142,10 +142,10 @@ export const VIEWER_SCENE = {
     "key": {
         "color": "#fff8f0",
         "intensity": 0,
-        "px": 1.5,
-        "py": 2.5,
+        "px": 1.2,
+        "py": 3.3,
         "pz": 2,
-        "shadows": false
+        "shadows": true
     },
     "shadow": {
         "mapSize": 1024,
@@ -178,9 +178,154 @@ export const VIEWER_SCENE = {
     },
     "ground": {
         "visible": true,
-        "opacity": 0.38,
+        "opacity": 0.17,
         "radius": 1.8,
         "yPlaceholder": -0.52
+    }
+};
+
+export const VIEWER_SCENE_PRESETS = {
+    "light": {
+        "renderer": {
+            "toneMap": "ACES",
+            "output": "sRGB",
+            "physicallyCorrect": true
+        },
+        "bodyBackground": "radial-gradient(ellipse at 50% 38%, #ffffff 0%, #a0a0a0 100%)",
+        "env": {
+            "enabled": true,
+            "useAsBackground": false,
+            "intensity": 1,
+            "rotDeg": [
+                0,
+                0,
+                0
+            ],
+            "bgBlurriness": 0,
+            "bgIntensity": 1,
+            "roomEnvBlur": 0.04
+        },
+        "tm": {
+            "exposure": 0.95
+        },
+        "shadowMap": {
+            "enabled": true,
+            "type": "PCFSoft"
+        },
+        "key": {
+            "color": "#fff8f0",
+            "intensity": 0,
+            "px": 1.2,
+            "py": 3.3,
+            "pz": 2,
+            "shadows": true
+        },
+        "shadow": {
+            "mapSize": 1024,
+            "radius": 8,
+            "bias": -0.0005,
+            "near": 0.1,
+            "far": 10,
+            "left": -2,
+            "right": 2,
+            "top": 2,
+            "bottom": -2
+        },
+        "fill": {
+            "color": "#b0c8ff",
+            "intensity": 0,
+            "px": -2,
+            "py": 1,
+            "pz": -1.5
+        },
+        "rim": {
+            "color": "#dde8ff",
+            "intensity": 0.3,
+            "px": 0,
+            "py": -1,
+            "pz": -2
+        },
+        "amb": {
+            "color": "#ffffff",
+            "intensity": 0
+        },
+        "ground": {
+            "visible": true,
+            "opacity": 0.17,
+            "radius": 1.8,
+            "yPlaceholder": -0.52
+        }
+    },
+    "dark": {
+        "renderer": {
+            "toneMap": "ACES",
+            "output": "sRGB",
+            "physicallyCorrect": true
+        },
+        "bodyBackground": "radial-gradient(ellipse at 50% 38%, #1c1e28 0%, #09090c 100%)",
+        "env": {
+            "enabled": true,
+            "useAsBackground": false,
+            "intensity": 0.9,
+            "rotDeg": [
+                0,
+                0,
+                0
+            ],
+            "bgBlurriness": 0,
+            "bgIntensity": 1,
+            "roomEnvBlur": 0.04
+        },
+        "tm": {
+            "exposure": 0.85
+        },
+        "shadowMap": {
+            "enabled": true,
+            "type": "PCFSoft"
+        },
+        "key": {
+            "color": "#fff8f0",
+            "intensity": 3.1,
+            "px": 1.5,
+            "py": 2.5,
+            "pz": 2,
+            "shadows": true
+        },
+        "shadow": {
+            "mapSize": 1024,
+            "radius": 8,
+            "bias": -0.0005,
+            "near": 0.1,
+            "far": 10,
+            "left": -2,
+            "right": 2,
+            "top": 2,
+            "bottom": -2
+        },
+        "fill": {
+            "color": "#b0c8ff",
+            "intensity": 1.25,
+            "px": -2,
+            "py": 1,
+            "pz": -1.5
+        },
+        "rim": {
+            "color": "#dde8ff",
+            "intensity": 0.3,
+            "px": 0,
+            "py": -1,
+            "pz": -2
+        },
+        "amb": {
+            "color": "#ffffff",
+            "intensity": 0
+        },
+        "ground": {
+            "visible": true,
+            "opacity": 0.17,
+            "radius": 1.8,
+            "yPlaceholder": -0.52
+        }
     }
 };
 
@@ -200,7 +345,7 @@ const buttonMat = new THREE.MeshPhysicalMaterial({
     color:                 0xffffff,
     roughness:             0.0,
     metalness:             0.04,
-    transmission:          0.87,
+    transmission:          0.55,
     transparent:           true,
     polygonOffset:         true,
     polygonOffsetFactor:   -2.0,

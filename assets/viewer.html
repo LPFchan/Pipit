@@ -23,8 +23,8 @@
   <script type="importmap">
   {
     "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            "three": "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.171.0/examples/jsm/"
     }
   }
   </script>
@@ -37,24 +37,47 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import {
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import * as ViewerMaterials from './materials.js';
+
+const {
     MATERIAL_RULES,
     LED_MAX_INTENSITY,
     VIEWER_CAMERA,
     VIEWER_SCENE,
     applyViewerBodyBackground,
     applyViewerSceneRuntime,
-} from './materials.js';
+} = ViewerMaterials;
+
+const VIEWER_SCENE_PRESETS = ViewerMaterials.VIEWER_SCENE_PRESETS ?? null;
+const DEFAULT_VIEWER_POST = {
+    bloomEnabled: false,
+    bloomStrength: 0.35,
+    bloomRadius: 0.25,
+    bloomThreshold: 0.72,
+    ssaoEnabled: false,
+    ssaoKernel: 16,
+    ssaoMin: 0.005,
+    ssaoMax: 0.18,
+    vignetteEnabled: false,
+    vignetteOffset: 1.0,
+    vignetteDarkness: 1.25,
+    gradeEnabled: false,
+    gradeSaturation: 1.0,
+    gradeContrast: 1.0,
+    gradeBrightness: 0.0,
+};
 
 const statusEl = document.getElementById('status');
 statusEl.innerText = 'Initializing...';
 
-applyViewerBodyBackground(VIEWER_SCENE.bodyBackground);
-
 // ─── Renderer ────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
-renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
 
 // ─── Scene / Camera ──────────────────────────────────────────────────────────
@@ -62,11 +85,34 @@ const scene = new THREE.Scene();
 
 // ─── Environment (IBL) ───────────────────────────────────────────────────────
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
-const roomEnv = new RoomEnvironment();
-const envBlur = VIEWER_SCENE.env.roomEnvBlur ?? 0.04;
-const envTexture = pmremGenerator.fromScene(roomEnv, envBlur).texture;
-roomEnv.dispose();
-pmremGenerator.dispose();
+let envTarget = null;
+let envTexture = null;
+
+const colorSchemeQuery = window.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
+let activeScenePresetKey = null;
+let activeSceneConfig = VIEWER_SCENE;
+
+function getSystemScenePresetKey() {
+    return colorSchemeQuery?.matches ? 'dark' : 'light';
+}
+
+function resolveSystemSceneConfig() {
+    const presetKey = getSystemScenePresetKey();
+    const presetCfg = VIEWER_SCENE_PRESETS?.[presetKey];
+    return {
+        presetKey,
+        sceneCfg: presetCfg && typeof presetCfg === 'object' ? presetCfg : VIEWER_SCENE,
+    };
+}
+
+function rebuildEnvTexture(sceneCfg) {
+    if (envTarget) envTarget.dispose();
+    const roomEnv = new RoomEnvironment();
+    const envBlur = sceneCfg?.env?.roomEnvBlur ?? 0.04;
+    envTarget = pmremGenerator.fromScene(roomEnv, envBlur);
+    roomEnv.dispose();
+    envTexture = envTarget.texture;
+}
 
 const camera = new THREE.PerspectiveCamera(
     VIEWER_CAMERA.fov,
@@ -79,6 +125,115 @@ camera.position.set(VIEWER_CAMERA.position[0], VIEWER_CAMERA.position[1], VIEWER
 // Orthographic camera — mirrors perspective camera; toggled by USE_ORTHO.
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, VIEWER_CAMERA.near, VIEWER_CAMERA.far);
 let USE_ORTHO = VIEWER_CAMERA.useOrtho;
+let composer = null;
+let renderPass = null;
+let bloomPass = null;
+let ssaoPass = null;
+let postGradePass = null;
+
+const PostGradeVignetteShader = {
+    uniforms: {
+        tDiffuse:         { value: null },
+        gradeEnabled:     { value: 0 },
+        saturation:       { value: 1.0 },
+        contrast:         { value: 1.0 },
+        brightness:       { value: 0.0 },
+        vignetteEnabled:  { value: 0 },
+        vignetteOffset:   { value: 1.0 },
+        vignetteDarkness: { value: 1.25 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform int gradeEnabled;
+        uniform float saturation;
+        uniform float contrast;
+        uniform float brightness;
+        uniform int vignetteEnabled;
+        uniform float vignetteOffset;
+        uniform float vignetteDarkness;
+        varying vec2 vUv;
+        void main() {
+            vec4 c = texture2D(tDiffuse, vUv);
+            if (gradeEnabled == 1) {
+                float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+                c.rgb = mix(vec3(l), c.rgb, saturation);
+                c.rgb = (c.rgb - 0.5) * contrast + 0.5;
+                c.rgb += vec3(brightness);
+            }
+            if (vignetteEnabled == 1) {
+                vec2 uv = (vUv - vec2(0.5)) * vec2(vignetteOffset);
+                float vig = clamp(1.0 - dot(uv, uv) * vignetteDarkness, 0.0, 1.0);
+                c.rgb *= vig;
+            }
+            gl_FragColor = c;
+        }
+    `,
+};
+
+function setRenderSize(width, height) {
+    renderer.setSize(width, height);
+    if (composer) composer.setSize(width, height);
+    if (bloomPass?.setSize) bloomPass.setSize(width, height);
+    if (ssaoPass?.setSize) ssaoPass.setSize(width, height);
+}
+
+function shouldUseComposer() {
+    return !!(bloomPass?.enabled || ssaoPass?.enabled || postGradePass?.enabled);
+}
+
+function getScenePostConfig(sceneCfg) {
+    return { ...DEFAULT_VIEWER_POST, ...(sceneCfg?.post ?? {}) };
+}
+
+function applyScenePostFx(sceneCfg) {
+    const p = getScenePostConfig(sceneCfg);
+    bloomPass.enabled = !!p.bloomEnabled;
+    bloomPass.strength = p.bloomStrength;
+    bloomPass.radius = p.bloomRadius;
+    bloomPass.threshold = p.bloomThreshold;
+
+    ssaoPass.enabled = !!p.ssaoEnabled;
+    ssaoPass.kernelRadius = p.ssaoKernel;
+    ssaoPass.minDistance = p.ssaoMin;
+    ssaoPass.maxDistance = p.ssaoMax;
+
+    postGradePass.enabled = !!(p.vignetteEnabled || p.gradeEnabled);
+    postGradePass.uniforms.gradeEnabled.value = p.gradeEnabled ? 1 : 0;
+    postGradePass.uniforms.saturation.value = p.gradeSaturation;
+    postGradePass.uniforms.contrast.value = p.gradeContrast;
+    postGradePass.uniforms.brightness.value = p.gradeBrightness;
+    postGradePass.uniforms.vignetteEnabled.value = p.vignetteEnabled ? 1 : 0;
+    postGradePass.uniforms.vignetteOffset.value = p.vignetteOffset;
+    postGradePass.uniforms.vignetteDarkness.value = p.vignetteDarkness;
+}
+
+composer = new EffectComposer(renderer);
+renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.25, 0.72);
+bloomPass.enabled = false;
+composer.addPass(bloomPass);
+
+ssaoPass = new SSAOPass(scene, camera, 1, 1);
+ssaoPass.enabled = false;
+ssaoPass.kernelRadius = 16;
+ssaoPass.minDistance = 0.005;
+ssaoPass.maxDistance = 0.18;
+composer.addPass(ssaoPass);
+
+postGradePass = new ShaderPass(PostGradeVignetteShader);
+postGradePass.enabled = false;
+composer.addPass(postGradePass);
+
+setRenderSize(window.innerWidth, window.innerHeight);
 
 function syncOrthoCamera() {
     const dist = Math.max(0.001, camera.position.distanceTo(controls.target));
@@ -194,7 +349,14 @@ function renderFrame() {
     }
 
     if (USE_ORTHO) syncOrthoCamera();
-    renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
+    const activeCamera = USE_ORTHO ? orthoCamera : camera;
+    if (shouldUseComposer()) {
+        renderPass.camera = activeCamera;
+        ssaoPass.camera = activeCamera;
+        composer.render();
+    } else {
+        renderer.render(scene, activeCamera);
+    }
 
     if (keepRendering) requestRender();
 }
@@ -225,16 +387,40 @@ groundPlane.position.y = VIEWER_SCENE.ground.yPlaceholder;
 groundPlane.receiveShadow = true;
 scene.add(groundPlane);
 
-applyViewerSceneRuntime(THREE, {
-    renderer,
-    scene,
-    envTexture,
-    keyLight,
-    fillLight,
-    rimLight,
-    ambientLight,
-    groundPlane,
-}, VIEWER_SCENE);
+function applySceneConfig(sceneCfg, presetKey) {
+    rebuildEnvTexture(sceneCfg);
+    activeScenePresetKey = presetKey;
+    activeSceneConfig = sceneCfg;
+    applyViewerBodyBackground(sceneCfg.bodyBackground);
+    statusEl.style.color = presetKey === 'dark' ? 'white' : '#111827';
+    applyScenePostFx(sceneCfg);
+    applyViewerSceneRuntime(THREE, {
+        renderer,
+        scene,
+        envTexture,
+        keyLight,
+        fillLight,
+        rimLight,
+        ambientLight,
+        groundPlane,
+    }, sceneCfg);
+    document.documentElement.dataset.viewerTheme = presetKey;
+    requestRender();
+}
+
+function syncSceneToSystemColorScheme({ force = false } = {}) {
+    const { presetKey, sceneCfg } = resolveSystemSceneConfig();
+    if (!force && activeScenePresetKey === presetKey && activeSceneConfig === sceneCfg) return;
+    applySceneConfig(sceneCfg, presetKey);
+}
+
+syncSceneToSystemColorScheme({ force: true });
+
+if (colorSchemeQuery?.addEventListener) {
+    colorSchemeQuery.addEventListener('change', () => syncSceneToSystemColorScheme());
+} else if (colorSchemeQuery?.addListener) {
+    colorSchemeQuery.addListener(() => syncSceneToSystemColorScheme());
+}
 
 // ─── Placeholder cube (removed once GLB loads) ───────────────────────────────
 const cubeGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
@@ -677,7 +863,7 @@ window.zoomCamera = (factor) => {
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    setRenderSize(window.innerWidth, window.innerHeight);
     if (USE_ORTHO) syncOrthoCamera();
     requestRender();
 });

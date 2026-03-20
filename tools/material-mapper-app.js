@@ -738,7 +738,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         applySearchFilter('');
     }
 
-    document.getElementById('save-materials-btn').addEventListener('click', () => {
+    function exportMaterialsJs() {
         if (partMap.size === 0) { showToast('Load a model first'); return; }
         const content = generateMaterialsJs();
         const blob = new Blob([content], { type: 'text/javascript' });
@@ -749,7 +749,10 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         a.click();
         URL.revokeObjectURL(url);
         showToast('materials.js downloaded!');
-    });
+    }
+
+    document.getElementById('save-materials-btn')?.addEventListener('click', exportMaterialsJs);
+    document.getElementById('export-materials-btn')?.addEventListener('click', exportMaterialsJs);
 
     // ─────────────────────────────────────────────────────────────
     // Toast
@@ -834,6 +837,7 @@ window.MaterialMapperApp = async function ({ THREE, OrbitControls, GLTFLoader, G
         generateCameraCode: () => generateCameraCode(),
         getViewerCameraExportPayload: () => getViewerCameraExportPayload(),
         getViewerSceneExportPayload: () => sceneModule?.getViewerSceneExportPayload?.() ?? null,
+        getViewerScenePresetExportPayload: () => sceneModule?.getViewerScenePresetExportPayload?.() ?? null,
     });
 
     // Persistence (state save/load + IDB caching)

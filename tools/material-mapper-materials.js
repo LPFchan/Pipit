@@ -130,6 +130,23 @@ function defaultViewerScenePayload() {
         rim: { color: '#dde8ff', intensity: 0.45, px: 0, py: -1, pz: -2 },
         amb: { color: '#ffffff', intensity: 0.1 },
         ground: { visible: true, opacity: 0.38, radius: 1.4, yPlaceholder: -0.52 },
+        post: {
+            bloomEnabled: false,
+            bloomStrength: 0.35,
+            bloomRadius: 0.25,
+            bloomThreshold: 0.72,
+            ssaoEnabled: false,
+            ssaoKernel: 16,
+            ssaoMin: 0.005,
+            ssaoMax: 0.18,
+            vignetteEnabled: false,
+            vignetteOffset: 1.0,
+            vignetteDarkness: 1.25,
+            gradeEnabled: false,
+            gradeSaturation: 1.0,
+            gradeContrast: 1.0,
+            gradeBrightness: 0.0,
+        },
     };
 }
 
@@ -152,6 +169,7 @@ function defaultViewerScenePayload() {
  *   - generateCameraCode: function that returns camera setup code (clipboard / scene panel)
  *   - getViewerCameraExportPayload: () => plain object for VIEWER_CAMERA in materials.js
  *   - getViewerSceneExportPayload: () => plain object for VIEWER_SCENE (or null → defaults)
+ *   - getViewerScenePresetExportPayload: () => plain object for VIEWER_SCENE_PRESETS (or null → defaults)
  */
 window.MaterialMapperMaterialsModule = function ({
     THREE,
@@ -166,6 +184,7 @@ window.MaterialMapperMaterialsModule = function ({
     generateCameraCode,
     getViewerCameraExportPayload,
     getViewerSceneExportPayload,
+    getViewerScenePresetExportPayload,
 }) {
     function resolveViewerCameraPayload() {
         try {
@@ -185,6 +204,19 @@ window.MaterialMapperMaterialsModule = function ({
             }
         } catch (e) { console.warn('[Material Mapper] viewer scene export', e); }
         return defaultViewerScenePayload();
+    }
+
+    function resolveViewerScenePresetPayload() {
+        try {
+            if (typeof getViewerScenePresetExportPayload === 'function') {
+                const v = getViewerScenePresetExportPayload();
+                if (v && typeof v === 'object') return v;
+            }
+        } catch (e) { console.warn('[Material Mapper] viewer scene preset export', e); }
+        return {
+            light: defaultViewerScenePayload(),
+            dark: defaultViewerScenePayload(),
+        };
     }
 
     const selectedParts = new Set();
@@ -426,7 +458,17 @@ window.MaterialMapperMaterialsModule = function ({
         setOutlines(selectedParts);
         requestRender?.();
         const primaryEntry = currentPrimarySelected ? partMap.get(currentPrimarySelected) : null;
-        buildEditor(primaryEntry?.assignedKey ?? null, selectedParts.size);
+
+        const isMaterialsTabActive = document.getElementById('tab-materials-btn')?.classList.contains('active');
+        const selectedMaterialKey = primaryEntry?.assignedKey;
+        if (isMaterialsTabActive && selectedMaterialKey && selectedMaterialKey !== '_keep' && matProps[selectedMaterialKey]) {
+            activeMaterialKey = selectedMaterialKey;
+            buildMaterialsManagerUI({ scroll });
+            buildEditor(selectedMaterialKey, 1);
+            return;
+        }
+
+        buildEditor(selectedMaterialKey ?? null, selectedParts.size);
     }
 
     function clearSelection() {
@@ -1304,6 +1346,7 @@ window.MaterialMapperMaterialsModule = function ({
         const ledIntensity = matProps[materialRoles.led ?? 'ledMat']?.emissiveIntensity ?? 7.7;
         const camPayload = resolveViewerCameraPayload();
         const scnPayload = resolveViewerScenePayload();
+        const scnPresetPayload = resolveViewerScenePresetPayload();
 
         return [
             `// materials.js — material definitions for Pipit's 3D viewer`,
@@ -1322,6 +1365,8 @@ window.MaterialMapperMaterialsModule = function ({
             `export const VIEWER_CAMERA = ${JSON.stringify(camPayload, null, 4)};`,
             ``,
             `export const VIEWER_SCENE = ${JSON.stringify(scnPayload, null, 4)};`,
+            ``,
+            `export const VIEWER_SCENE_PRESETS = ${JSON.stringify(scnPresetPayload, null, 4)};`,
             ``,
             matSection,
             ``,

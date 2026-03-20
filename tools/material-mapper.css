@@ -862,6 +862,59 @@
     .scene-panel::-webkit-scrollbar { width: 4px; }
     .scene-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
     .scene-section { display: flex; flex-direction: column; gap: 5px; }
+    .scene-preset-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 8px;
+    }
+    .scene-preset-card {
+      display: flex; flex-direction: column; gap: 9px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      transition: border-color .14s ease, box-shadow .14s ease, background .14s ease;
+    }
+    .scene-preset-card.active {
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 1px rgba(77,122,255,.20);
+      background: rgba(77,122,255,.06);
+    }
+    .scene-preset-head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+    }
+    .scene-preset-name {
+      font-size: 12px; font-weight: 600; color: var(--text);
+    }
+    .scene-preset-meta {
+      font-size: 10px; line-height: 1.35; color: var(--text-dim); text-align: right;
+    }
+    .scene-preset-actions {
+      display: flex; gap: 6px;
+    }
+    .scene-preset-btn {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 11px; font-weight: 600;
+      padding: 7px 8px;
+      cursor: pointer;
+      transition: border-color .12s ease, color .12s ease, background .12s ease;
+    }
+    .scene-preset-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .scene-preset-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(77,122,255,.12);
+    }
+    .scene-preset-btn.secondary {
+      color: var(--text-dim);
+    }
     .scene-section-hdr {
       font-size: 10px; font-weight: 700;
       text-transform: uppercase; letter-spacing: .07em;

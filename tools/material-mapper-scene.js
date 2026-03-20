@@ -17,7 +17,20 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
     saveState,
     requestRender,
 }) {
-    const sceneState = {
+    const PRESET_STORAGE_KEY = 'material-mapper-scene-presets-v1';
+
+    function cloneState(value) {
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    function mergeStateInto(target, source) {
+        for (const [key, val] of Object.entries(source || {})) {
+            if (!(key in target) || !val || typeof val !== 'object') continue;
+            Object.assign(target[key], val);
+        }
+    }
+
+    const DEFAULT_SCENE_STATE = {
         renderer: { toneMap: 'ACES', output: 'sRGB', physicallyCorrect: true },
         bg:     { style: 'gradient', color1: '#1c1e28', color2: '#09090c', gradType: 'radial', solidColor: '#070910' },
         env:    {
@@ -66,6 +79,160 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
             gradeBrightness: 0.0,
         },
     };
+
+    function buildDefaultLightPreset() {
+        const preset = cloneState(DEFAULT_SCENE_STATE);
+        preset.bg.style = 'gradient';
+        preset.bg.gradType = 'linear';
+        preset.bg.color1 = '#f2f6fb';
+        preset.bg.color2 = '#ffffff';
+        preset.bg.solidColor = '#ffffff';
+        preset.env.enabled = true;
+        preset.env.useAsBackground = false;
+        preset.env.intensity = 0.9;
+        preset.env.bgBlurriness = 0;
+        preset.env.bgIntensity = 1;
+        preset.tm.exposure = 1.15;
+        preset.key.color = '#fff8f0';
+        preset.key.intensity = 2.7;
+        preset.key.px = 1.7;
+        preset.key.py = 2.8;
+        preset.key.pz = 2.2;
+        preset.key.shadows = true;
+        preset.shadow.type = 'PCFSoft';
+        preset.shadow.mapSize = 1024;
+        preset.shadow.radius = 7.5;
+        preset.fill.color = '#d7e6ff';
+        preset.fill.intensity = 0.95;
+        preset.fill.px = -2.2;
+        preset.fill.py = 1.2;
+        preset.fill.pz = -1.4;
+        preset.rim.color = '#ffffff';
+        preset.rim.intensity = 0.22;
+        preset.rim.py = 0.2;
+        preset.rim.pz = -1.3;
+        preset.amb.intensity = 0.32;
+        preset.ground.visible = true;
+        preset.ground.opacity = 0.16;
+        preset.post.bloomEnabled = false;
+        preset.post.ssaoEnabled = false;
+        preset.post.vignetteEnabled = false;
+        preset.post.gradeEnabled = false;
+        return preset;
+    }
+
+    function buildDefaultPresetStore() {
+        return {
+            light: { state: buildDefaultLightPreset(), updatedAt: null },
+            dark: { state: cloneState(DEFAULT_SCENE_STATE), updatedAt: null },
+        };
+    }
+
+    function loadPresetStore() {
+        const defaults = buildDefaultPresetStore();
+        try {
+            const raw = JSON.parse(localStorage.getItem(PRESET_STORAGE_KEY) || 'null');
+            if (!raw || typeof raw !== 'object') return defaults;
+
+            for (const slotKey of ['light', 'dark']) {
+                const savedSlot = raw[slotKey];
+                if (!savedSlot || typeof savedSlot !== 'object') continue;
+                if (savedSlot.state && typeof savedSlot.state === 'object') {
+                    mergeStateInto(defaults[slotKey].state, savedSlot.state);
+                }
+                if (Number.isFinite(savedSlot.updatedAt)) {
+                    defaults[slotKey].updatedAt = savedSlot.updatedAt;
+                }
+            }
+        } catch (error) {
+            console.warn('[Material Mapper] Scene preset restore failed', error);
+        }
+        return defaults;
+    }
+
+    function persistPresetStore() {
+        try {
+            localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(presetStore));
+        } catch (error) {
+            console.warn('[Material Mapper] Scene preset save failed', error);
+        }
+    }
+
+    const sceneState = cloneState(DEFAULT_SCENE_STATE);
+    let presetStore = loadPresetStore();
+
+    function captureSceneSnapshot() {
+        return cloneState(sceneState);
+    }
+
+    function formatPresetTimestamp(timestamp) {
+        try {
+            return new Date(timestamp).toLocaleString([], {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+            });
+        } catch (_error) {
+            return 'Saved';
+        }
+    }
+
+    function getCurrentPresetSlot() {
+        const current = JSON.stringify(captureSceneSnapshot());
+        for (const slotKey of ['light', 'dark']) {
+            if (JSON.stringify(presetStore[slotKey].state) === current) return slotKey;
+        }
+        return null;
+    }
+
+    function presetStatusLabel(slotKey, isActive) {
+        const slot = presetStore[slotKey];
+        const segments = [];
+        if (isActive) segments.push('Active');
+        segments.push(slot.updatedAt ? `Saved ${formatPresetTimestamp(slot.updatedAt)}` : 'Built-in');
+        return segments.join(' · ');
+    }
+
+    function syncPresetControls() {
+        const activeSlot = getCurrentPresetSlot();
+        for (const slotKey of ['light', 'dark']) {
+            const isActive = activeSlot === slotKey;
+            const card = document.querySelector(`[data-scene-preset="${slotKey}"]`);
+            const applyBtn = document.getElementById(`sp-apply-${slotKey}-btn`);
+            const status = document.getElementById(`sp-preset-${slotKey}-status`);
+            if (card) card.classList.toggle('active', isActive);
+            if (applyBtn) {
+                applyBtn.classList.toggle('active', isActive);
+                applyBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            }
+            if (status) status.textContent = presetStatusLabel(slotKey, isActive);
+        }
+    }
+
+    function persistSceneChanges() {
+        saveState();
+        syncPresetControls();
+    }
+
+    function saveScenePreset(slotKey) {
+        if (!presetStore[slotKey]) return;
+        presetStore[slotKey] = {
+            state: captureSceneSnapshot(),
+            updatedAt: Date.now(),
+        };
+        persistPresetStore();
+        syncPresetControls();
+    }
+
+    function applyScenePreset(slotKey) {
+        const slot = presetStore[slotKey];
+        if (!slot?.state) return;
+        mergeStateInto(sceneState, slot.state);
+        syncScenePanel();
+        applyAll();
+        persistSceneChanges();
+    }
 
     function applyRendererSettings() {
         const r = sceneState.renderer;
@@ -279,6 +446,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         setV('sp-post-grade-sat', s.post.gradeSaturation); setV('sp-post-grade-sat-num', s.post.gradeSaturation);
         setV('sp-post-grade-contrast', s.post.gradeContrast); setV('sp-post-grade-contrast-num', s.post.gradeContrast);
         setV('sp-post-grade-bright', s.post.gradeBrightness); setV('sp-post-grade-bright-num', s.post.gradeBrightness);
+        syncPresetControls();
     }
 
     function numVal(id, fallback) {
@@ -304,7 +472,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
             sl.value = n; nm.value = n;
             sceneState[stateKey][field] = n;
             applyFn();
-            saveState();
+            persistSceneChanges();
         };
         sl.addEventListener('input',  () => set(sl.value));
         nm.addEventListener('change', () => set(nm.value));
@@ -318,42 +486,47 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
             hx.textContent = pk.value;
             sceneState[stateKey][field] = pk.value;
             applyFn();
-            saveState();
+            persistSceneChanges();
         });
     }
 
     function bindUI() {
+        bindIfPresent('sp-apply-light-btn', 'click', () => applyScenePreset('light'));
+        bindIfPresent('sp-save-light-btn', 'click', () => saveScenePreset('light'));
+        bindIfPresent('sp-apply-dark-btn', 'click', () => applyScenePreset('dark'));
+        bindIfPresent('sp-save-dark-btn', 'click', () => saveScenePreset('dark'));
+
         bindIfPresent('sp-renderer-tone-map', 'change', e => {
             sceneState.renderer.toneMap = e.target.value;
             applyRendererSettings();
-            saveState();
+            persistSceneChanges();
         });
         bindIfPresent('sp-renderer-output', 'change', e => {
             sceneState.renderer.output = e.target.value;
             applyRendererSettings();
-            saveState();
+            persistSceneChanges();
         });
         bindIfPresent('sp-renderer-phys', 'change', e => {
             sceneState.renderer.physicallyCorrect = e.target.checked;
             applyRendererSettings();
-            saveState();
+            persistSceneChanges();
         });
 
         bindIfPresent('sp-bg-style', 'change', e => {
-            sceneState.bg.style = e.target.value; applyBackground(); saveState();
+            sceneState.bg.style = e.target.value; applyBackground(); persistSceneChanges();
         });
         bindIfPresent('sp-bg-grad-type', 'change', e => {
-            sceneState.bg.gradType = e.target.value; applyBackground(); saveState();
+            sceneState.bg.gradType = e.target.value; applyBackground(); persistSceneChanges();
         });
         spColor('sp-bg-color1', 'sp-bg-color1-hex', 'bg', 'color1',     applyBackground);
         spColor('sp-bg-color2', 'sp-bg-color2-hex', 'bg', 'color2',     applyBackground);
         spColor('sp-bg-solid',  'sp-bg-solid-hex',  'bg', 'solidColor', applyBackground);
 
         bindIfPresent('sp-env-enabled', 'change', e => {
-            sceneState.env.enabled = e.target.checked; applyEnv(); applyBackground(); saveState();
+            sceneState.env.enabled = e.target.checked; applyEnv(); applyBackground(); persistSceneChanges();
         });
         bindIfPresent('sp-env-as-bg', 'change', e => {
-            sceneState.env.useAsBackground = e.target.checked; applyEnv(); applyBackground(); saveState();
+            sceneState.env.useAsBackground = e.target.checked; applyEnv(); applyBackground(); persistSceneChanges();
         });
         spNum('sp-env-intensity', 'sp-env-intensity-num', 'env', 'intensity', applyEnv);
         spNum('sp-env-bg-blur', 'sp-env-bg-blur-num', 'env', 'bgBlurriness', applyEnv);
@@ -364,7 +537,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
                 sceneState.env.rotY = numVal('sp-env-rot-y', 0);
                 sceneState.env.rotZ = numVal('sp-env-rot-z', 0);
                 applyEnv();
-                saveState();
+                persistSceneChanges();
             });
         });
 
@@ -379,17 +552,17 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         spNum('sp-key-shadow-radius', 'sp-key-shadow-radius-num', 'shadow', 'radius', applyKeyLight);
         spNum('sp-key-shadow-bias', 'sp-key-shadow-bias-num', 'shadow', 'bias', applyKeyLight);
         bindIfPresent('sp-shadow-type', 'change', e => {
-            sceneState.shadow.type = e.target.value; applyKeyLight(); saveState();
+            sceneState.shadow.type = e.target.value; applyKeyLight(); persistSceneChanges();
         });
         bindIfPresent('sp-key-shadows', 'change', e => {
-            sceneState.key.shadows = e.target.checked; applyKeyLight(); saveState();
+            sceneState.key.shadows = e.target.checked; applyKeyLight(); persistSceneChanges();
         });
         ['sp-key-pos-x', 'sp-key-pos-y', 'sp-key-pos-z'].forEach((id) => {
             bindIfPresent(id, 'change', () => {
                 sceneState.key.px = numVal('sp-key-pos-x', 1.5);
                 sceneState.key.py = numVal('sp-key-pos-y', 2.5);
                 sceneState.key.pz = numVal('sp-key-pos-z', 2.0);
-                applyKeyLight(); saveState();
+                applyKeyLight(); persistSceneChanges();
             });
         });
         ['sp-key-shadow-near', 'sp-key-shadow-far', 'sp-key-shadow-left', 'sp-key-shadow-right', 'sp-key-shadow-top', 'sp-key-shadow-bottom'].forEach((id) => {
@@ -401,7 +574,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
                 sceneState.shadow.top = numVal('sp-key-shadow-top', 2);
                 sceneState.shadow.bottom = numVal('sp-key-shadow-bottom', -2);
                 applyKeyLight();
-                saveState();
+                persistSceneChanges();
             });
         });
 
@@ -412,7 +585,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
                 sceneState.fill.px = numVal('sp-fill-pos-x', -2);
                 sceneState.fill.py = numVal('sp-fill-pos-y', 1);
                 sceneState.fill.pz = numVal('sp-fill-pos-z', -1.5);
-                applyFillLight(); saveState();
+                applyFillLight(); persistSceneChanges();
             });
         });
 
@@ -423,7 +596,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
                 sceneState.rim.px = numVal('sp-rim-pos-x', 0);
                 sceneState.rim.py = numVal('sp-rim-pos-y', -1);
                 sceneState.rim.pz = numVal('sp-rim-pos-z', -2);
-                applyRimLight(); saveState();
+                applyRimLight(); persistSceneChanges();
             });
         });
 
@@ -431,33 +604,33 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         spNum('sp-amb-intensity', 'sp-amb-intensity-num', 'amb', 'intensity', applyAmbient);
 
         bindIfPresent('sp-ground-visible', 'change', e => {
-            sceneState.ground.visible = e.target.checked; applyGround(); saveState();
+            sceneState.ground.visible = e.target.checked; applyGround(); persistSceneChanges();
         });
         spNum('sp-ground-opacity', 'sp-ground-opacity-num', 'ground', 'opacity', applyGround);
         spNum('sp-ground-radius', 'sp-ground-radius-num', 'ground', 'radius', applyGround);
 
         bindIfPresent('sp-post-bloom-enabled', 'change', e => {
-            sceneState.post.bloomEnabled = e.target.checked; applyPostFx(); saveState();
+            sceneState.post.bloomEnabled = e.target.checked; applyPostFx(); persistSceneChanges();
         });
         spNum('sp-post-bloom-strength', 'sp-post-bloom-strength-num', 'post', 'bloomStrength', applyPostFx);
         spNum('sp-post-bloom-radius', 'sp-post-bloom-radius-num', 'post', 'bloomRadius', applyPostFx);
         spNum('sp-post-bloom-threshold', 'sp-post-bloom-threshold-num', 'post', 'bloomThreshold', applyPostFx);
 
         bindIfPresent('sp-post-ssao-enabled', 'change', e => {
-            sceneState.post.ssaoEnabled = e.target.checked; applyPostFx(); saveState();
+            sceneState.post.ssaoEnabled = e.target.checked; applyPostFx(); persistSceneChanges();
         });
         spNum('sp-post-ssao-kernel', 'sp-post-ssao-kernel-num', 'post', 'ssaoKernel', applyPostFx);
         spNum('sp-post-ssao-min', 'sp-post-ssao-min-num', 'post', 'ssaoMin', applyPostFx);
         spNum('sp-post-ssao-max', 'sp-post-ssao-max-num', 'post', 'ssaoMax', applyPostFx);
 
         bindIfPresent('sp-post-vig-enabled', 'change', e => {
-            sceneState.post.vignetteEnabled = e.target.checked; applyPostFx(); saveState();
+            sceneState.post.vignetteEnabled = e.target.checked; applyPostFx(); persistSceneChanges();
         });
         spNum('sp-post-vig-offset', 'sp-post-vig-offset-num', 'post', 'vignetteOffset', applyPostFx);
         spNum('sp-post-vig-darkness', 'sp-post-vig-darkness-num', 'post', 'vignetteDarkness', applyPostFx);
 
         bindIfPresent('sp-post-grade-enabled', 'change', e => {
-            sceneState.post.gradeEnabled = e.target.checked; applyPostFx(); saveState();
+            sceneState.post.gradeEnabled = e.target.checked; applyPostFx(); persistSceneChanges();
         });
         spNum('sp-post-grade-sat', 'sp-post-grade-sat-num', 'post', 'gradeSaturation', applyPostFx);
         spNum('sp-post-grade-contrast', 'sp-post-grade-contrast-num', 'post', 'gradeContrast', applyPostFx);
@@ -465,16 +638,11 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
     }
 
     function mergeState(savedSceneState) {
-        for (const [key, val] of Object.entries(savedSceneState || {})) {
-            if (key in sceneState && val && typeof val === 'object') {
-                Object.assign(sceneState[key], val);
-            }
-        }
+        mergeStateInto(sceneState, savedSceneState);
     }
 
-    /** Plain object for export into assets/materials.js as VIEWER_SCENE. */
-    function getViewerSceneExportPayload() {
-        const s = sceneState;
+    function buildViewerSceneExportPayload(sourceState) {
+        const s = sourceState;
         const bodyBackground = s.bg.style === 'gradient'
             ? (s.bg.gradType === 'radial'
                 ? `radial-gradient(ellipse at 50% 38%, ${s.bg.color1} 0%, ${s.bg.color2} 100%)`
@@ -538,11 +706,42 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
                 radius: s.ground.radius,
                 yPlaceholder: -0.52,
             },
+            post: {
+                bloomEnabled: s.post.bloomEnabled,
+                bloomStrength: s.post.bloomStrength,
+                bloomRadius: s.post.bloomRadius,
+                bloomThreshold: s.post.bloomThreshold,
+                ssaoEnabled: s.post.ssaoEnabled,
+                ssaoKernel: s.post.ssaoKernel,
+                ssaoMin: s.post.ssaoMin,
+                ssaoMax: s.post.ssaoMax,
+                vignetteEnabled: s.post.vignetteEnabled,
+                vignetteOffset: s.post.vignetteOffset,
+                vignetteDarkness: s.post.vignetteDarkness,
+                gradeEnabled: s.post.gradeEnabled,
+                gradeSaturation: s.post.gradeSaturation,
+                gradeContrast: s.post.gradeContrast,
+                gradeBrightness: s.post.gradeBrightness,
+            },
+        };
+    }
+
+    /** Plain object for export into assets/materials.js as VIEWER_SCENE. */
+    function getViewerSceneExportPayload() {
+        return buildViewerSceneExportPayload(sceneState);
+    }
+
+    function getViewerScenePresetExportPayload() {
+        return {
+            light: buildViewerSceneExportPayload(presetStore.light.state),
+            dark: buildViewerSceneExportPayload(presetStore.dark.state),
         };
     }
 
     function generateSceneCode() {
         const s = sceneState;
+        const presetPayload = getViewerScenePresetExportPayload();
+        const activePresetSlot = getCurrentPresetSlot() ?? 'custom';
         const x = h => '0x' + h.replace('#', '');
         const f = n => (Math.round(n * 1000) / 1000).toString();
         const bgCss = s.bg.style === 'gradient'
@@ -622,6 +821,12 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
             `});`,
             `const modelBox = new THREE.Box3().setFromObject(modelPivot);`,
             `groundPlane.position.y = modelBox.min.y - 0.008;`,
+            ``,
+            `// ─── Scene preset payloads ─────────────────────────────────────────────────`,
+            `// active slot: ${activePresetSlot}`,
+            `const VIEWER_SCENE = ${JSON.stringify(getViewerSceneExportPayload(), null, 4)};`,
+            ``,
+            `const VIEWER_SCENE_PRESETS = ${JSON.stringify(presetPayload, null, 4)};`,
         ].join('\n');
     }
 
@@ -629,6 +834,7 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         syncScenePanel();
         applyAll();
         bindUI();
+        syncPresetControls();
     }
 
     return {
@@ -639,5 +845,6 @@ window.MaterialMapperSceneModule = function MaterialMapperSceneModule({
         applyAll,
         generateSceneCode,
         getViewerSceneExportPayload,
+        getViewerScenePresetExportPayload,
     };
 };

@@ -35,6 +35,7 @@
       <button class="btn btn-ghost header-menu-btn" id="import-menu-btn" type="button" aria-expanded="false" aria-haspopup="menu" aria-controls="import-menu-popover">↑ Import ▾</button>
       <div class="header-menu-popover" id="import-menu-popover" role="menu" aria-labelledby="import-menu-btn" hidden>
         <button class="header-menu-item" id="import-open-model-btn" type="button" role="menuitem">Open .glb / .gltf</button>
+        <button class="header-menu-item" id="import-materials-action-btn" type="button" role="menuitem">Import materials.js</button>
         <button class="header-menu-item" id="import-code-action-btn" type="button" role="menuitem">Import from code</button>
       </div>
     </div>
@@ -44,6 +45,7 @@
     <div class="header-menu" data-header-menu>
       <button class="btn btn-ghost header-menu-btn" id="export-menu-btn" type="button" aria-expanded="false" aria-haspopup="menu" aria-controls="export-menu-popover">↓ Export ▾</button>
       <div class="header-menu-popover" id="export-menu-popover" role="menu" aria-labelledby="export-menu-btn" hidden>
+        <button class="header-menu-item" id="export-materials-btn" type="button" role="menuitem">Export materials.js</button>
         <button class="header-menu-item" id="export-code-action-btn" type="button" role="menuitem">Open generated code</button>
         <button class="header-menu-item" id="export-glb-btn" type="button" role="menuitem" disabled>Export GLB</button>
       </div>
@@ -219,6 +221,32 @@
     <div class="scene-panel" id="scene-panel" style="display:none">
 
       <div class="scene-section">
+        <div class="scene-section-hdr">Scene Presets</div>
+        <div class="scene-preset-grid">
+          <div class="scene-preset-card" data-scene-preset="light">
+            <div class="scene-preset-head">
+              <span class="scene-preset-name">Light</span>
+              <span class="scene-preset-meta" id="sp-preset-light-status">Built-in</span>
+            </div>
+            <div class="scene-preset-actions">
+              <button class="scene-preset-btn" id="sp-apply-light-btn" type="button" aria-pressed="false">Apply</button>
+              <button class="scene-preset-btn secondary" id="sp-save-light-btn" type="button">Save current</button>
+            </div>
+          </div>
+          <div class="scene-preset-card" data-scene-preset="dark">
+            <div class="scene-preset-head">
+              <span class="scene-preset-name">Dark</span>
+              <span class="scene-preset-meta" id="sp-preset-dark-status">Built-in</span>
+            </div>
+            <div class="scene-preset-actions">
+              <button class="scene-preset-btn" id="sp-apply-dark-btn" type="button" aria-pressed="false">Apply</button>
+              <button class="scene-preset-btn secondary" id="sp-save-dark-btn" type="button">Save current</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scene-section">
         <div class="scene-section-hdr">Background</div>
         <div class="scene-row">
           <span class="scene-label">Style</span>
@@ -366,10 +394,102 @@
           <input type="range" class="prop-slider" id="sp-ground-opacity" min="0" max="1" step="0.01" value="0.38">
           <input type="number" class="prop-num" id="sp-ground-opacity-num" min="0" max="1" step="0.01" value="0.38">
         </div>
+        <div class="scene-row">
+          <span class="scene-label">Radius</span>
+          <input type="range" class="prop-slider" id="sp-ground-radius" min="0.4" max="4" step="0.05" value="1.8">
+          <input type="number" class="prop-num" id="sp-ground-radius-num" min="0.4" max="4" step="0.05" value="1.8">
+        </div>
       </div>
 
       <div class="scene-section">
-        <button class="scene-copy-btn" id="sp-copy-code-btn">⎘ Copy scene code for viewer.html</button>
+        <div class="scene-section-hdr">Bloom</div>
+        <div class="scene-row">
+          <span class="scene-label">Enabled</span>
+          <input type="checkbox" class="prop-toggle" id="sp-post-bloom-enabled">
+        </div>
+        <div class="scene-row">
+          <span class="scene-label">Strength</span>
+          <input type="range" class="prop-slider" id="sp-post-bloom-strength" min="0" max="3" step="0.01" value="0.35">
+          <input type="number" class="prop-num" id="sp-post-bloom-strength-num" min="0" max="3" step="0.01" value="0.35">
+        </div>
+        <div class="scene-row">
+          <span class="scene-label">Radius</span>
+          <input type="range" class="prop-slider" id="sp-post-bloom-radius" min="0" max="1" step="0.01" value="0.25">
+          <input type="number" class="prop-num" id="sp-post-bloom-radius-num" min="0" max="1" step="0.01" value="0.25">
+        </div>
+        <div class="scene-row">
+          <span class="scene-label">Threshold</span>
+          <input type="range" class="prop-slider" id="sp-post-bloom-threshold" min="0" max="1" step="0.01" value="0.72">
+          <input type="number" class="prop-num" id="sp-post-bloom-threshold-num" min="0" max="1" step="0.01" value="0.72">
+        </div>
+      </div>
+
+      <div class="scene-section">
+        <div class="scene-section-hdr">SSAO</div>
+        <div class="scene-row">
+          <span class="scene-label">Enabled</span>
+          <input type="checkbox" class="prop-toggle" id="sp-post-ssao-enabled">
+        </div>
+        <div class="scene-row">
+          <span class="scene-label">Kernel</span>
+          <input type="range" class="prop-slider" id="sp-post-ssao-kernel" min="0" max="64" step="1" value="16">
+          <input type="number" class="prop-num" id="sp-post-ssao-kernel-num" min="0" max="64" step="1" value="16">
+        </div>
+        <div class="scene-row">
+          <span class="scene-label">Min dist</span>
+          <input type="range" class="prop-slider" id="sp-post-ssao-min" min="0" max="0.05" step="0.001" value="0.005">
+          <input type="number" class="prop-num" id="sp-post-ssao-min-num" min="0" max="0.05" step="0.001" value="0.005">
+        </div>
+        <div class="scene-row">
+          <span class="scene-label">Max dist</span>
+          <input type="range" class="prop-slider" id="sp-post-ssao-max" min="0.01" max="1" step="0.005" value="0.18">
+          <input type="number" class="prop-num" id="sp-post-ssao-max-num" min="0.01" max="1" step="0.005" value="0.18">
+        </div>
+      </div>
+
+      <div class="scene-section">
+        <div class="scene-section-hdr">Vignette</div>
+        <div class="scene-row">
+          <span class="scene-label">Enabled</span>
+          <input type="checkbox" class="prop-toggle" id="sp-post-vig-enabled">
+        </div>
+        <div class="scene-row">
+          <span class="scene-label">Offset</span>
+          <input type="range" class="prop-slider" id="sp-post-vig-offset" min="0.2" max="3" step="0.01" value="1.0">
+          <input type="number" class="prop-num" id="sp-post-vig-offset-num" min="0.2" max="3" step="0.01" value="1.0">
+        </div>
+        <div class="scene-row">
+          <span class="scene-label">Darkness</span>
+          <input type="range" class="prop-slider" id="sp-post-vig-darkness" min="0" max="4" step="0.01" value="1.25">
+          <input type="number" class="prop-num" id="sp-post-vig-darkness-num" min="0" max="4" step="0.01" value="1.25">
+        </div>
+      </div>
+
+      <div class="scene-section">
+        <div class="scene-section-hdr">Color Grade</div>
+        <div class="scene-row">
+          <span class="scene-label">Enabled</span>
+          <input type="checkbox" class="prop-toggle" id="sp-post-grade-enabled">
+        </div>
+        <div class="scene-row">
+          <span class="scene-label">Saturation</span>
+          <input type="range" class="prop-slider" id="sp-post-grade-sat" min="0" max="2" step="0.01" value="1.0">
+          <input type="number" class="prop-num" id="sp-post-grade-sat-num" min="0" max="2" step="0.01" value="1.0">
+        </div>
+        <div class="scene-row">
+          <span class="scene-label">Contrast</span>
+          <input type="range" class="prop-slider" id="sp-post-grade-contrast" min="0" max="2" step="0.01" value="1.0">
+          <input type="number" class="prop-num" id="sp-post-grade-contrast-num" min="0" max="2" step="0.01" value="1.0">
+        </div>
+        <div class="scene-row">
+          <span class="scene-label">Brightness</span>
+          <input type="range" class="prop-slider" id="sp-post-grade-bright" min="-1" max="1" step="0.01" value="0.0">
+          <input type="number" class="prop-num" id="sp-post-grade-bright-num" min="-1" max="1" step="0.01" value="0.0">
+        </div>
+      </div>
+
+      <div class="scene-section">
+        <button class="scene-copy-btn" id="sp-copy-code-btn">⎘ Copy scene + presets code</button>
       </div>
 
     </div>
@@ -397,7 +517,6 @@
     <div class="code-modal-hdr">
       <span class="sec-label">Generated Code</span>
       <button class="btn btn-accent" id="copy-btn" style="padding:3px 12px; font-size:11px;">Copy all</button>
-      <button class="btn" id="save-materials-btn" style="padding:3px 12px; font-size:11px;">&#8595; Save materials.js</button>
       <button class="code-modal-close" id="code-modal-close" title="Close">✕</button>
     </div>
     <pre id="code-output"><span class="cmt">// Load a model first</span></pre>
