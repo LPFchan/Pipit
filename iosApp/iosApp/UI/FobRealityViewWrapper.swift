@@ -559,6 +559,13 @@ private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
 ///   - Long press is detected during hold (no inter-click delay needed) → Lock LED + BLE command.
 private let UGUISU_MULTI_CLICK_WINDOW_MS: Double = 0.400
 
+/// At least this many points from the bottom are excluded for orbit (covers home indicator even if insets are odd).
+private let fobOrbitHomeZoneMinHeightPt: CGFloat = 56
+/// Padding added to `safeAreaInsets.bottom` when computing the excluded bottom band.
+private let fobOrbitHomeZoneExtraMarginPt: CGFloat = 32
+/// Orbit only after this drag distance — reduces spurious pans before the system takes the home gesture.
+private let fobOrbitMinimumDragPt: CGFloat = 24
+
 private enum FobInteractHaptics {
     static let pressDown = UIImpactFeedbackGenerator(style: .light)
 }
@@ -597,6 +604,8 @@ struct FobInteractiveViewer: View {
     @State private var lastMagScale: CGFloat         = 1.0
     @State private var isPanning: Bool               = false
     @State private var orbitSuppressed: Bool         = false
+    /// While true, JS tilt parallax is off so Core Motion does not add “tilt” during app-switch swipes.
+    @State private var fingerDownParallaxSuspended: Bool = false
 
     var body: some View {
         GeometryReader { geo in
@@ -607,7 +616,7 @@ struct FobInteractiveViewer: View {
             modelScale: 1.0,
             modelRotation: .zero,
             cameraController: cameraController,
-            parallaxMotionJSEnabled: motionParallax.webParallaxEnabled
+            parallaxMotionJSEnabled: motionParallax.webParallaxEnabled && !fingerDownParallaxSuspended
         )
         // A transparent overlay to capture touch events over the WebView
         .overlay(
@@ -619,6 +628,9 @@ struct FobInteractiveViewer: View {
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
+                            if !fingerDownParallaxSuspended {
+                                fingerDownParallaxSuspended = true
+                            }
                             if !sentSurfaceHitTestForDrag && !isPanning {
                                 sentSurfaceHitTestForDrag = true
                                 touchGeneration &+= 1
@@ -645,6 +657,7 @@ struct FobInteractiveViewer: View {
                             }
                         }
                         .onEnded { _ in
+                            fingerDownParallaxSuspended = false
                             sentSurfaceHitTestForDrag = false
                             surfaceHitTestInFlight = false
                             withAnimation(.easeIn(duration: 0.15)) { isPressed = false }
@@ -705,16 +718,31 @@ struct FobInteractiveViewer: View {
                             }
                         }
                 )
-                // ── Orbit: drag > 15 pt rotates camera around the model. ──────────────
+                // ── Orbit: drag past threshold rotates camera around the model. ─────────
                 // Suppressed when the gesture's start location is within the
                 // projected button mesh region to avoid accidental orbit
                 // when the user is trying to tap or long-press the button.
+                // Also suppressed when the drag starts in a wide bottom band (home / app switcher).
+                // Upward, mostly-vertical drags starting just above that band are treated as the same
+                // (finger often lands slightly above the home indicator).
                 .simultaneousGesture(
-                    DragGesture(minimumDistance: 15)
+                    DragGesture(minimumDistance: fobOrbitMinimumDragPt)
                         .onChanged { value in
+                            let bottomBand = max(
+                                geo.safeAreaInsets.bottom + fobOrbitHomeZoneExtraMarginPt,
+                                fobOrbitHomeZoneMinHeightPt)
+                            let homeBandTopY = geo.size.height - bottomBand
+                            let startedInHomeZone = value.startLocation.y >= homeBandTopY
+                            let t = value.translation
+                            let upward = t.height < -12
+                            let verticalDominant = abs(t.height) > abs(t.width) * 1.2
+                            let extendedBottomTopY = geo.size.height - (bottomBand + 56)
+                            let likelyHomeSwipe = upward && verticalDominant
+                                && value.startLocation.y >= extendedBottomTopY
                             if !isPanning {
                                 // Wait for raycast before orbiting from PCB area; enclosure stays orbit-able.
                                 orbitSuppressed = inButtonZone || surfaceHitTestInFlight
+                                    || startedInHomeZone || likelyHomeSwipe
                                 if !orbitSuppressed {
                                     withAnimation(.easeIn(duration: 0.1)) { isPressed = false }
                                 }
