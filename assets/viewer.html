@@ -73,6 +73,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
     MATERIAL_RULES,
     LED_MAX_INTENSITY,
@@ -133,7 +134,8 @@ function tickFpsHud() {
     if (_fpsLastFrameTs > 0) {
         const dt = now - _fpsLastFrameTs;
         if (dt > 0 && dt < 4000) {
-            _fpsHudEl.textContent = `${Math.round(1000 / dt)} fps`;
+            const info = renderer.info.render;
+            _fpsHudEl.textContent = `${Math.round(1000 / dt)} fps | ${info.calls} dc | ${(info.triangles / 1000).toFixed(0)}k tris`;
         } else if (dt >= 4000) {
             _fpsHudEl.textContent = '0 fps';
         }
@@ -168,7 +170,7 @@ document.documentElement.dataset.viewerTheme = initialAppearance.presetKey;
 
 // ─── Renderer ────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
 renderer.domElement.style.background = 'transparent';
 renderer.domElement.style.position = 'relative';
 renderer.domElement.style.zIndex = '1';
@@ -1043,10 +1045,68 @@ loader.load(
         // Ensure LED starts OFF; Swift drives state via setLedState after modelReady.
         _applyLedState(0, 0, 0, false, 1.0);
 
-        // ── Enable shadows on all meshes ─────────────────────────────────────
-        rootModel.traverse((obj) => {
-            if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; }
-        });
+        // ── Batch static geometry by material to collapse ~680 draw calls → ~7 ─
+        // Interactive meshes (button hit objects, LEDs) stay as individual objects
+        // so raycasting and per-mesh property changes (emissive, visibility) work.
+        // Everything else is merged into one Mesh per material+attribute-signature
+        // bucket. This cuts shadow, transmission background, and main passes alike.
+        {
+            const _interactive = new Set([...buttonHitObjects, ...ledMeshes]);
+            // Bucket key = material uuid + sorted attribute names (mergeGeometries
+            // requires identical attribute sets within each group).
+            const _buckets = new Map();
+            rootModel.updateWorldMatrix(true, true);
+            const _rootInv = new THREE.Matrix4().copy(rootModel.matrixWorld).invert();
+
+            rootModel.traverse((obj) => {
+                if (!obj.isMesh) return;
+                if (_interactive.has(obj)) return;
+                obj.updateWorldMatrix(true, false);
+                const localMatrix = new THREE.Matrix4().multiplyMatrices(_rootInv, obj.matrixWorld);
+                const attrSig = Object.keys(obj.geometry.attributes).sort().join(',');
+                const key = obj.material.uuid + '|' + attrSig;
+                if (!_buckets.has(key)) _buckets.set(key, { mat: obj.material, items: [] });
+                _buckets.get(key).items.push({ geo: obj.geometry, matrix: localMatrix });
+                obj.visible = false;
+                obj.castShadow = false;
+                obj.receiveShadow = false;
+            });
+
+            const batchGroup = new THREE.Group();
+            batchGroup.name = 'batchedStatic';
+            for (const { mat, items } of _buckets.values()) {
+                const clones = items.map(({ geo, matrix }) => {
+                    const g = geo.clone();
+                    g.applyMatrix4(matrix);
+                    return g;
+                });
+                const merged = mergeGeometries(clones, false);
+                clones.forEach(g => g.dispose());
+                if (!merged) {
+                    // Attribute mismatch despite signature grouping — restore originals.
+                    console.warn('[Pipit] mergeGeometries null for', mat.uuid);
+                    rootModel.traverse((obj) => {
+                        if (!obj.isMesh || _interactive.has(obj) || obj.material !== mat) return;
+                        obj.visible = true;
+                        obj.castShadow = true;
+                        obj.receiveShadow = true;
+                    });
+                    continue;
+                }
+                const mesh = new THREE.Mesh(merged, mat);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                batchGroup.add(mesh);
+            }
+            rootModel.add(batchGroup);
+
+            // Interactive meshes still participate in shadows.
+            for (const obj of _interactive) {
+                obj.castShadow = true;
+                obj.receiveShadow = true;
+            }
+            console.log(`[Pipit] Batched static geometry: ${_buckets.size} merged meshes`);
+        }
         // Snap shadow-catcher floor to the exact bottom of the normalised model.
         const modelBox = new THREE.Box3().setFromObject(modelPivot);
         groundPlane.position.y = modelBox.min.y - 0.008;
