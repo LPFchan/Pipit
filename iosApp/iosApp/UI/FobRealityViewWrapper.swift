@@ -375,7 +375,7 @@ extension FobViewer {
 final class RecoveryFobWebViewPool: ObservableObject {
     private static let uguisuDisplayScale: Double = 1.4
     /// Pivot-space X (normalised model units); counters wide-sheet perspective so the fob sits visually centred.
-    private static let uguisuPivotOffsetX: Double = -0.025
+    private static let uguisuPivotOffsetX: Double = -0.00
 
     @Published private(set) var isModelReady = false
 

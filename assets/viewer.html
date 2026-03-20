@@ -199,6 +199,7 @@ function _scheduleReturn() {
         _returning  = true;
         _returnFrom = { pos: _orbitCamPos.clone(), target: controls.target.clone() };
         _returnStartTs = null;
+        requestRender();
     }, RETURN_DELAY_MS);
 }
 
@@ -240,6 +241,22 @@ const MODEL_INTRO_FADE_MS = 550;
 let _modelIntroActive = false;
 let _modelFadeStartTs = null;
 
+/** @returns {boolean} true while canvas opacity intro should keep scheduling frames */
+function _tickModelIntroFade() {
+    if (!_modelIntroActive) return false;
+    if (_modelFadeStartTs === null) _modelFadeStartTs = performance.now();
+    const t = Math.min((performance.now() - _modelFadeStartTs) / MODEL_INTRO_FADE_MS, 1.0);
+    const o = _easeOutCubic(t);
+    renderer.domElement.style.opacity = String(o);
+    if (t >= 1.0) {
+        _modelIntroActive = false;
+        _modelFadeStartTs = null;
+        renderer.domElement.style.opacity = '';
+        return false;
+    }
+    return true;
+}
+
 function syncBackdropBackground(sceneCfg) {
     if (!backdropEl || RECOVERY_EMBED || _recoveryDemoChromeActive) return;
     backdropEl.style.background = sceneCfg.bodyBackground;
@@ -256,34 +273,6 @@ function startBackdropIntroFade() {
         });
     });
 }
-
-function setModelBranchOpacity(root, opacity) {
-    if (!root) return;
-    root.traverse((obj) => {
-        if (!obj.isMesh || !obj.material) return;
-        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-        for (const m of mats) {
-            if (!m || m.opacity === undefined) continue;
-            if (m.userData._pipitBaseOpacity === undefined) {
-                m.userData._pipitBaseOpacity = m.transparent ? m.opacity : 1;
-                m.transparent = true;
-            }
-            m.opacity = opacity * m.userData._pipitBaseOpacity;
-            m.needsUpdate = true;
-        }
-    });
-}
-
-function _tickModelIntroFade() {
-    if (!_modelIntroActive || !modelPivot) return;
-    if (_modelFadeStartTs === null) _modelFadeStartTs = performance.now();
-    const t = Math.min((performance.now() - _modelFadeStartTs) / MODEL_INTRO_FADE_MS, 1.0);
-    const o = _easeOutCubic(t);
-    setModelBranchOpacity(modelPivot, o);
-    if (t >= 1.0) _modelIntroActive = false;
-}
-
-startBackdropIntroFade();
 
 const _lightBaseKey = new THREE.Vector3();
 const _lightBaseFill = new THREE.Vector3();
@@ -313,6 +302,7 @@ function syncViewerToSystemColorScheme() {
         document.body.style.background = 'transparent';
         groundPlane.visible = false;
     }
+    requestRender();
 }
 if (typeof colorSchemeMql.addEventListener === 'function') {
     colorSchemeMql.addEventListener('change', syncViewerToSystemColorScheme);
@@ -527,6 +517,64 @@ function _tickPressSquishAnimation() {
     return true;
 }
 
+const TILT_SETTLE_EPS2 = 1e-8;
+
+function _tiltNeedsAnotherFrame() {
+    if (_parallaxMotionEnabled) {
+        return _tiltSmoothed.distanceToSquared(_tiltTarget) > TILT_SETTLE_EPS2;
+    }
+    return _tiltSmoothed.lengthSq() > TILT_SETTLE_EPS2;
+}
+
+let _renderQueued = false;
+
+function renderFrame() {
+    _renderQueued = false;
+
+    const introContinues = _tickModelIntroFade();
+    const squishContinues = _tickPressSquishAnimation();
+    _tickTiltSmoothing();
+    _applyLightsFromTilt();
+
+    if (_manualCamera) {
+        if (_returning && _returnFrom.pos) {
+            const now = performance.now();
+            if (_returnStartTs === null) _returnStartTs = now;
+            const rawT = Math.min((now - _returnStartTs) / RETURN_ANIM_MS, 1.0);
+            const t = _easeOutCubic(rawT);
+            _orbitCamPos.lerpVectors(_returnFrom.pos, HOME_CAM_POS, t);
+            controls.target.lerpVectors(_returnFrom.target, HOME_CTRL_TARGET, t);
+            if (rawT >= 1.0) {
+                _orbitCamPos.copy(HOME_CAM_POS);
+                controls.target.copy(HOME_CTRL_TARGET);
+                _returning = false;
+            }
+        }
+    } else {
+        controls.update();
+    }
+    _applyOrbitAndParallaxToCamera();
+    if (USE_ORTHO) syncOrthoCamera();
+    renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
+    postButtonHitRegionIfNeeded();
+
+    const returnAnimating = _returning && _returnFrom.pos;
+    const tiltContinues = _tiltNeedsAnotherFrame();
+
+    if (introContinues || squishContinues || returnAnimating || tiltContinues) {
+        requestRender();
+    }
+}
+
+function requestRender() {
+    if (_renderQueued) return;
+    _renderQueued = true;
+    requestAnimationFrame(renderFrame);
+}
+
+startBackdropIntroFade();
+requestRender();
+
 // ─── GLB loader ──────────────────────────────────────────────────────────────
 const loader = new GLTFLoader();
 loader.load(
@@ -661,9 +709,14 @@ loader.load(
             groundPlane.visible = true;
         }
 
-        setModelBranchOpacity(modelPivot, 0);
-        _modelIntroActive = true;
-        _modelFadeStartTs = null;
+        if (!RECOVERY_EMBED) {
+            renderer.domElement.style.opacity = '0';
+            _modelIntroActive = true;
+            _modelFadeStartTs = null;
+        } else {
+            _modelIntroActive = false;
+            renderer.domElement.style.opacity = '';
+        }
 
         console.log('[Pipit] Model loaded. LED meshes:', ledMeshes.length,
             '| Button:', buttonObject ? buttonObject.name : 'NOT FOUND');
@@ -673,6 +726,7 @@ loader.load(
             window.webkit.messageHandlers.modelReady.postMessage(null);
         }
         postButtonHitRegionIfNeeded(true);
+        requestRender();
     },
     undefined,
     (err) => {
@@ -685,6 +739,7 @@ loader.load(
             backdropEl.style.opacity = '1';
         }
         console.error('[Pipit] GLB load error', err);
+        requestRender();
     }
 );
 
@@ -702,6 +757,7 @@ function _applyLedState(r, g, b, active, brightness) {
             mat.needsUpdate = true;
         }
     }
+    requestRender();
 }
 
 // ─── LED animation engine (mirrors firmware led_effects.h) ─────────────────────
@@ -888,7 +944,6 @@ window.stopLedAnim = () => {
 // ─── Onboarding recovery sheet: transparent chrome + triple-press demo loop ──
 let _recoveryDemoGen = 0;
 let _recoveryDemoTimeoutIds = [];
-let _recoveryDemoPendingStart = false;
 let _recoveryDemoStoredGroundVisible = null;
 
 function _recoveryClearTimeouts() {
@@ -935,6 +990,7 @@ window.setRecoveryDemoChrome = (enabled) => {
         _recoveryDemoStoredGroundVisible = null;
         statusEl.style.display = 'none';
     }
+    requestRender();
 };
 
 function _recoveryDemoRunCycle(gen) {
@@ -977,7 +1033,6 @@ window.stopRecoveryTriplePressDemo = () => {
     _recoveryClearTimeouts();
     window.stopLedAnim();
     if (window.setButtonDepth) window.setButtonDepth(0);
-    _recoveryDemoPendingStart = false;
 };
 
 window.startRecoveryTriplePressDemo = () => {
@@ -986,11 +1041,7 @@ window.startRecoveryTriplePressDemo = () => {
     window.stopLedAnim();
     if (window.setButtonDepth) window.setButtonDepth(0);
 
-    if (!modelPivot) {
-        _recoveryDemoPendingStart = true;
-        return;
-    }
-    _recoveryDemoPendingStart = false;
+    if (!modelPivot) return;
     _recoveryDemoRunCycle(_recoveryDemoGen);
 };
 
@@ -1005,6 +1056,7 @@ window.setDeviceTilt = (gx, gy, gz) => {
         Math.max(-1, Math.min(1, Number(gy) || 0)),
         Math.max(-1, Math.min(1, Number(gz) || 0))
     );
+    requestRender();
 };
 
 /** When false, tilt input is ignored and smoothed state eases to neutral. */
@@ -1013,6 +1065,7 @@ window.setParallaxMotionEnabled = (enabled) => {
     if (!_parallaxMotionEnabled) {
         _tiltTarget.set(0, 0, 0);
     }
+    requestRender();
 };
 
 /**
@@ -1031,6 +1084,7 @@ window.setButtonDepth = (depth) => {
         );
     }
     _beginPressSquishToward(d);
+    requestRender();
 };
 
 /**
@@ -1043,6 +1097,7 @@ window.setModelTransform = (px, py, pz, scale, rx, ry, rz) => {
     modelPivot.position.set(px, py, pz);
     modelPivot.rotation.set(rx, ry, rz);
     _applyModelPivotScale();
+    requestRender();
 };
 
 /**
@@ -1082,6 +1137,7 @@ window.orbitCamera = (dTheta, dPhi) => {
         target.y + radius * Math.cos(phi),
         target.z + radius * Math.sin(phi) * Math.cos(theta)
     );
+    requestRender();
 };
 
 /**
@@ -1097,6 +1153,7 @@ window.zoomCamera = (factor) => {
     const dir = toCam.multiplyScalar(1 / dist);
     const newDist = Math.max(0.3, Math.min(8.0, dist / factor));
     _orbitCamPos.copy(target).addScaledVector(dir, newDist);
+    requestRender();
 };
 
 // ─── Resize ───────────────────────────────────────────────────────────────────
@@ -1105,36 +1162,7 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     if (USE_ORTHO) syncOrthoCamera();
-});
-
-// ─── Render loop ──────────────────────────────────────────────────────────────
-renderer.setAnimationLoop(() => {
-    _tickModelIntroFade();
-    _tickPressSquishAnimation();
-    _tickTiltSmoothing();
-    _applyLightsFromTilt();
-    if (_manualCamera) {
-        // Eased return-to-home animation (orbit position only; parallax applied after).
-        if (_returning && _returnFrom.pos) {
-            const now = performance.now();
-            if (_returnStartTs === null) _returnStartTs = now;
-            const rawT = Math.min((now - _returnStartTs) / RETURN_ANIM_MS, 1.0);
-            const t    = _easeOutCubic(rawT);
-            _orbitCamPos.lerpVectors(_returnFrom.pos, HOME_CAM_POS, t);
-            controls.target.lerpVectors(_returnFrom.target, HOME_CTRL_TARGET, t);
-            if (rawT >= 1.0) {
-                _orbitCamPos.copy(HOME_CAM_POS);
-                controls.target.copy(HOME_CTRL_TARGET);
-                _returning = false;
-            }
-        }
-    } else {
-        controls.update();
-    }
-    _applyOrbitAndParallaxToCamera();
-    if (USE_ORTHO) syncOrthoCamera();
-    renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
-    postButtonHitRegionIfNeeded();
+    requestRender();
 });
 </script>
 </body>
