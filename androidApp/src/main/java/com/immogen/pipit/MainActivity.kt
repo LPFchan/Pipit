@@ -33,13 +33,18 @@ class MainActivity : ComponentActivity() {
     private val _bleStateFallback = MutableStateFlow(defaultBleState)
     private val bleStateFallback: StateFlow<com.immogen.pipit.ble.BleState> = _bleStateFallback.asStateFlow()
 
+    // Debug: keep binder reference so composables can invoke debug-only methods
+    private var debugLocalBinder: AndroidBleProximityService.LocalBinder? = null
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val localBinder = binder as? AndroidBleProximityService.LocalBinder
             bleService = localBinder?.getBleService()
+            if (BuildConfig.DEBUG) debugLocalBinder = localBinder
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             bleService = null
+            debugLocalBinder = null
         }
     }
 
@@ -65,7 +70,10 @@ class MainActivity : ComponentActivity() {
                         bleState = bleState,
                         bleService = bleService,
                         onRequestUnlock = { lifecycleScope.launch { bleService?.sendUnlockCommand() } },
-                        onRequestLock = { lifecycleScope.launch { bleService?.sendLockCommand() } }
+                        onRequestLock = { lifecycleScope.launch { bleService?.sendLockCommand() } },
+                        debugSetConnectionState = if (BuildConfig.DEBUG) {
+                            { state -> debugLocalBinder?.debugSetConnectionState(state) }
+                        } else null,
                     )
                 }
             }

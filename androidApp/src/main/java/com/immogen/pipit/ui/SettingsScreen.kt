@@ -108,6 +108,7 @@ fun SettingsScreen(
     bleService: BleService?,
     onClose: () -> Unit,
     onLocalKeyDeleted: () -> Unit,
+    debugSetConnectionState: ((com.immogen.pipit.ble.ConnectionState) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val settings = remember(context) { AppSettings(AndroidSettingsManager(context)) }
@@ -932,6 +933,51 @@ fun SettingsScreen(
                         )
                     }
                 }
+
+                // ── Developer section (debug builds only) ────────────────────────────────
+                // Mirrors iOS SettingsView #if targetEnvironment(simulator) devSection.
+                if (BuildConfig.DEBUG) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    SettingsSection(
+                        title = "DEVELOPER",
+                        subtitle = "Debug build only. Overrides BLE state and simulates device operations.",
+                    ) {
+                        val isConnected = sessionState.connectionState == BleManagementSessionConnectionState.READY
+                        OutlinedButton(
+                            onClick = {
+                                if (isConnected) {
+                                    debugSetConnectionState?.invoke(com.immogen.pipit.ble.ConnectionState.DISCONNECTED)
+                                } else {
+                                    debugSetConnectionState?.invoke(com.immogen.pipit.ble.ConnectionState.CONNECTED)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (isConnected) "Simulate Disconnect" else "Simulate Connected")
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                for (slotId in 0..3) { runCatching { keyStoreManager.deleteKey(slotId) } }
+                                // Clear simulated slot state
+                                context.getSharedPreferences("debug_sim_transport", android.content.Context.MODE_PRIVATE)
+                                    .edit().clear().apply()
+                                // Restart app (matches iOS exit(0) after UserDefaults clear)
+                                val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                                if (launchIntent != null) {
+                                    context.startActivity(android.content.Intent.makeRestartActivityTask(launchIntent.component))
+                                }
+                                Runtime.getRuntime().exit(0)
+                            },
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Hard Reset App and Permissions")
+                        }
+                    }
+                }
             }
         }
     }
@@ -1376,15 +1422,6 @@ private fun buildDisplaySlots(slots: List<BleManagementSlot>): List<BleManagemen
             counter = 0u,
             name = if (slotId == 0) "Uguisu" else ""
         )
-    }
-}
-
-private fun slotTierLabel(slotId: Int): String {
-    return when (slotId) {
-        0 -> "HARDWARE KEY"
-        1 -> "OWNER"
-        2, 3 -> "GUEST"
-        else -> "PHONE SLOT"
     }
 }
 

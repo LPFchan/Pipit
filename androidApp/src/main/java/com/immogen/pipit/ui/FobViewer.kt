@@ -27,25 +27,29 @@ import androidx.compose.ui.viewinterop.AndroidView
  * Three.js is loaded from CDN at runtime — requires internet on first load.
  * For offline builds see the bundling instructions in viewer.html.
  *
- * @param ledColor      Current LED colour expressed as a Compose [ComposeColor].
- * @param isActive      Whether the LED is illuminated.
- * @param ledBrightness Perceived brightness, 0.0–1.0. Default: 1.
- * @param buttonDepth   Physical press depth: 0.0 = resting, 1.0 = fully pressed.
- * @param modelPosition Position offset from centre in metres (x, y, z). Default: (0,0,0).
- * @param modelScale    Uniform scale multiplier. Default: 1 (no change).
- * @param modelRotation Euler rotation angles in radians, XYZ order. Default: (0,0,0).
- * @param modifier      Layout modifier applied to the WebView.
+ * @param ledColor        Current LED colour expressed as a Compose [ComposeColor].
+ * @param isActive        Whether the LED is illuminated.
+ * @param ledBrightness   Perceived brightness, 0.0–1.0. Default: 1.
+ * @param buttonDepth     Physical press depth: 0.0 = resting, 1.0 = fully pressed.
+ * @param modelPosition   Position offset from centre in metres (x, y, z). Default: (0,0,0).
+ * @param modelScale      Uniform scale multiplier. Default: 1 (no change).
+ * @param modelRotation   Euler rotation angles in radians, XYZ order. Default: (0,0,0).
+ * @param onWebViewCreated Called once after the WebView is created, allowing the caller to
+ *                         capture a reference for direct JS bridge calls (camera gestures,
+ *                         LED commands, raycast hit-testing).
+ * @param modifier        Layout modifier applied to the WebView.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun FobViewer(
-    ledColor: ComposeColor,
-    isActive: Boolean,
+    ledColor: ComposeColor = ComposeColor.Unspecified,
+    isActive: Boolean = false,
     ledBrightness: Float = 1f,
     buttonDepth: Float = 0f,
     modelPosition: Triple<Float, Float, Float> = Triple(0f, 0f, 0f),
     modelScale: Float = 1f,
     modelRotation: Triple<Float, Float, Float> = Triple(0f, 0f, 0f),
+    onWebViewCreated: ((WebView) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -75,7 +79,7 @@ fun FobViewer(
             webViewClient   = WebViewClient()
 
             loadUrl("file:///android_asset/viewer.html")
-        }
+        }.also { onWebViewCreated?.invoke(it) }
     }
 
     // LED colour + active state + brightness
