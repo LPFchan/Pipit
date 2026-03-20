@@ -559,6 +559,10 @@ private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
 ///   - Long press is detected during hold (no inter-click delay needed) → Lock LED + BLE command.
 private let UGUISU_MULTI_CLICK_WINDOW_MS: Double = 0.400
 
+private enum FobInteractHaptics {
+    static let pressDown = UIImpactFeedbackGenerator(style: .light)
+}
+
 struct FobInteractiveViewer: View {
     var onTap: () -> Void
     var onLongPress: () -> Void
@@ -622,6 +626,7 @@ struct FobInteractiveViewer: View {
                                 surfaceHitTestInFlight = true
                                 inButtonZone = false
                                 isPressed = false
+                                FobInteractHaptics.pressDown.prepare()
                                 let s = value.startLocation
                                 let nx = s.x / max(geo.size.width, 1)
                                 let ny = s.y / max(geo.size.height, 1)
@@ -631,6 +636,7 @@ struct FobInteractiveViewer: View {
                                     guard tg == touchGeneration else { return }
                                     inButtonZone = ok
                                     if ok, !isPanning {
+                                        FobInteractHaptics.pressDown.impactOccurred()
                                         withAnimation(.easeOut(duration: 0.08)) { isPressed = true }
                                     }
                                 }
