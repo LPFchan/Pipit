@@ -58,6 +58,7 @@
 (function () {
     var h = (typeof location !== 'undefined' && location.hash) || '';
     window.__pipitRecoveryEmbed = h.indexOf('pipitRecovery') >= 0;
+    window.__pipitShowFpsHud = h.indexOf('pipitFps') >= 0;
     if (window.__pipitRecoveryEmbed) {
         document.documentElement.style.background = 'transparent';
         document.body.style.background = 'transparent';
@@ -84,6 +85,61 @@ import {
 const RECOVERY_EMBED = typeof window !== 'undefined' && !!window.__pipitRecoveryEmbed;
 /** Skips radial page background while recovery sheet (or embed) is active. */
 let _recoveryDemoChromeActive = RECOVERY_EMBED;
+
+// ─── Optional FPS HUD: URL `#pipitFps` sets window.__pipitShowFpsHud, or toggle in Web Inspector ──
+function fpsHudEnabled() {
+    return typeof window !== 'undefined' && !!window.__pipitShowFpsHud;
+}
+
+let _fpsHudEl = null;
+let _fpsLastFrameTs = 0;
+
+function initFpsHudIfNeeded() {
+    if (!fpsHudEnabled() || _fpsHudEl) return;
+    _fpsHudEl = document.createElement('div');
+    _fpsHudEl.id = 'pipitFpsHud';
+    _fpsHudEl.setAttribute('aria-hidden', 'true');
+    Object.assign(_fpsHudEl.style, {
+        position: 'fixed',
+        top: 'max(10px, env(safe-area-inset-top, 0px))',
+        right: 'max(10px, env(safe-area-inset-right, 0px))',
+        zIndex: '10000',
+        font: '600 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+        padding: '5px 9px',
+        borderRadius: '8px',
+        pointerEvents: 'none',
+        background: 'rgba(15, 23, 42, 0.72)',
+        color: '#e2e8f0',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
+        WebkitFontSmoothing: 'antialiased',
+    });
+    _fpsHudEl.textContent = '… fps';
+    document.body.appendChild(_fpsHudEl);
+}
+
+/** Call once per completed WebGL frame (renderFrame). */
+function tickFpsHud() {
+    if (!fpsHudEnabled()) {
+        if (_fpsHudEl) {
+            _fpsHudEl.remove();
+            _fpsHudEl = null;
+            _fpsLastFrameTs = 0;
+        }
+        return;
+    }
+    if (!_fpsHudEl) initFpsHudIfNeeded();
+    if (!_fpsHudEl) return;
+    const now = performance.now();
+    if (_fpsLastFrameTs > 0) {
+        const dt = now - _fpsLastFrameTs;
+        if (dt > 0 && dt < 4000) {
+            _fpsHudEl.textContent = `${Math.round(1000 / dt)} fps`;
+        } else if (dt >= 4000) {
+            _fpsHudEl.textContent = '0 fps';
+        }
+    }
+    _fpsLastFrameTs = now;
+}
 
 /** CSS-pixel layout of the WebGL canvas; `useInset` reserved if a future embed needs letterboxing. */
 let _vpLayout = {
@@ -139,6 +195,8 @@ camera.position.set(VIEWER_CAMERA.position[0], VIEWER_CAMERA.position[1], VIEWER
 
 // Orbit pan/zoom / home-return baseline; camera matches this each frame.
 const _orbitCamPos = new THREE.Vector3().copy(camera.position);
+const _orbitScratchOffset = new THREE.Vector3();
+const _orbitScratchDir = new THREE.Vector3();
 
 // Orthographic camera — mirrors perspective camera; toggled by USE_ORTHO.
 const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, VIEWER_CAMERA.near, VIEWER_CAMERA.far);
@@ -536,9 +594,12 @@ function syncBaselineProjectionCamera() {
     return pc;
 }
 
-/** Horizontal midpoint of modelPivot AABB in NDC X (−1…1); 0 = screen centre. */
-function projectedHorizontalMidNdc(projCam) {
-    modelPivot.updateMatrixWorld(true);
+/**
+ * Horizontal midpoint of modelPivot AABB in NDC X (−1…1); 0 = screen centre.
+ * @param {boolean} [skipWorldUpdate] if true, caller already called modelPivot.updateMatrixWorld(true).
+ */
+function projectedHorizontalMidNdc(projCam, skipWorldUpdate) {
+    if (!skipWorldUpdate) modelPivot.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(modelPivot);
     if (box.isEmpty()) return 0;
     const { min, max } = box;
@@ -565,12 +626,18 @@ function projectedHorizontalMidNdc(projCam) {
     return (minPx + maxPx) * 0.5;
 }
 
-function _applyModelPivotWorldPosition() {
+/** Uses current `_projCamForPan` (call `syncBaselineProjectionCamera()` first when orbit pose may have changed). */
+function _applyModelPivotWorldPositionNoProjSync() {
     if (!modelPivot) return;
-    syncBaselineProjectionCamera();
     _panRight.setFromMatrixColumn(_projCamForPan.matrixWorld, 0).normalize();
     _modelPivotRestPos.copy(_swiftModelPos).addScaledVector(_panRight, _horizontalPanWorld);
     modelPivot.position.copy(_modelPivotRestPos);
+}
+
+function _applyModelPivotWorldPosition() {
+    if (!modelPivot) return;
+    syncBaselineProjectionCamera();
+    _applyModelPivotWorldPositionNoProjSync();
 }
 
 /**
@@ -596,12 +663,13 @@ function recalculateHorizontalPan() {
         _applyModelPivotScale();
         return;
     }
+    // Orbit pose is fixed for the whole solve; sync once instead of per iteration (~22× cheaper).
     syncBaselineProjectionCamera();
     const projCam = _projCamForPan;
     _horizontalPanWorld = 0;
 
     for (let iter = 0; iter < 22; iter++) {
-        _applyModelPivotWorldPosition();
+        _applyModelPivotWorldPositionNoProjSync();
         // Pan must match the pose we render: intro slide shifts the pivot along baseline cam-up;
         // that has horizontal screen-space component when the camera is pitched, so solving pan
         // without slide leaves the mesh clipped on one side until the slide eases off.
@@ -611,7 +679,7 @@ function recalculateHorizontalPan() {
             modelPivot.position.addScaledVector(_introCamUp, -slide);
         }
         modelPivot.updateMatrixWorld(true);
-        const mid = projectedHorizontalMidNdc(projCam);
+        const mid = projectedHorizontalMidNdc(projCam, true);
         if (Math.abs(mid) < 0.0009) break;
 
         const box = new THREE.Box3().setFromObject(modelPivot);
@@ -621,7 +689,7 @@ function recalculateHorizontalPan() {
         const halfWidthWorld = dist * Math.tan(vFovRad / 2) * projCam.aspect;
         _horizontalPanWorld += -mid * halfWidthWorld * 0.9;
     }
-    _applyModelPivotWorldPosition();
+    _applyModelPivotWorldPositionNoProjSync();
     _applyModelPivotScale();
 }
 
@@ -837,6 +905,7 @@ function renderFrame() {
     if (USE_ORTHO) syncOrthoCamera();
     _applyModelPivotDisplayPose();
     renderer.render(scene, USE_ORTHO ? orthoCamera : camera);
+    tickFpsHud();
     postButtonHitRegionIfNeeded();
 
     const returnAnimating = _returning && _returnFrom.pos;
@@ -1417,19 +1486,15 @@ window.fobInteractableAtNormalized = (nx, ny) => {
 };
 
 /**
- * Orbit the camera around the target by azimuth and polar angle deltas.
  * dTheta: horizontal rotation (radians); dPhi: vertical rotation (radians).
- * Called from Swift DragGesture with pixel deltas converted to radians.
+ * Uses pooled vectors — no allocations.
  */
-window.orbitCamera = (dTheta, dPhi) => {
-    _scheduleReturn();
+function _orbitCameraCore(dTheta, dPhi) {
     const target = controls.target;
-    const offset = _orbitCamPos.clone().sub(target);
+    const offset = _orbitScratchOffset.subVectors(_orbitCamPos, target);
     const radius = Math.max(0.001, offset.length());
-    // Decompose current position into spherical angles.
     let theta = Math.atan2(offset.x, offset.z);
     let phi   = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
-    // Apply deltas; clamp phi away from poles to avoid gimbal flip.
     theta += dTheta;
     phi    = Math.max(0.05, Math.min(Math.PI - 0.05, phi + dPhi));
     _orbitCamPos.set(
@@ -1437,22 +1502,54 @@ window.orbitCamera = (dTheta, dPhi) => {
         target.y + radius * Math.cos(phi),
         target.z + radius * Math.sin(phi) * Math.cos(theta)
     );
+}
+
+/**
+ * factor > 1.0 = zoom in (decrease distance), < 1.0 = zoom out.
+ * Chaining zoomCamera(f1) then zoomCamera(f2) matches one call with factor f1*f2.
+ */
+function _zoomCameraCore(factor) {
+    const target = controls.target;
+    const toCam = _orbitScratchDir.subVectors(_orbitCamPos, target);
+    const dist = Math.max(0.001, toCam.length());
+    toCam.multiplyScalar(1 / dist);
+    const newDist = Math.max(0.3, Math.min(8.0, dist / factor));
+    _orbitCamPos.copy(target).addScaledVector(toCam, newDist);
+}
+
+/**
+ * Batched camera update for native coalescing (one WK round-trip per display tick).
+ * zoomFactorProduct is the product of per-event MagnificationGesture deltas since last flush.
+ */
+window.flushCameraGestures = (dTheta, dPhi, zoomFactorProduct) => {
+    const t = Number(dTheta) || 0;
+    const p = Number(dPhi) || 0;
+    let z = Number(zoomFactorProduct);
+    if (!Number.isFinite(z) || z <= 0) z = 1;
+    if (t === 0 && p === 0 && z === 1) return;
+    _scheduleReturn();
+    if (t !== 0 || p !== 0) _orbitCameraCore(t, p);
+    if (z !== 1) _zoomCameraCore(z);
+    requestRender();
+};
+
+/**
+ * Orbit the camera around the target by azimuth and polar angle deltas.
+ * Called from Swift DragGesture with pixel deltas converted to radians.
+ */
+window.orbitCamera = (dTheta, dPhi) => {
+    _scheduleReturn();
+    _orbitCameraCore(dTheta, dPhi);
     requestRender();
 };
 
 /**
  * Dolly the camera toward/away from the target.
- * factor > 1.0 = zoom in (decrease distance), < 1.0 = zoom out.
  * Called from Swift MagnificationGesture incremental deltas.
  */
 window.zoomCamera = (factor) => {
     _scheduleReturn();
-    const target = controls.target;
-    const toCam = _orbitCamPos.clone().sub(target);
-    const dist = Math.max(0.001, toCam.length());
-    const dir = toCam.multiplyScalar(1 / dist);
-    const newDist = Math.max(0.3, Math.min(8.0, dist / factor));
-    _orbitCamPos.copy(target).addScaledVector(dir, newDist);
+    _zoomCameraCore(factor);
     requestRender();
 };
 
@@ -1466,6 +1563,11 @@ window.addEventListener('resize', () => {
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') requestRender();
 });
+
+/** Enable/disable FPS overlay at runtime (Safari Web Inspector / tests). */
+window.showPipitFpsHud = (visible) => {
+    window.__pipitShowFpsHud = !!visible;
+};
 </script>
 </body>
 </html>

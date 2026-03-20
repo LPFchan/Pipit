@@ -1,4 +1,5 @@
 import Combine
+import QuartzCore
 import SwiftUI
 import UIKit
 import WebKit
@@ -31,22 +32,85 @@ struct LedCommand: Equatable {
 
 // MARK: – CameraController
 
+private final class CameraDisplayLinkProxy: NSObject {
+    weak var controller: CameraController?
+
+    @objc func tick(_ link: CADisplayLink) {
+        controller?.flushPendingCameraFromDisplayLink()
+    }
+}
+
 /// Holds a weak WKWebView reference so FobInteractiveViewer gesture handlers
 /// can evaluate JS camera commands (panCamera / zoomCamera) without retaining
 /// the web view through the SwiftUI state graph.
 fileprivate final class CameraController {
     weak var webView: WKWebView?
 
+    private var pendingDTheta: CGFloat = 0
+    private var pendingDPhi: CGFloat = 0
+    private var pendingZoomProduct: CGFloat = 1
+    private var displayLink: CADisplayLink?
+    private let displayLinkProxy = CameraDisplayLinkProxy()
+
+    init() {
+        displayLinkProxy.controller = self
+    }
+
+    deinit {
+        invalidateCameraDisplayLink()
+    }
+
     func orbit(dTheta: CGFloat, dPhi: CGFloat) {
-        webView?.evaluateJavaScript(
-            "if(window.orbitCamera)window.orbitCamera(\(dTheta),\(dPhi));",
-            completionHandler: nil)
+        pendingDTheta += dTheta
+        pendingDPhi += dPhi
+        startCameraDisplayLinkIfNeeded()
     }
 
     func zoom(factor: CGFloat) {
-        webView?.evaluateJavaScript(
-            "if(window.zoomCamera)window.zoomCamera(\(factor));",
-            completionHandler: nil)
+        pendingZoomProduct *= factor
+        startCameraDisplayLinkIfNeeded()
+    }
+
+    /// Ensures the last sub-frame deltas are applied when the finger lifts (display link may not fire again).
+    func flushCameraGesturesImmediately() {
+        invalidateCameraDisplayLink()
+        flushPendingCameraToWebView()
+    }
+
+    private func startCameraDisplayLinkIfNeeded() {
+        guard displayLink == nil else { return }
+        let link = CADisplayLink(target: displayLinkProxy, selector: #selector(CameraDisplayLinkProxy.tick(_:)))
+        if #available(iOS 15.0, *) {
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+        } else {
+            link.preferredFramesPerSecond = 0
+        }
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    private func invalidateCameraDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    fileprivate func flushPendingCameraFromDisplayLink() {
+        flushPendingCameraToWebView()
+        if pendingDTheta == 0, pendingDPhi == 0, abs(pendingZoomProduct - 1) < 1e-6 {
+            invalidateCameraDisplayLink()
+        }
+    }
+
+    private func flushPendingCameraToWebView() {
+        let dt = pendingDTheta
+        let dp = pendingDPhi
+        let zp = pendingZoomProduct
+        pendingDTheta = 0
+        pendingDPhi = 0
+        pendingZoomProduct = 1
+        guard dt != 0 || dp != 0 || abs(zp - 1) > 1e-6 else { return }
+        let js = "if(window.flushCameraGestures)window.flushCameraGestures(\(Double(dt)),\(Double(dp)),\(Double(zp)));"
+        webView?.evaluateJavaScript(js, completionHandler: nil)
     }
 
     /// Raycast in Three.js: true if the front-most surface at (nx, ny) is PCB or button, not enclosure.
@@ -230,10 +294,10 @@ struct FobViewer: UIViewRepresentable {
         // (e.g. './materials.js') resolve to local://app/… and are served by
         // LocalSchemeHandler with CORS headers.  loadFileURL blocks cross-file
         // ES module imports in modern WebKit; the custom scheme avoids that.
-        // #pipitRecovery: skip placeholder cube/status for a clean sheet embed.
+        // #pipitRecovery: clean sheet embed. #pipitFps: FPS HUD (see viewer.html boot script).
         let urlString = recoverySheetDemoLoop
-            ? "local://app/viewer.html#pipitRecovery"
-            : "local://app/viewer.html"
+            ? "local://app/viewer.html#pipitRecovery-pipitFps"
+            : "local://app/viewer.html#pipitFps"
         guard let url = URL(string: urlString) else { return }
         webView.load(URLRequest(url: url))
     }
@@ -306,7 +370,7 @@ final class RecoveryFobWebViewPool: ObservableObject {
         scriptCoordinator.webView = webView
         _webView = webView
 
-        if let url = URL(string: "local://app/viewer.html#pipitRecovery") {
+        if let url = URL(string: "local://app/viewer.html#pipitRecovery-pipitFps") {
             webView.load(URLRequest(url: url))
         }
         return webView
@@ -633,6 +697,7 @@ struct FobInteractiveViewer: View {
                                                    dPhi:   -rawDY * sensitivity)
                         }
                         .onEnded { _ in
+                            cameraController.flushCameraGesturesImmediately()
                             lastOrbitTranslation = .zero
                             orbitSuppressed = false
                             isPanning = false
@@ -647,6 +712,7 @@ struct FobInteractiveViewer: View {
                             cameraController.zoom(factor: delta)
                         }
                         .onEnded { _ in
+                            cameraController.flushCameraGesturesImmediately()
                             lastMagScale = 1.0
                         }
                 )
