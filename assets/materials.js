@@ -91,7 +91,7 @@ export const VIEWER_CAMERA = {
     "near": 0.01,
     "far": 50,
     "position": [
-        -0.0078,
+        0,
         4.5887,
         -2.0054
     ],
@@ -104,6 +104,11 @@ export const VIEWER_CAMERA = {
         1.5708,
         0,
         0
+    ],
+    "modelPosition": [
+        -0.0005,
+        0.5138,
+        -0.0498
     ]
 };
 
