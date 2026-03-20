@@ -67,6 +67,9 @@ struct FobViewer: UIViewRepresentable {
     // ── Camera controller (JS bridge for pan / zoom) ────────────
     fileprivate var cameraController: CameraController?
 
+    // ── Mesh-projected button hit region ───────────────────────
+    var onButtonHitRegionChange: ((CGRect?) -> Void)? = nil
+
     // MARK: Coordinator
 
     /// Holds the latest FobViewer value and listens for the JS `modelReady`
@@ -83,10 +86,37 @@ struct FobViewer: UIViewRepresentable {
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            guard message.name == "modelReady", let wv = webView else { return }
-            // Reset so the current command fires again after a page reload.
-            lastLedCommandId = -1
-            parent.applyState(to: wv, coordinator: self)
+            switch message.name {
+            case "modelReady":
+                guard let wv = webView else { return }
+                // Reset so the current command fires again after a page reload.
+                lastLedCommandId = -1
+                parent.applyState(to: wv, coordinator: self)
+            case "buttonHitRegion":
+                DispatchQueue.main.async {
+                    self.parent.onButtonHitRegionChange?(Self.parseNormalizedRect(from: message.body))
+                }
+            default:
+                break
+            }
+        }
+
+        private static func parseNormalizedRect(from body: Any) -> CGRect? {
+            guard let dict = body as? [String: Any] else { return nil }
+
+            func numberValue(for key: String) -> Double? {
+                if let value = dict[key] as? NSNumber { return value.doubleValue }
+                return dict[key] as? Double
+            }
+
+            guard
+                let x = numberValue(for: "x"),
+                let y = numberValue(for: "y"),
+                let width = numberValue(for: "width"),
+                let height = numberValue(for: "height")
+            else { return nil }
+
+            return CGRect(x: x, y: y, width: width, height: height)
         }
     }
 
@@ -103,6 +133,8 @@ struct FobViewer: UIViewRepresentable {
         // Use a weak proxy so WKUserContentController doesn't retain Coordinator forever.
         config.userContentController.add(
             WeakScriptHandler(context.coordinator), name: "modelReady")
+        config.userContentController.add(
+            WeakScriptHandler(context.coordinator), name: "buttonHitRegion")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.isOpaque                   = false
@@ -128,6 +160,8 @@ struct FobViewer: UIViewRepresentable {
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.configuration.userContentController
             .removeScriptMessageHandler(forName: "modelReady")
+        webView.configuration.userContentController
+            .removeScriptMessageHandler(forName: "buttonHitRegion")
     }
 
     // MARK: – Apply state
@@ -217,7 +251,10 @@ struct FobInteractiveViewer: View {
     // the TapGesture.onEnded that fires on the subsequent finger-lift is ignored.
     @State private var longPressFired: Bool = false
 
-    // True when the touch started inside the button exclusion zone (centre ±70 pt).
+    // Normalized CGRect from JS representing the projected button / PCB hit region.
+    @State private var buttonHitRegion: CGRect? = nil
+
+    // True when the touch started inside the current button hit region.
     // Tap / long-press actions only fire when this is true; orbit only fires when false.
     @State private var inButtonZone: Bool = false
 
@@ -228,6 +265,21 @@ struct FobInteractiveViewer: View {
     @State private var isPanning: Bool               = false
     @State private var orbitSuppressed: Bool         = false
 
+    private func isTouchInButtonZone(_ point: CGPoint, viewSize: CGSize) -> Bool {
+        if let normalizedRegion = buttonHitRegion {
+            let actualRegion = CGRect(
+                x: normalizedRegion.origin.x * viewSize.width,
+                y: normalizedRegion.origin.y * viewSize.height,
+                width: normalizedRegion.size.width * viewSize.width,
+                height: normalizedRegion.size.height * viewSize.height
+            )
+            return actualRegion.contains(point)
+        }
+
+        let center = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2)
+        return hypot(point.x - center.x, point.y - center.y) < 70
+    }
+
     var body: some View {
         GeometryReader { geo in
         FobViewer(
@@ -236,7 +288,10 @@ struct FobInteractiveViewer: View {
             modelPosition: .zero,
             modelScale: 1.0,
             modelRotation: .zero,
-            cameraController: cameraController
+            cameraController: cameraController,
+            onButtonHitRegionChange: { region in
+                buttonHitRegion = region
+            }
         )
         // A transparent overlay to capture touch events over the WebView
         .overlay(
@@ -250,10 +305,8 @@ struct FobInteractiveViewer: View {
                         .onChanged { value in
                             // Determine button zone on first event of each touch.
                             if !isPanning && !inButtonZone && !isPressed {
-                                let center = CGPoint(x: geo.size.width / 2,
-                                                     y: geo.size.height / 2)
                                 let s = value.startLocation
-                                inButtonZone = hypot(s.x - center.x, s.y - center.y) < 70
+                                inButtonZone = isTouchInButtonZone(s, viewSize: geo.size)
                             }
                             // Only depress button visual when touch is in button zone.
                             if inButtonZone && !isPanning {
@@ -322,7 +375,7 @@ struct FobInteractiveViewer: View {
                 )
                 // ── Orbit: drag > 15 pt rotates camera around the model. ──────────────
                 // Suppressed when the gesture's start location is within the
-                // button exclusion zone (centre ± 70 pt) to avoid accidental orbit
+                // projected button mesh region to avoid accidental orbit
                 // when the user is trying to tap or long-press the button.
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 15)

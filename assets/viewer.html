@@ -358,6 +358,8 @@ function renderFrame() {
         renderer.render(scene, activeCamera);
     }
 
+    postButtonHitRegionIfNeeded();
+
     if (keepRendering) requestRender();
 }
 
@@ -436,6 +438,16 @@ let rootModel       = null;   // The raw GLTF scene (centred + scaled inside mod
 let ledMeshes       = [];     // Mesh objects whose material carries an emissive component
 let buttonObject    = null;   // Object3D for the physical button cap (KEY1)
 let buttonRestPos   = new THREE.Vector3();
+const raycaster     = new THREE.Raycaster();
+const pointerNdc    = new THREE.Vector2();
+const BUTTON_TRIGGER_PART_NAMES = new Set(['Uguisu_PCB']);
+const BUTTON_CLICK_MOVE_TOLERANCE_PX = 8;
+const BUTTON_CLICK_HOLD_MS = 110;
+const BUTTON_HIT_REGION_PADDING_PX = 12;
+const buttonHitObjects = [];
+let buttonPressReleaseTimerId = null;
+let pointerDownEvent = null;
+let lastPostedButtonHitRegionKey = '';
 // Button travel axis in rootModel local space.
 // KiCAD +Z points up (out of PCB surface toward user); pressing the cap moves in +Z.
 // After the 180° Z-rotation applied to rootModel, +Z local still maps to +Z world
@@ -447,6 +459,124 @@ let buttonPressAxis = new THREE.Vector3(0, 0, 1);
 //   model longest dim (Y) = 54.4 mm (raw GLB metres), normalised to unit cube.
 //   0.3 mm physical travel → 0.3 / 54.4 = 0.005515 normalised units.
 const BUTTON_TRAVEL = 0.005515;
+
+function getMatchName(obj) {
+    if (!obj) return '';
+    const isParentRoot = !obj.parent || obj.parent === rootModel;
+    return (!isParentRoot && obj.parent?.name) ? obj.parent.name : obj.name;
+}
+
+function getActiveCamera() {
+    return USE_ORTHO ? orthoCamera : camera;
+}
+
+function computeButtonHitRegion() {
+    const targetObjects = buttonHitObjects.length > 0
+        ? buttonHitObjects
+        : (buttonObject ? [buttonObject] : []);
+    if (targetObjects.length === 0) return null;
+
+    const box = new THREE.Box3().makeEmpty();
+    for (const obj of targetObjects) box.expandByObject(obj);
+    if (box.isEmpty()) return null;
+
+    const activeCamera = getActiveCamera();
+    const { min, max } = box;
+    const corners = [
+        new THREE.Vector3(min.x, min.y, min.z),
+        new THREE.Vector3(min.x, min.y, max.z),
+        new THREE.Vector3(min.x, max.y, min.z),
+        new THREE.Vector3(min.x, max.y, max.z),
+        new THREE.Vector3(max.x, min.y, min.z),
+        new THREE.Vector3(max.x, min.y, max.z),
+        new THREE.Vector3(max.x, max.y, min.z),
+        new THREE.Vector3(max.x, max.y, max.z),
+    ];
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const corner of corners) {
+        const projected = corner.project(activeCamera);
+        if (![projected.x, projected.y, projected.z].every(Number.isFinite)) continue;
+        minX = Math.min(minX, projected.x);
+        maxX = Math.max(maxX, projected.x);
+        minY = Math.min(minY, projected.y);
+        maxY = Math.max(maxY, projected.y);
+    }
+
+    if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    const padX = BUTTON_HIT_REGION_PADDING_PX / Math.max(rect.width, 1);
+    const padY = BUTTON_HIT_REGION_PADDING_PX / Math.max(rect.height, 1);
+    const x = THREE.MathUtils.clamp((minX + 1) * 0.5 - padX, 0, 1);
+    const right = THREE.MathUtils.clamp((maxX + 1) * 0.5 + padX, 0, 1);
+    const y = THREE.MathUtils.clamp((1 - maxY) * 0.5 - padY, 0, 1);
+    const bottom = THREE.MathUtils.clamp((1 - minY) * 0.5 + padY, 0, 1);
+
+    return {
+        x,
+        y,
+        width: Math.max(0, right - x),
+        height: Math.max(0, bottom - y),
+    };
+}
+
+function postButtonHitRegionIfNeeded(force = false) {
+    const handler = window.webkit?.messageHandlers?.buttonHitRegion;
+    if (!handler) return;
+    const region = computeButtonHitRegion();
+    const key = region
+        ? [region.x, region.y, region.width, region.height].map((v) => v.toFixed(4)).join(',')
+        : 'null';
+    if (!force && key === lastPostedButtonHitRegionKey) return;
+    lastPostedButtonHitRegionKey = key;
+    handler.postMessage(region);
+}
+
+function triggerButtonActivation({ holdMs = BUTTON_CLICK_HOLD_MS } = {}) {
+    if (!buttonObject) return;
+    if (buttonPressReleaseTimerId !== null) {
+        clearTimeout(buttonPressReleaseTimerId);
+        buttonPressReleaseTimerId = null;
+    }
+    window.setButtonDepth(1);
+    buttonPressReleaseTimerId = window.setTimeout(() => {
+        buttonPressReleaseTimerId = null;
+        window.setButtonDepth(0);
+    }, holdMs);
+}
+
+function updatePointerNdc(clientX, clientY) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+}
+
+function handlePointerActivate(event) {
+    if (!rootModel || !buttonObject || !pointerDownEvent) return;
+    const dx = event.clientX - pointerDownEvent.x;
+    const dy = event.clientY - pointerDownEvent.y;
+    pointerDownEvent = null;
+    if ((dx * dx + dy * dy) > (BUTTON_CLICK_MOVE_TOLERANCE_PX * BUTTON_CLICK_MOVE_TOLERANCE_PX)) return;
+
+    updatePointerNdc(event.clientX, event.clientY);
+    raycaster.setFromCamera(pointerNdc, getActiveCamera());
+    const hit = raycaster.intersectObject(rootModel, true)
+        .find(({ object }) => BUTTON_TRIGGER_PART_NAMES.has(getMatchName(object)));
+    if (hit) triggerButtonActivation();
+}
+
+renderer.domElement.addEventListener('pointerdown', (event) => {
+    pointerDownEvent = { x: event.clientX, y: event.clientY };
+});
+
+renderer.domElement.addEventListener('pointerup', handlePointerActivate);
+renderer.domElement.addEventListener('pointercancel', () => {
+    pointerDownEvent = null;
+});
 
 
 // ─── GLB loader ──────────────────────────────────────────────────────────────
@@ -523,19 +653,23 @@ loader.load(
             // Material mapper groups by parent Group name (Onshape/KiCAD Layout A) or by the
             // mesh's own name (Layout B / flat).  Mirror that same name-selection here so the
             // MATERIAL_RULES keys always resolve to the right mesh.
-            const isParentRoot = !obj.parent || obj.parent === rootModel;
-            const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
+            const nameToMatch = getMatchName(obj);
             const rule = MATERIAL_RULES.find(r =>
                 typeof r.match === 'string' ? nameToMatch === r.match : r.match.test(nameToMatch));
             if (rule) { obj.material = rule.mat; obj.material.needsUpdate = true; }
+        });
+
+        buttonHitObjects.length = 0;
+        rootModel.traverse((obj) => {
+            if (!obj.isMesh) return;
+            if (BUTTON_TRIGGER_PART_NAMES.has(getMatchName(obj))) buttonHitObjects.push(obj);
         });
 
         // ── Find LED meshes (by name, after material application) ─────────────
         const LED_NAMES = new Set(['LED', 'LED_1', 'LED_2', 'LED_3', 'LED-SMD_6P-L50-W50-TL_TC5050RGBF08_1']);
         rootModel.traverse((obj) => {
             if (!obj.isMesh) return;
-            const isParentRoot = !obj.parent || obj.parent === rootModel;
-            const nameToMatch  = (!isParentRoot && obj.parent.name) ? obj.parent.name : obj.name;
+            const nameToMatch = getMatchName(obj);
             if (LED_NAMES.has(nameToMatch)) {
                 ledMeshes.push(obj);
                 console.log('[Pipit] LED mesh:', nameToMatch);
@@ -805,6 +939,8 @@ window.setButtonDepth = (depth) => {
     );
     requestRender();
 };
+
+window.activateButton = () => triggerButtonActivation();
 
 /**
  * Apply position / scale / rotation to the model pivot.
