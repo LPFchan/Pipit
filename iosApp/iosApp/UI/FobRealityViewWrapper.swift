@@ -300,10 +300,10 @@ struct FobViewer: UIViewRepresentable {
         // (e.g. './materials.js') resolve to local://app/… and are served by
         // LocalSchemeHandler with CORS headers.  loadFileURL blocks cross-file
         // ES module imports in modern WebKit; the custom scheme avoids that.
-        // #pipitRecovery: clean sheet embed. #pipitFps: FPS HUD (see viewer.html boot script).
+        // #pipitRecovery: clean sheet embed (see viewer.html boot script).
         let urlString = recoverySheetDemoLoop
-            ? "local://app/viewer.html#pipitRecovery-pipitFps"
-            : "local://app/viewer.html#pipitFps"
+            ? "local://app/viewer.html#pipitRecovery"
+            : "local://app/viewer.html"
         guard let url = URL(string: urlString) else { return }
         webView.load(URLRequest(url: url))
     }
@@ -376,7 +376,7 @@ final class RecoveryFobWebViewPool: ObservableObject {
         scriptCoordinator.webView = webView
         _webView = webView
 
-        if let url = URL(string: "local://app/viewer.html#pipitRecovery-pipitFps") {
+        if let url = URL(string: "local://app/viewer.html#pipitRecovery") {
             webView.load(URLRequest(url: url))
         }
         return webView
