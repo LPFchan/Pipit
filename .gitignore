@@ -13,3 +13,6 @@ Pipit.xcodeproj/xcuserdata/
 
 # Generated iOS local builds
 iosApp/.build/
+
+# Stale copy — Xcode bundles three.core.js from vendor/three/build/ directly
+iosApp/iosApp/Resources/three.core.js

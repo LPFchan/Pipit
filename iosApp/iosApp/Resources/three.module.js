@@ -1,1 +1,1 @@
-../../../../vendor/three/build/three.module.js
+../../../vendor/three/build/three.module.js
