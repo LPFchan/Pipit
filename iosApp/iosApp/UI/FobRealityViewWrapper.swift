@@ -190,6 +190,8 @@ struct FobViewer: UIViewRepresentable {
                     lastRecoveryDemoPushed = nil
                 }
                 parent.applyState(to: wv, coordinator: self)
+            case "log":
+                print("[WebView]", message.body)
             default:
                 break
             }
@@ -209,6 +211,8 @@ struct FobViewer: UIViewRepresentable {
         // Use a weak proxy so WKUserContentController doesn't retain Coordinator forever.
         config.userContentController.add(
             WeakScriptHandler(context.coordinator), name: "modelReady")
+        config.userContentController.add(
+            WeakScriptHandler(context.coordinator), name: "log")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.isOpaque                   = false
@@ -235,6 +239,8 @@ struct FobViewer: UIViewRepresentable {
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.configuration.userContentController
             .removeScriptMessageHandler(forName: "modelReady")
+        webView.configuration.userContentController
+            .removeScriptMessageHandler(forName: "log")
     }
 
     // MARK: – Apply state
