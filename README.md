@@ -72,6 +72,7 @@ Pipit enforces commit provenance both locally and in CI:
 - Run `scripts/install-hooks.sh` once per clone to configure `core.hooksPath` to `.githooks`.
 - Local commits then pass through `.githooks/commit-msg`, which runs `scripts/check-commit-standards.sh`.
 - `.github/workflows/commit-standards.yml` validates pushed and pull-request commit ranges remotely.
+- A normal commit must reference at least one relevant artifact, but it can update an existing `LOG-*`, `DEC-*`, or `RSH-*` instead of creating a new worklog by default.
 
 ## Ecosystem Integration
 

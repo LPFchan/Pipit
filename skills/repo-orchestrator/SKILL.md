@@ -46,6 +46,7 @@ Use this skill with:
    - `DEC-*`
    - `LOG-*`
    - Use the least available `NNN` for that date and artifact type.
+   - Do not create a new `LOG-*` if appending to the current relevant worklog is enough.
 
 4. Write the artifact with provenance.
    - Include `Opened: YYYY-MM-DD HH-mm-ss KST`
@@ -67,6 +68,7 @@ Use this skill with:
    - `agent: <agent-id>`
    - `role: orchestrator|worker|subagent|operator`
    - `artifacts: <artifact-id>[, <artifact-id>...]`
+   - Prefer referencing and updating an existing relevant `LOG-*` before creating a new one.
 
 ## Escalation Triggers
 

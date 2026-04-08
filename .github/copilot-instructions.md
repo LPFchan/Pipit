@@ -37,6 +37,7 @@
 ## Collaboration
 
 - Route untriaged intake to `INBOX.md`, reusable dependency context to `research/`, durable decisions to `records/decisions/`, and execution history to `records/agent-worklogs/`.
+- Prefer appending to the current relevant `LOG-*` when the same workstream continues; create a new `LOG-*` only when the execution thread is materially distinct or reuse would obscure provenance.
 - Ask clarifying questions when user intent, constraints, or acceptance criteria are ambiguous instead of guessing.
 - Prefer current repository docs and internet verification over memory when checking APIs, libraries, frameworks, platform behavior, or tool availability.
 - Before recommending a specific external dependency, service, framework, or API, verify that it exists, is readily available, and is not end-of-life.

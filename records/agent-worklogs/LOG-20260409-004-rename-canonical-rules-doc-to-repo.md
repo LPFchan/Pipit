@@ -35,3 +35,12 @@ Rename the root repo contract to `REPO.md`, update thin entrypoints and active g
 - Output: the canonical contract now lives at `REPO.md`; current entrypoints and examples point to the new name; older worklogs and decisions retain the predecessor filename where it reflects historical state
 - Blockers: none
 - Next: verify there are no stale active references to `repo-operating-model.md`
+
+## Entry 2026-04-09 08-05-00 KST
+
+- Action: updated the repo contract, worklog guide, agent entrypoint, and orchestration guidance to prefer appending to the current relevant `LOG-*` instead of creating a new worklog for each meaningful commit
+- Files touched: `REPO.md`, `AGENTS.md`, `README.md`, `.github/copilot-instructions.md`, `skills/repo-orchestrator/SKILL.md`, `records/agent-worklogs/README.md`, `records/agent-worklogs/LOG-20260409-004-rename-canonical-rules-doc-to-repo.md`
+- Checks run: template-to-local wording comparison, repo-wide wording audit for worklog and provenance guidance
+- Output: Pipit now preserves strict artifact-linked commit provenance while explicitly allowing normal commits to reference updated existing artifacts; worklogs are append-first unless a distinct execution record improves clarity
+- Blockers: none
+- Next: verify there are no remaining active docs that imply a new `LOG-*` is the default for each meaningful commit

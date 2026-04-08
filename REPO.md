@@ -26,7 +26,7 @@ Pipit is run as a multi-agent, multi-surface project with cross-repo dependencie
 | `INBOX.md` | Untriaged intake waiting for routing. | append then purge |
 | `research/` | Curated reusable research and dependency notes. | append by new file |
 | `records/decisions/` | Durable decision records with rationale. | append by new file |
-| `records/agent-worklogs/` | Execution history for migrations, runs, and implementation sessions. | append by new file |
+| `records/agent-worklogs/` | Execution history for migrations, runs, and implementation sessions. | append-only |
 | `PIPIT_MASTER_ARCHITECTURE.md` | Deep protocol, security, provisioning, and system-design reference. | rewritten deliberately |
 
 `upstream-intake/` is intentionally omitted for now. Pipit depends on upstream projects, but this repo is not being run as a recurring downstream fork-review system.
@@ -62,7 +62,7 @@ When new work arrives, route it in this order:
 6. Durable decision with rationale -> `records/decisions/`
 7. Execution history -> `records/agent-worklogs/`
 
-One task may legitimately touch more than one surface. Example: a feature kickoff can create a `DEC-*`, update `PLANS.md`, and later append a `LOG-*`.
+One task may legitimately touch more than one surface. Example: a feature kickoff can create a `DEC-*`, update `PLANS.md`, and later append to an existing relevant `LOG-*` or create a new one if clarity requires it.
 
 ## Roles
 
@@ -76,7 +76,7 @@ The orchestrator owns routing and synthesis. It may update `SPEC.md`, `STATUS.md
 
 ### Worker
 
-Workers execute bounded tasks. They should prefer creating `LOG-*` artifacts and proposing truth changes through the orchestrator instead of rewriting canonical docs ad hoc.
+Workers execute bounded tasks. They should prefer appending to the current relevant `LOG-*`, or creating one only when the execution thread is materially distinct, and should propose truth changes through the orchestrator instead of rewriting canonical docs ad hoc.
 
 ## Write Rules
 
@@ -85,6 +85,8 @@ Workers execute bounded tasks. They should prefer creating `LOG-*` artifacts and
 - Put reusable dependency or ecosystem context in `research/`.
 - Record durable product, architecture, or workflow choices in `records/decisions/`.
 - Record migrations, implementations, and noteworthy execution sessions in `records/agent-worklogs/`.
+- Prefer appending new timestamped entries to the current relevant `LOG-*` when the same workstream continues.
+- Create a new `LOG-*` only when the work is materially distinct, a separate agent or subagent owns it, or reuse would harm clarity.
 - When `PIPIT_MASTER_ARCHITECTURE.md` conflicts with `SPEC.md`, `STATUS.md`, or current code on non-protocol implementation details, treat the architecture document as authoritative for protocol and security only, and prefer the newer project-level docs for repo reality.
 - Before editing `research/` or `records/`, read the local directory `README.md` first. If it defines a default section order or canonical example, follow that shape instead of inventing a new one.
 
@@ -121,7 +123,13 @@ After adopting this model, commits should include these trailers:
 - `role: orchestrator|worker|subagent|operator`
 - `artifacts: <artifact-id>[, <artifact-id>...]`
 
-Normal commits should reference at least one stable artifact. Artifact-less commits are migration/bootstrap exceptions only.
+Normal commits should reference at least one stable artifact, whether newly created or updated. Artifact-less commits are migration/bootstrap exceptions only.
+
+Normal commits do not require a brand-new `LOG-*`.
+
+- Prefer appending to an existing relevant `LOG-*` when the same workstream continues.
+- Commits may reference an updated `LOG-*`, `DEC-*`, `RSH-*`, or another relevant artifact type.
+- Create a new `LOG-*` only when a separate execution record improves clarity.
 
 ## Commit Provenance Enforcement
 

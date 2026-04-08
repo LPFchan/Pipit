@@ -23,6 +23,7 @@ When writing into an artifact directory, read that directory's `README.md` first
 - Route work using the routing ladder in `REPO.md`.
 - Preserve the boundary between `SPEC.md`, `STATUS.md`, `PLANS.md`, `INBOX.md`, `research/`, `records/decisions/`, and `records/agent-worklogs/`.
 - Treat `.github/copilot-instructions.md` as the canonical source for Pipit-specific build, test, architecture, BLE, and security constraints.
+- Prefer appending to the current relevant `LOG-*` instead of creating a new one unless the work is materially distinct or reuse would hurt clarity.
 - Prefer the local `README.md` shape over ad hoc formatting when it defines one.
 - When hooks or CI enforcement are enabled, commit messages must satisfy the provenance rules in `REPO.md` and pass `scripts/check-commit-standards.sh`.
 - Bootstrap or migration exceptions must be explicit in the commit message. Do not treat missing trailers as an acceptable shortcut.
