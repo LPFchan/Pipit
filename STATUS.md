@@ -64,6 +64,10 @@ Pipit is an active Kotlin Multiplatform mobile repo with Android, iOS, and share
   - Change: Added root `AGENTS.md` and `CLAUDE.md`, normalized the artifact-writing guides toward repo-template, and enabled commit provenance enforcement through local hooks and CI.
   - Why it matters: Repo participants now have explicit entrypoints for writing behavior and automated enforcement for commit provenance instead of relying on convention alone.
   - Related ids: `DEC-20260409-002`, `LOG-20260409-002`
+- Date: 2026-04-09
+  - Change: Merged the settings, onboarding, and viewer integration work from the side branch onto `main` as a clean provenance-bearing commit, excluding IDE metadata and generated Kotlin cache files.
+  - Why it matters: `main` now contains the current Android and iOS product work instead of leaving it stranded on a non-compliant side branch.
+  - Related ids: `LOG-20260409-003`
 
 ## Active Blockers And Risks
 
@@ -78,10 +82,10 @@ Pipit is an active Kotlin Multiplatform mobile repo with Android, iOS, and share
   - Mitigation: Keep durable dependency notes in research and re-check interop whenever the external protocol or QR flow changes.
   - Related ids: `RSH-20260409-001`
 - Blocker or risk: The working tree is currently dirty with app-level changes unrelated to this migration.
-  - Effect: Repo truth may diverge temporarily from the last clean committed state, and future commits need careful staging discipline.
+  - Effect: Machine-local IDE or generated metadata can still be staged accidentally in future sessions even though the app-level product changes have now been committed.
   - Owner: Current implementers.
-  - Mitigation: Use targeted staging, keep worklogs explicit, and validate only the surfaces that actually changed in a given commit.
-  - Related ids: `LOG-20260409-001`
+  - Mitigation: Use targeted staging, rely on commit provenance enforcement, and expand ignore rules later if local metadata keeps reappearing.
+  - Related ids: `LOG-20260409-003`
 
 ## Immediate Next Steps
 

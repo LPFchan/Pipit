@@ -1,10 +1,15 @@
 package com.immogen.pipit.ui
 
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -19,9 +24,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -52,12 +61,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.immogen.core.ImmoCrypto
@@ -75,7 +89,7 @@ import com.immogen.pipit.usb.DeviceType
 import com.immogen.pipit.usb.UsbOtgManager
 import com.immogen.pipit.usb.UsbState
 import java.security.SecureRandom
-import kotlin.math.roundToInt
+import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
@@ -674,19 +688,26 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Settings",
-                        style = MaterialTheme.typography.headlineMedium
-                    )
-                    Text(
-                        text = settingsSubtitle(localSlotId),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                }
-                TextButton(onClick = onClose) {
-                    Text("Close")
+                Text(
+                    text = "Settings",
+                    style = TextStyle(fontSize = 34.sp, fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f),
+                )
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close settings",
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
 
@@ -732,64 +753,57 @@ fun SettingsScreen(
                     }
                 }
 
-                SettingsSection(
-                    title = "PROXIMITY",
-                    subtitle = "These controls are persisted locally and already drive the existing BLE unlock and lock logic."
-                ) {
+                SettingsSection(title = "PROXIMITY") {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                RoundedCornerShape(18.dp),
+                            )
+                            .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Background Unlock",
-                                style = MaterialTheme.typography.titleMedium
+                                text = "Proximity Unlock",
+                                style = MaterialTheme.typography.headlineSmall.copy(fontSize = 16.sp),
                             )
                             Text(
-                                text = if (isProximityEnabled) {
-                                    "Automatic unlock and lock are enabled."
-                                } else {
-                                    "Manual control only."
-                                },
+                                text = if (isProximityEnabled) "Enabled" else "Disabled",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                             )
                         }
                         Switch(
                             checked = isProximityEnabled,
-                            onCheckedChange = ::updateProximityEnabled
+                            onCheckedChange = ::updateProximityEnabled,
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    RssiControl(
-                        title = "Unlock RSSI",
-                        value = unlockRssi,
-                        enabled = isProximityEnabled,
-                        rangeLabel = "Closer to 0 unlocks sooner.",
-                        valueRange = UnlockRssiMin.toFloat()..UnlockRssiMax.toFloat(),
-                        onValueChange = { updateUnlockRssi(it.roundToInt()) }
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    RssiControl(
-                        title = "Lock RSSI",
-                        value = lockRssi,
-                        enabled = isProximityEnabled,
-                        rangeLabel = "Always at least 10 dBm weaker than unlock.",
-                        valueRange = LockRssiMin.toFloat()..(unlockRssi - HysteresisGapDbm).toFloat(),
-                        onValueChange = { updateLockRssi(it.roundToInt()) }
-                    )
+                    AnimatedVisibility(
+                        visible = isProximityEnabled,
+                        enter = expandVertically() + fadeIn(tween(160)),
+                        exit  = shrinkVertically() + fadeOut(tween(120)),
+                    ) {
+                        Column {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            ProximityPresetControl(
+                                unlockRssi = unlockRssi,
+                                onPresetSelected = { unlockDbm, lockDbm ->
+                                    unlockRssi = unlockDbm
+                                    lockRssi   = lockDbm
+                                    settings.unlockRssi = unlockDbm
+                                    settings.lockRssi   = lockDbm
+                                },
+                            )
+                        }
+                    }
                 }
 
                 if (isOwner) {
-                    SettingsSection(
-                        title = "KEYS",
-                        subtitle = "Live slots from Guillemot over the existing management transport. Owner writes always re-identify before mutating a slot."
-                    ) {
+                    SettingsSection(title = "KEYS") {
                         when {
                             isLoadingSlots -> LoadingMessage(sessionState = sessionState)
                             slotError != null -> ErrorMessage(message = requireNotNull(slotError), retry = { refreshToken += 1 })
@@ -818,10 +832,7 @@ fun SettingsScreen(
                         }
                     }
 
-                    SettingsSection(
-                        title = "DEVICE",
-                        subtitle = "Owner migration stays BLE-only. Slot 0 maintenance, PIN changes, and Guillemot flashing consume the existing Android USB backend."
-                    ) {
+                    SettingsSection(title = "DEVICE") {
                         Button(
                             onClick = { confirmTransfer = true },
                             enabled = !actionBusy,
@@ -856,20 +867,17 @@ fun SettingsScreen(
                         ) {
                             Text("Flash Guillemot UF2")
                         }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        UsbStatusCard(usbState = usbState)
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Uguisu firmware flashing is still blocked by the USB backend; the existing module only provisions its key right now.",
+                            text = "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        UsbStatusCard(usbState = usbState)
                     }
                 } else {
-                    SettingsSection(
-                        title = "YOUR KEY",
-                        subtitle = "Guests only manage their own migration and local proximity preferences."
-                    ) {
+                    SettingsSection(title = "YOUR KEY") {
                         when {
                             selfSlot != null -> {
                                 SlotRow(slot = selfSlot, localSlotId = localSlotId)
@@ -900,48 +908,9 @@ fun SettingsScreen(
                     }
                 }
 
-                SettingsSection(
-                    title = "ABOUT",
-                    subtitle = if (isOwner) {
-                        "Session state, app build, and current slot context."
-                    } else {
-                        "Read-only vehicle slot overview, app build, and session state."
-                    }
-                ) {
-                    SessionStatus(sessionState = sessionState)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    if (!isOwner) {
-                        SlotSectionBody(
-                            slots = displaySlots,
-                            localSlotId = localSlotId,
-                            hasLoadedSlots = hasLoadedSlots,
-                            isLoadingSlots = isLoadingSlots,
-                            slotError = slotError,
-                            retry = { refreshToken += 1 }
-                        )
-                    } else {
-                        Text(
-                            text = "Local phone slot: $localSlotId",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
-                        )
-                    }
-                }
-
                 // ── Developer section (debug builds only) ────────────────────────────────
-                // Mirrors iOS SettingsView #if targetEnvironment(simulator) devSection.
                 if (BuildConfig.DEBUG) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    SettingsSection(
-                        title = "DEVELOPER",
-                        subtitle = "Debug build only. Overrides BLE state and simulates device operations.",
-                    ) {
+                    SettingsSection(title = "DEVELOPER") {
                         val isConnected = sessionState.connectionState == BleManagementSessionConnectionState.READY
                         OutlinedButton(
                             onClick = {
@@ -1323,46 +1292,117 @@ private fun SessionStatus(sessionState: BleManagementSessionState) {
     }
 }
 
-@Composable
-private fun RssiControl(
-    title: String,
-    value: Int,
-    enabled: Boolean,
-    rangeLabel: String,
-    valueRange: ClosedFloatingPointRange<Float>,
-    onValueChange: (Float) -> Unit
-) {
-    val safeRange = if (valueRange.endInclusive < valueRange.start) {
-        valueRange.start..valueRange.start
-    } else {
-        valueRange
-    }
+private data class ProximityPreset(
+    val index: Int,
+    val title: String,
+    val unlockRssi: Int,
+    val lockRssi: Int,
+)
 
-    Column {
+private val proximityPresets = listOf(
+    ProximityPreset(0, "Very Near", -42, -58),
+    ProximityPreset(1, "Near",      -50, -66),
+    ProximityPreset(2, "Middle",    -58, -74),
+    ProximityPreset(3, "Far",       -66, -82),
+    ProximityPreset(4, "Very Far",  -74, -90),
+)
+
+private fun nearestPresetIndex(unlockRssi: Int): Int {
+    return proximityPresets.minByOrNull { abs(it.unlockRssi - unlockRssi) }?.index ?: 2
+}
+
+@Composable
+private fun ProximityPresetControl(
+    unlockRssi: Int,
+    onPresetSelected: (unlockDbm: Int, lockDbm: Int) -> Unit,
+) {
+    val view = LocalView.current
+    val selectedIndex = nearestPresetIndex(unlockRssi)
+    val accentBlue = androidx.compose.ui.graphics.Color(0xFF0A84FF)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                RoundedCornerShape(18.dp),
+            )
+            .padding(16.dp),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium)
             Text(
-                text = "$value dBm",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                text = "Threshold",
+                style = MaterialTheme.typography.headlineSmall.copy(fontSize = 16.sp),
+                modifier = Modifier.weight(1f),
             )
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = accentBlue.copy(alpha = 0.12f),
+            ) {
+                Text(
+                    text = proximityPresets[selectedIndex].title,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = accentBlue,
+                    ),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = rangeLabel,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
-        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         Slider(
-            value = value.toFloat().coerceIn(safeRange.start, safeRange.endInclusive),
-            onValueChange = onValueChange,
-            valueRange = safeRange,
-            enabled = enabled
+            value = selectedIndex.toFloat(),
+            onValueChange = { rawVal ->
+                val newIndex = rawVal.toInt().coerceIn(0, 4)
+                if (newIndex != selectedIndex) {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                    } else {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                    }
+                    val preset = proximityPresets[newIndex]
+                    onPresetSelected(preset.unlockRssi, preset.lockRssi)
+                }
+            },
+            valueRange = 0f..4f,
+            steps = 3,
         )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            proximityPresets.forEach { preset ->
+                val isSelected = preset.index == selectedIndex
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Canvas(modifier = Modifier.size(6.dp)) {
+                        drawCircle(
+                            color = if (isSelected) accentBlue else Color.Gray.copy(alpha = 0.4f),
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = preset.title,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                            color = if (isSelected)
+                                MaterialTheme.colorScheme.onSurface
+                            else
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        ),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1508,7 +1548,7 @@ private fun generateQrBitmap(payload: String, size: Int = 768): Bitmap {
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     for (x in 0 until size) {
         for (y in 0 until size) {
-            bitmap.setPixel(x, y, if (matrix[x, y]) Color.BLACK else Color.WHITE)
+            bitmap.setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
         }
     }
     return bitmap

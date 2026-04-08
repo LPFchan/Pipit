@@ -4,6 +4,12 @@ plugins {
     kotlin("plugin.compose")
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
 android {
     namespace = "com.immogen.pipit"
     compileSdk = 35
@@ -27,7 +33,20 @@ android {
             isMinifyEnabled = false
         }
     }
-    sourceSets["main"].assets.srcDirs("src/main/assets", "../../assets")
+    // Copy Three.js + addons from the iOS resource bundle at build time so
+    // viewer.html can load them via the pipit-app-local scheme interceptor.
+    // We isolate them in a generated dir to avoid duplicate-file conflicts
+    // with the shared ../assets directory.
+    val threeJsAssets = layout.buildDirectory.dir("three-js-assets")
+    val copyThreeJs by tasks.registering(Copy::class) {
+        from("../iosApp/iosApp/Resources") {
+            include("three.module.js", "three.core.js", "three-addons/**")
+        }
+        into(threeJsAssets)
+    }
+    tasks.named("preBuild") { dependsOn(copyThreeJs) }
+
+    sourceSets["main"].assets.srcDirs("src/main/assets", "../assets", threeJsAssets)
 }
 
 dependencies {

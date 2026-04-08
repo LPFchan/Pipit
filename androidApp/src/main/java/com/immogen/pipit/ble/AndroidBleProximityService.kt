@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
-import com.immogen.pipit.BuildConfig
 
 @SuppressLint("MissingPermission") // Handled by UI layer before starting service
 class AndroidBleProximityService : Service() {
@@ -442,10 +441,6 @@ class AndroidBleProximityService : Service() {
 
     inner class LocalBinder : Binder() {
         fun getBleService(): BleService = bleStateService
-        /** Debug-only: directly override connection state for UI testing (mirrors iOS simulatorSetConnectionState). */
-        fun debugSetConnectionState(state: ConnectionState) {
-            if (BuildConfig.DEBUG) bleStateService.updateConnectionState(state)
-        }
     }
     override fun onBind(intent: Intent?): IBinder? = LocalBinder()
     
@@ -459,12 +454,7 @@ class AndroidBleProximityService : Service() {
     
     // Internal implementation of the shared KMP interface to bridge state
     inner class AndroidBleServiceImpl : BaseBleService() {
-        // In debug builds, route management to the simulator transport so all Settings and
-        // Onboarding flows can be tested without Bluetooth hardware (mirrors iOS #if targetEnvironment(simulator)).
-        override val managementTransport: BleManagementTransport by lazy {
-            if (BuildConfig.DEBUG) DebugSimulatedManagementTransport(applicationContext)
-            else bleManagementTransport
-        }
+        override val managementTransport: BleManagementTransport = bleManagementTransport
 
         override fun startScanning() {
             updateWindowOpen(false)

@@ -19,6 +19,7 @@
 		466711AFAA47BB3A68977FB8 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C13591F313A09BE1F331F35 /* OnboardingViewModel.swift */; };
 		4912430888E05D76E48189D9 /* viewer.html in Resources */ = {isa = PBXBuildFile; fileRef = 0DCFF6B0C28D38943E8BC133 /* viewer.html */; };
 		4BE956AA5346573BEAD9950D /* LocalSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25217FD2B46FCF95A8107E9D /* LocalSchemeHandler.swift */; };
+		8F80A3558F6546CA9261EE35 /* RecoveryFobWebViewPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0718F488A4E34AC3860603A1 /* RecoveryFobWebViewPool.swift */; };
 		5B5FB53EA0FE324361F1B3D5 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 938B9032C51C3B32C7E7CF76 /* SettingsViewModel.swift */; };
 		78DAA08901C9BB75BA1F0119 /* FobRealityViewWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3B8377B1B54FE1337652D92 /* FobRealityViewWrapper.swift */; };
 		88EB1FBD6019F467D71A2FC9 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90D58F7CA649FECE310D05B /* SettingsViewModel.swift */; };
@@ -27,6 +28,9 @@
 		A7D64F588C53EB351C0BE5BE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9127467A7AF5B5C9B6D0094F /* SettingsView.swift */; };
 		AA000001AA000001AA000001 /* materials.js in Resources */ = {isa = PBXBuildFile; fileRef = AA000002AA000002AA000002 /* materials.js */; };
 		AA000003AA000003AA000003 /* Uguisu.glb in Resources */ = {isa = PBXBuildFile; fileRef = AA000004AA000004AA000004 /* Uguisu.glb */; };
+		3C3F2FDAAAA84D9C8217DA6F /* three.module.js in Resources */ = {isa = PBXBuildFile; fileRef = 5240554BDCFC44AE8C39EA34 /* three.module.js */; };
+		528BABA4F3124AB6BAF6DCD9 /* three.core.js in Resources */ = {isa = PBXBuildFile; fileRef = 213EB2109A0A4CD48662A642 /* three.core.js */; };
+		EAE3957C341D440F91904E13 /* three-addons in Resources */ = {isa = PBXBuildFile; fileRef = E300B160B1A943B689429D91 /* three-addons */; };
 		CEBFC72DC1D31B5C6CED61A6 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B099269BCB3B184DAEB651 /* OnboardingViewModel.swift */; };
 		F1CA6B2F4770126B93B27E72 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E327DC64CD9FAA9B49CBD0D0 /* SettingsViewModel.swift */; };
 /* End PBXBuildFile section */
@@ -39,6 +43,7 @@
 		191C008F6EC4425923F30345 /* SettingsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsViewModel.swift; path = iosApp/iosApp/UI/SettingsViewModel.swift; sourceTree = "<group>"; };
 		1DA5D355AA45FF9A40BD4708 /* OnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = iosApp/iosApp/UI/OnboardingView.swift; sourceTree = "<group>"; };
 		25217FD2B46FCF95A8107E9D /* LocalSchemeHandler.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LocalSchemeHandler.swift; path = iosApp/iosApp/UI/LocalSchemeHandler.swift; sourceTree = "<group>"; };
+		0718F488A4E34AC3860603A1 /* RecoveryFobWebViewPool.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RecoveryFobWebViewPool.swift; path = iosApp/iosApp/UI/RecoveryFobWebViewPool.swift; sourceTree = "<group>"; };
 		32FD3699F89E455D1702042B /* PipitApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PipitApp.swift; path = iosApp/iosApp/PipitApp.swift; sourceTree = "<group>"; };
 		33D8A3FD14E75BB885FBAED5 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingViewModel.swift; path = iosApp/iosApp/UI/OnboardingViewModel.swift; sourceTree = "<group>"; };
 		50B099269BCB3B184DAEB651 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingViewModel.swift; path = iosApp/iosApp/UI/OnboardingViewModel.swift; sourceTree = "<group>"; };
@@ -50,6 +55,9 @@
 		A3B8377B1B54FE1337652D92 /* FobRealityViewWrapper.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FobRealityViewWrapper.swift; path = iosApp/iosApp/UI/FobRealityViewWrapper.swift; sourceTree = "<group>"; };
 		AA000002AA000002AA000002 /* materials.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; name = materials.js; path = assets/materials.js; sourceTree = "<group>"; };
 		AA000004AA000004AA000004 /* Uguisu.glb */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file; name = Uguisu.glb; path = assets/Uguisu.glb; sourceTree = "<group>"; };
+		5240554BDCFC44AE8C39EA34 /* three.module.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; name = three.module.js; path = vendor/three/build/three.module.js; sourceTree = "<group>"; };
+		213EB2109A0A4CD48662A642 /* three.core.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; name = three.core.js; path = vendor/three/build/three.core.js; sourceTree = "<group>"; };
+		E300B160B1A943B689429D91 /* three-addons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = three-addons; path = iosApp/iosApp/Resources/three-addons; sourceTree = "<group>"; };
 		B90D58F7CA649FECE310D05B /* SettingsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsViewModel.swift; path = iosApp/iosApp/UI/SettingsViewModel.swift; sourceTree = "<group>"; };
 		DDDE64444413036E71036E2F /* OnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = iosApp/iosApp/UI/OnboardingView.swift; sourceTree = "<group>"; };
 		DFC81CD531991F87389F5AF2 /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RootView.swift; path = iosApp/iosApp/RootView.swift; sourceTree = "<group>"; };
@@ -93,6 +101,9 @@
 				0DCFF6B0C28D38943E8BC133 /* viewer.html */,
 				AA000002AA000002AA000002 /* materials.js */,
 				AA000004AA000004AA000004 /* Uguisu.glb */,
+				5240554BDCFC44AE8C39EA34 /* three.module.js */,
+				213EB2109A0A4CD48662A642 /* three.core.js */,
+				E300B160B1A943B689429D91 /* three-addons */,
 			);
 			sourceTree = "<group>";
 		};
@@ -102,6 +113,7 @@
 				33D8A3FD14E75BB885FBAED5 /* OnboardingViewModel.swift */,
 				5F22D762CBFAB40F2BA4C127 /* OnboardingView.swift */,
 				25217FD2B46FCF95A8107E9D /* LocalSchemeHandler.swift */,
+				0718F488A4E34AC3860603A1 /* RecoveryFobWebViewPool.swift */,
 			);
 			name = UI;
 			sourceTree = "<group>";
@@ -208,6 +220,9 @@
 				4912430888E05D76E48189D9 /* viewer.html in Resources */,
 				AA000001AA000001AA000001 /* materials.js in Resources */,
 				AA000003AA000003AA000003 /* Uguisu.glb in Resources */,
+				3C3F2FDAAAA84D9C8217DA6F /* three.module.js in Resources */,
+				528BABA4F3124AB6BAF6DCD9 /* three.core.js in Resources */,
+				EAE3957C341D440F91904E13 /* three-addons in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -259,6 +274,7 @@
 				466711AFAA47BB3A68977FB8 /* OnboardingViewModel.swift in Sources */,
 				07DBC818AE271E1558887074 /* OnboardingView.swift in Sources */,
 				4BE956AA5346573BEAD9950D /* LocalSchemeHandler.swift in Sources */,
+				8F80A3558F6546CA9261EE35 /* RecoveryFobWebViewPool.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

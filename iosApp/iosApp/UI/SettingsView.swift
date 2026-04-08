@@ -1,27 +1,8 @@
 import SwiftUI
-import UIKit
 
-private enum SettingsProximityThresholdHaptics {
-    static let generator = UIImpactFeedbackGenerator(style: .heavy)
-
-    /// Medium–strong feedback when the user snaps the threshold slider to a new preset.
-    static func playThresholdChanged() {
-        generator.prepare()
-        generator.impactOccurred(intensity: 0.85)
-    }
-}
-
-/// MainActor + non-observed `bleService` keep sheet/bindings and the view body on one actor and avoid
-/// re-rendering Settings on every `IosBleProximityService` publish (management session churn).
-@MainActor
 struct SettingsView: View {
     @StateObject private var viewModel: SettingsViewModel
-    /// Passed from `RootView`; not `@EnvironmentObject` so BLE RSSI / management state updates
-    /// do not invalidate this tree (was freezing the UI when opening Settings).
-    private let bleService: IosBleProximityService
-    /// Mirrors `viewModel.showQrSheet` so `.sheet(item:)` uses a plain `Binding`, not `$viewModel.showQrSheet`
-    /// (SwiftUI warns / will crash when a sheet reads MainActor-isolated storage via `Binding` off-actor).
-    @State private var presentedQrSheet: SettingsViewModel.QrType?
+    @EnvironmentObject private var bleService: IosBleProximityService
 
     private let slotCardStyle = SlotPresentationStyle.settingsGrouped
 
@@ -29,13 +10,11 @@ struct SettingsView: View {
         bleService: IosBleProximityService,
         onLocalKeyDeleted: @escaping () -> Void
     ) {
-        self.bleService = bleService
-        _viewModel = StateObject(
-            wrappedValue: SettingsViewModel(
-                bleService: bleService,
-                onLocalKeyDeleted: onLocalKeyDeleted
-            )
+        let vm = SettingsViewModel(
+            bleService: bleService,
+            onLocalKeyDeleted: onLocalKeyDeleted
         )
+        _viewModel = StateObject(wrappedValue: vm)
     }
 
     var body: some View {
@@ -68,17 +47,10 @@ struct SettingsView: View {
                 .padding(.bottom, 36)
             }
             .onAppear {
-                presentedQrSheet = viewModel.showQrSheet
                 viewModel.onAppear()
             }
             .onDisappear {
                 viewModel.onDisappear()
-            }
-            .onChange(of: viewModel.showQrSheet) { _, new in
-                presentedQrSheet = new
-            }
-            .onChange(of: presentedQrSheet) { _, new in
-                if new == nil { viewModel.showQrSheet = nil }
             }
             .alert(
                 "Alert",
@@ -133,7 +105,7 @@ struct SettingsView: View {
                     EmptyView()
                 }
             }
-            .sheet(item: $presentedQrSheet) { qrType in
+            .sheet(item: $viewModel.showQrSheet) { qrType in
                 qrSheetContent(for: qrType)
             }
         }
@@ -413,14 +385,7 @@ struct SettingsView: View {
             Slider(
                 value: Binding(
                     get: { Double(viewModel.selectedProximityPresetIndex) },
-                    set: { newVal in
-                        let newIndex = Int(newVal.rounded())
-                        let previous = viewModel.selectedProximityPresetIndex
-                        viewModel.setProximityPreset(index: newIndex)
-                        if newIndex != previous {
-                            SettingsProximityThresholdHaptics.playThresholdChanged()
-                        }
-                    }
+                    set: { viewModel.setProximityPreset(index: Int($0.rounded())) }
                 ),
                 in: 0...Double(max(viewModel.proximityPresets.count - 1, 0)),
                 step: 1
@@ -701,6 +666,24 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(24)
+    }
+
+    private var managementStatusTextDisplay: String {
+        let state = bleService.managementState
+        switch state.connectionState {
+        case .disconnected:
+            return "Management session disconnected."
+        case .scanning:
+            return "Scanning for Guillemot management advertising."
+        case .connecting:
+            return "Connecting to management GATT."
+        case .discovering:
+            return "Discovering management characteristics."
+        case .ready:
+            return "Management session ready."
+        case .error:
+            return state.lastError ?? "Management session failed."
+        }
     }
 }
 

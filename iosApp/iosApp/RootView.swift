@@ -21,7 +21,7 @@ struct RootView: View {
                     Color(uiColor: .systemBackground).edgesIgnoringSafeArea(.all)
                     
                     ZStack {
-                        HomeView(bleService: bleService)
+                        HomeView()
                             .opacity(showSettings ? 0 : 1)
                             .allowsHitTesting(!showSettings)
                         
@@ -111,22 +111,25 @@ struct DisconnectOverlayModifier: ViewModifier {
     var isOverlayEnabled: Bool
     var isBluetoothPoweredOff: Bool
 
-    /// Same dev escape hatch as simulator: set from the disconnect overlay’s “Bypass” control (or UserDefaults).
+    #if targetEnvironment(simulator)
     @AppStorage("DEV_BYPASS_OVERLAY") private var devBypassOverlay = false
+    #endif
 
     func body(content: Content) -> some View {
         ZStack {
             content
-            
+
             if isOverlayEnabled && shouldShowOverlay {
                 DisconnectOverlaySwiftUIView(isBluetoothPoweredOff: isBluetoothPoweredOff)
-                    
+
             }
         }
     }
-    
+
     private var shouldShowOverlay: Bool {
+        #if targetEnvironment(simulator)
         if devBypassOverlay { return false }
+        #endif
 
         switch connectionState {
         case .connected:

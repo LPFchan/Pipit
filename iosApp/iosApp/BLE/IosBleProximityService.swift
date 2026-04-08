@@ -350,7 +350,7 @@ public enum IosBleProximityServiceError: LocalizedError {
         #endif
 
         let payload = try buildIdentifyPayload(slotId: slotId)
-        await MainActor.run { lastCommandPayloadHex = payload.hexEncodedString() }
+        lastCommandPayloadHex = payload.hexEncodedString()
 
         let response = try await executeManagementCommand(name: "IDENTIFY", payload: payload)
         switch response {
@@ -614,7 +614,7 @@ public enum IosBleProximityServiceError: LocalizedError {
             throw IosBleProximityServiceError.busy("Another BLE scan is already in progress")
         }
 
-        await MainActor.run { connectionState = .scanning }
+        connectionState = .scanning
 
         return try await withTimeout(
             seconds: Self.scanTimeout,
@@ -640,7 +640,7 @@ public enum IosBleProximityServiceError: LocalizedError {
         activeManagementMode = mode
         managementPeripheral = peripheral
         activeOperation = .management(mode)
-        await MainActor.run { connectionState = .connecting }
+        connectionState = .connecting
         updateManagementState(
             connectionState: .connecting,
             mode: mode,

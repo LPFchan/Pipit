@@ -1,9 +1,7 @@
 import SwiftUI
 
 struct HomeView: View {
-    /// Passed explicitly so BLE `@Published` churn (e.g. Settings opening a management session)
-    /// does not invalidate this tree and spam `FobViewer.updateUIView` / WK `evaluateJavaScript`.
-    let bleService: IosBleProximityService
+    @EnvironmentObject private var bleService: IosBleProximityService
     @AppStorage("hasLockedFobAtLeastOnce") private var hasLockedFobAtLeastOnce: Bool = false
     @State private var interactedThisSession: Bool = false
 
