@@ -27,3 +27,12 @@ Introduce root `AGENTS.md` and `CLAUDE.md`, normalize the touched artifact guide
 - Output: Pipit now has repo-root instruction entrypoints, normalized touched artifact-writing guides, a new decision and worklog for provenance enforcement, and reusable hook or CI enforcement copied from repo-template
 - Blockers: none
 - Next: keep future touched artifacts in template shape and rely on the installed hook plus CI to enforce provenance on new commits
+
+## Entry 2026-04-09 07-15-22 KST
+
+- Action: converted `CLAUDE.md` from a thicker local instruction file into the scaffold-style compatibility shim that points directly at `AGENTS.md`
+- Files touched: `CLAUDE.md`, `records/agent-worklogs/LOG-20260409-002-normalize-entrypoints-and-provenance-enforcement.md`
+- Checks run: scaffold-to-local file comparison
+- Output: `CLAUDE.md` no longer duplicates repo policy and now matches the repo-template expectation that Claude-specific entrypoints remain a shim
+- Blockers: none
+- Next: commit and push the shim change
