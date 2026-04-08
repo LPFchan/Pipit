@@ -3,7 +3,7 @@
 *Date: 2026-03-10*
 
 **Status:** Finalized Master Architecture
-**Scope:** Complete architectural blueprint for the Pipit companion app, Guillemot firmware integration, Whimbrel dashboard, and the BLE security protocol. This document serves as the single source of truth, superseding logs 30, 31, and 32.
+**Scope:** Complete architectural blueprint for the Pipit companion app, Guillemot firmware integration, Whimbrel dashboard, and the BLE security protocol. This document is the canonical protocol and security reference; project-level identity, status, and accepted future direction now live in `SPEC.md`, `STATUS.md`, and `PLANS.md`.
 
 ---
 
@@ -19,7 +19,9 @@ It provides:
 **Tech Stack:**
 
 - **Kotlin Multiplatform (KMP):** Shared business logic (AES-CCM crypto, state management). Ported from the existing C++ `immo_crypto` logic to pure Kotlin and validated against existing test vectors.
-- **Native UI:** **UIKit** (iOS) and **Jetpack Compose** (Android). Native toolkits are used to ensure reliable integration with OS-level BLE background modes, camera (QR scanning), and secure keystores.
+- **Native UI:** SwiftUI on iOS and Jetpack Compose on Android, backed by platform-native BLE, camera, and secure-storage integrations.
+
+When this document disagrees with `SPEC.md`, `STATUS.md`, `PLANS.md`, or the current codebase about repo-local implementation details, prefer the newer project-level docs and code. Slot semantics, provisioning rules, and security constraints here remain authoritative.
 
 ---
 
@@ -1239,5 +1241,4 @@ The Home screen 3D model and disconnect overlay reflect a combined state machine
 | **Change PIN — USB disconnected mid-write**                 | Pipit shows: *"Connection lost. PIN may not have been saved. Reconnect and try again."* The old PIN remains valid unless `SETPIN` succeeded before disconnect.                                                                                      |
 | **Slot 0 Replace — Uguisu not connected via USB (Android)** | The Replace action prompts: *"Connect the new Uguisu fob via USB-C OTG."* Waits for USB detection before proceeding.                                                                                                                                |
 | **Counter overflow**                                        | The 4-byte counter supports ~4 billion operations. No UI handling needed for practical use.                                                                                                                                                         |
-
 

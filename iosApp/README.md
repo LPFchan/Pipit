@@ -1,22 +1,29 @@
 # Pipit iOS App
 
-**UIKit** app (per PIPIT_MASTER_ARCHITECTURE). Placeholder 3D fob; RealityKit can replace `FobPlaceholderView` when the final asset is ready. Agent 6 delivers the app shell; Agents 7 and 8 fill Onboarding and Settings.
+The iOS target is a SwiftUI app rooted at `PipitApp.swift`. `RootView.swift` decides whether the user sees onboarding, the home fob surface, or Settings based on local provisioning state and BLE connection state.
 
 ## Setup
 
-- Open in Xcode as part of a Kotlin Multiplatform project that includes the `shared` framework, or create a new iOS App target and add the `shared` framework (from the KMP build).
-- Add all files under `iosApp/` and `iosApp/UI/` to the target.
-- App entry is **UIKit**: `@main` in `AppDelegate.swift`; no storyboard (window created in code).
-- Link the KMP `shared` framework and **Combine** so `IosBleProximityService`, `ConnectionState`, and `RootViewController` observation work.
+- Open `Pipit.xcodeproj` and build the `Pipit` scheme.
+- Ensure the Kotlin Multiplatform `shared.framework` has been built and linked into the iOS target.
+- Add all files under `iosApp/iosApp/`, `iosApp/iosApp/UI/`, and `iosApp/iosApp/BLE/` to the target as needed.
+- The app entry point is `@main` in `PipitApp.swift`.
 
-## 3D fob (RealityKit)
+## UI Structure
 
-The home screen uses **FobRealityView**, which loads `uguisu_placeholder.usdz` from the app bundle when present (RealityKit), with tap/long-press and button-depression animation. If the USDZ is not in the bundle, it falls back to **FobPlaceholderView** (2D).
+- `RootView.swift` switches between onboarding, home, and settings.
+- `HomeView.swift` hosts the fob interaction surface.
+- `OnboardingView.swift` and `OnboardingViewModel.swift` drive QR import and recovery flows.
+- `SettingsView.swift` and `SettingsViewModel.swift` drive slot management and proximity controls.
 
-1. Convert `Pipit/assets/uguisu_placeholder.glb` to `.usdz` (Reality Converter or `xcrun usdzconvert`).
-2. Add `uguisu_placeholder.usdz` to the iOS target’s **Copy Bundle Resources**.
-3. The app will load it via `Entity.loadModel(contentsOf:)` and animate the `button` entity for depression.
+## Fob Viewer
+
+The fob surface is currently driven by `FobRealityViewWrapper.swift`, which embeds the local `viewer.html` experience through `WKWebView` and `LocalSchemeHandler`.
+
+- Local viewer assets come from `assets/` and the vendored `vendor/three/` dependency.
+- SwiftUI bridges button depth, LED state, hit-region updates, and camera commands into the viewer.
+- Placeholder assets can still be swapped for final production assets later without changing the overall interaction contract.
 
 ## BLE
 
-`IosBleProximityService` is the BLE layer. `sendUnlockCommand()` and `sendLockCommand()` are stubbed for manual fob actions; wire them to connect and send the 14-byte payload when the UI triggers tap/long-press.
+`IosBleProximityService.swift` owns scanning, connection state, proximity commands, management commands, and onboarding or settings support. Manual fob actions and management flows should call through that service instead of implementing their own BLE stack.
