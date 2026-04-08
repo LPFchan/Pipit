@@ -17,6 +17,8 @@ Pipit is run as a multi-agent, multi-surface project with cross-repo dependencie
 
 | Surface | Role | Mutability |
 | --- | --- | --- |
+| `AGENTS.md` | Thin compatibility entrypoint for repo-root agent instructions. | rewritten deliberately |
+| `CLAUDE.md` | Thin compatibility entrypoint for Claude-oriented repo instructions. | rewritten deliberately |
 | `SPEC.md` | Durable project-level truth for Pipit. | rewritten |
 | `STATUS.md` | Current accepted operational reality. | rewritten |
 | `PLANS.md` | Accepted future direction that is not current truth yet. | rewritten |
@@ -27,6 +29,15 @@ Pipit is run as a multi-agent, multi-surface project with cross-repo dependencie
 | `PIPIT_MASTER_ARCHITECTURE.md` | Deep protocol, security, provisioning, and system-design reference. | rewritten deliberately |
 
 `upstream-intake/` is intentionally omitted for now. Pipit depends on upstream projects, but this repo is not being run as a recurring downstream fork-review system.
+
+## Agent Instruction Entry Points
+
+`AGENTS.md` and `CLAUDE.md` exist as compatibility surfaces for tools that look for repo-root instructions.
+
+- Keep both thin.
+- Point them back to `repo-operating-model.md`.
+- Preserve Pipit-specific engineering rules by referring to `.github/copilot-instructions.md` rather than duplicating large policy blocks.
+- Do not fork the repo policy layer into multiple files.
 
 ## Separation Rules
 
@@ -74,6 +85,15 @@ Workers execute bounded tasks. They should prefer creating `LOG-*` artifacts and
 - Record durable product, architecture, or workflow choices in `records/decisions/`.
 - Record migrations, implementations, and noteworthy execution sessions in `records/agent-worklogs/`.
 - When `PIPIT_MASTER_ARCHITECTURE.md` conflicts with `SPEC.md`, `STATUS.md`, or current code on non-protocol implementation details, treat the architecture document as authoritative for protocol and security only, and prefer the newer project-level docs for repo reality.
+- Before editing `research/` or `records/`, read the local directory `README.md` first. If it defines a default section order or canonical example, follow that shape instead of inventing a new one.
+
+## Artifact Writing Rule
+
+Repo-template discipline applies at the artifact level, not only the directory level.
+
+- Prefer one strong local `README.md` per durable artifact directory.
+- Treat that guide as binding when it defines scope, default section order, or a canonical example.
+- Make the smallest justified deviation when repo-specific truth requires it, and keep the core provenance fields intact.
 
 ## Stable IDs
 
@@ -101,6 +121,17 @@ After adopting this model, commits should include these trailers:
 - `artifacts: <artifact-id>[, <artifact-id>...]`
 
 Normal commits should reference at least one stable artifact. Artifact-less commits are migration/bootstrap exceptions only.
+
+## Commit Provenance Enforcement
+
+Pipit enforces commit provenance through both local hooks and CI:
+
+- Local hook: `.githooks/commit-msg`
+- Local validators: `scripts/check-commit-standards.sh` and `scripts/check-commit-range.sh`
+- Hook installer: `scripts/install-hooks.sh`
+- CI workflow: `.github/workflows/commit-standards.yml`
+
+Use `scripts/install-hooks.sh` to configure `core.hooksPath` for the local clone. Bootstrap or migration exceptions remain valid only when they are explicit in the commit message.
 
 ## Skills
 

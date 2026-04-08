@@ -6,7 +6,7 @@ This document tracks current accepted operational truth for the repo.
 
 - Last updated: 2026-04-09
 - Overall posture: `active`
-- Current focus: Keep the mobile app moving while using the canonical root docs and records surfaces instead of the retired brief workflow.
+- Current focus: Keep the mobile app moving while using the canonical root docs, normalized artifact guides, and enforced commit provenance workflow.
 - Highest-priority blocker: Cross-platform settings and key-management behavior still need real-hardware validation against the existing BLE and firmware contracts.
 - Next operator decision needed: Whether to prioritize settings hardening and hardware validation before the final 3D asset swap.
 - Related decisions: `DEC-20260409-001`
@@ -39,16 +39,16 @@ Pipit is an active Kotlin Multiplatform mobile repo with Android, iOS, and share
 - Risks: Firmware or dashboard protocol drift, destructive-key actions without enough end-to-end testing, and UI behavior moving ahead of verified device workflows.
 - Related ids: `RSH-20260409-001`
 
-### Repo Operating Model Adoption
+### Repo Operating Model And Provenance Enforcement
 
-- Goal: Keep project truth, plans, research, decisions, and execution history legible in-repo.
+- Goal: Keep project truth, plans, research, decisions, execution history, and commit provenance legible and enforceable in-repo.
 - Status: `done`
-- Why this matters now: The repo had durable information mixed into agent-specific briefs, which made current truth and accepted future direction hard to separate.
-- Current work: Using `SPEC.md`, `STATUS.md`, `PLANS.md`, `research/`, and `records/` as the canonical routing surfaces going forward.
-- Exit criteria: Future work lands in the new canonical surfaces instead of recreating a parallel planning layer.
-- Dependencies: Contributor adherence, local skill guidance, and commit provenance discipline.
-- Risks: Habit drift back toward ad hoc brief files or chat-only status tracking.
-- Related ids: `DEC-20260409-001`, `LOG-20260409-001`
+- Why this matters now: The repo had durable information mixed into agent-specific briefs and relied on social rather than enforced commit provenance, which made both recovery and auditability weaker than the operating model intended.
+- Current work: Using `SPEC.md`, `STATUS.md`, `PLANS.md`, `research/`, and `records/` as the canonical routing surfaces, with thin `AGENTS.md` and `CLAUDE.md` entrypoints and local plus CI commit checks in place.
+- Exit criteria: Future work lands in the canonical surfaces and commit messages are checked locally and remotely by default.
+- Dependencies: Contributor adherence, local skill guidance, installed hooks, and CI workflow execution.
+- Risks: Habit drift back toward ad hoc documents, or developers skipping hook installation in fresh clones until CI catches a commit.
+- Related ids: `DEC-20260409-001`, `DEC-20260409-002`, `LOG-20260409-001`, `LOG-20260409-002`
 
 ## Recent Changes To Project Reality
 
@@ -60,6 +60,10 @@ Pipit is an active Kotlin Multiplatform mobile repo with Android, iOS, and share
   - Change: Confirmed the repo currently contains in-flight local edits across Android, iOS, viewer, and project files outside this docs migration.
   - Why it matters: Any product validation or release decision must account for worktree state that is ahead of the last clean commit on `main`.
   - Related ids: `LOG-20260409-001`
+- Date: 2026-04-09
+  - Change: Added root `AGENTS.md` and `CLAUDE.md`, normalized the artifact-writing guides toward repo-template, and enabled commit provenance enforcement through local hooks and CI.
+  - Why it matters: Repo participants now have explicit entrypoints for writing behavior and automated enforcement for commit provenance instead of relying on convention alone.
+  - Related ids: `DEC-20260409-002`, `LOG-20260409-002`
 
 ## Active Blockers And Risks
 
@@ -89,3 +93,7 @@ Pipit is an active Kotlin Multiplatform mobile repo with Android, iOS, and share
   - Owner: Orchestrator and future workers.
   - Trigger: Any accepted truth or plan change, notable decision, or execution session.
   - Related ids: `DEC-20260409-001`, `LOG-20260409-001`
+- Next: Make sure fresh clones run `scripts/install-hooks.sh` so local commit-time enforcement matches CI behavior.
+  - Owner: Operator and active contributors.
+  - Trigger: New clone or new contributor onboarding.
+  - Related ids: `DEC-20260409-002`, `LOG-20260409-002`

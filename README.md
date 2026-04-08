@@ -37,6 +37,7 @@ export JAVA_HOME=/opt/homebrew/Cellar/openjdk@17/17.0.18/libexec/openjdk.jdk/Con
 
 Pipit now uses an in-repo operating model instead of agent-brief files:
 
+- `AGENTS.md` and `CLAUDE.md`: thin compatibility entrypoints for repo-root agent instructions
 - `SPEC.md`: durable project-level truth
 - `STATUS.md`: current operational reality
 - `PLANS.md`: accepted future direction
@@ -58,8 +59,19 @@ Use [PIPIT_MASTER_ARCHITECTURE.md](PIPIT_MASTER_ARCHITECTURE.md) for the deep pr
 | `assets/` | Project assets including placeholder or final 3D resources and viewer inputs. |
 | `tools/` | Project-specific helper scripts and asset tooling. |
 | `vendor/` | Vendored third-party code, including the local Three.js dependency used by the iOS viewer path. |
+| `.githooks/` | Local Git hook entrypoints used for commit provenance enforcement. |
+| `scripts/` | Local provenance validation and hook-install helpers. |
+| `skills/` | Reusable repo-local workflows such as the repo orchestrator procedure. |
 | `research/` | Reusable research and ecosystem dependency notes. |
 | `records/` | Decision records and worklogs. |
+
+## Commit Provenance Enforcement
+
+Pipit enforces commit provenance both locally and in CI:
+
+- Run `scripts/install-hooks.sh` once per clone to configure `core.hooksPath` to `.githooks`.
+- Local commits then pass through `.githooks/commit-msg`, which runs `scripts/check-commit-standards.sh`.
+- `.github/workflows/commit-standards.yml` validates pushed and pull-request commit ranges remotely.
 
 ## Ecosystem Integration
 
