@@ -1,4 +1,4 @@
-# Pipit Repo Operating Model
+# Pipit Repo Contract
 
 This document defines how Pipit's repo-local truth, status, plans, research, decisions, and execution history are kept separate and durable over time.
 
@@ -17,6 +17,7 @@ Pipit is run as a multi-agent, multi-surface project with cross-repo dependencie
 
 | Surface | Role | Mutability |
 | --- | --- | --- |
+| `REPO.md` | Canonical repo contract, routing ladder, and provenance rules. | rewritten deliberately |
 | `AGENTS.md` | Thin compatibility entrypoint for repo-root agent instructions. | rewritten deliberately |
 | `CLAUDE.md` | Thin compatibility entrypoint for Claude-oriented repo instructions. | rewritten deliberately |
 | `SPEC.md` | Durable project-level truth for Pipit. | rewritten |
@@ -35,7 +36,7 @@ Pipit is run as a multi-agent, multi-surface project with cross-repo dependencie
 `AGENTS.md` and `CLAUDE.md` exist as compatibility surfaces for tools that look for repo-root instructions.
 
 - Keep both thin.
-- Point them back to `repo-operating-model.md`.
+- Point them back to `REPO.md`.
 - Preserve Pipit-specific engineering rules by referring to `.github/copilot-instructions.md` rather than duplicating large policy blocks.
 - Do not fork the repo policy layer into multiple files.
 

@@ -8,7 +8,7 @@ argument-hint: "Task, intake item, maintenance request, or summary to route"
 
 Use this skill with:
 
-- [../../repo-operating-model.md](../../repo-operating-model.md)
+- [../../REPO.md](../../REPO.md)
 - [../../SPEC.md](../../SPEC.md)
 - [../../STATUS.md](../../STATUS.md)
 - [../../PLANS.md](../../PLANS.md)

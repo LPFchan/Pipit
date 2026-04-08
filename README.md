@@ -45,7 +45,7 @@ Pipit now uses an in-repo operating model instead of agent-brief files:
 - `research/`: curated dependency and exploration notes
 - `records/decisions/`: durable decisions
 - `records/agent-worklogs/`: execution history
-- `repo-operating-model.md`: routing and provenance rules
+- `REPO.md`: canonical repo contract, routing, and provenance rules
 
 Use [PIPIT_MASTER_ARCHITECTURE.md](PIPIT_MASTER_ARCHITECTURE.md) for the deep protocol, provisioning, and security reference.
 

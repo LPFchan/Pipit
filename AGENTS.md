@@ -2,11 +2,11 @@
 
 This repo uses repo-template.
 
-Treat `AGENTS.md` as a compatibility entrypoint for tools that look for repo-root agent instructions. The canonical operating rules still live in `repo-operating-model.md`.
+Treat `AGENTS.md` as a compatibility entrypoint for tools that look for repo-root agent instructions. The canonical repo contract lives in `REPO.md`.
 
 ## Read First
 
-- `repo-operating-model.md`
+- `REPO.md`
 - `SPEC.md`
 - `STATUS.md`
 - `PLANS.md`
@@ -20,11 +20,11 @@ When writing into an artifact directory, read that directory's `README.md` first
 ## Operating Rules
 
 - Keep durable truth in repo files, not only in chat.
-- Route work using the routing ladder in `repo-operating-model.md`.
+- Route work using the routing ladder in `REPO.md`.
 - Preserve the boundary between `SPEC.md`, `STATUS.md`, `PLANS.md`, `INBOX.md`, `research/`, `records/decisions/`, and `records/agent-worklogs/`.
 - Treat `.github/copilot-instructions.md` as the canonical source for Pipit-specific build, test, architecture, BLE, and security constraints.
 - Prefer the local `README.md` shape over ad hoc formatting when it defines one.
-- When hooks or CI enforcement are enabled, commit messages must satisfy the provenance rules in `repo-operating-model.md` and pass `scripts/check-commit-standards.sh`.
+- When hooks or CI enforcement are enabled, commit messages must satisfy the provenance rules in `REPO.md` and pass `scripts/check-commit-standards.sh`.
 - Bootstrap or migration exceptions must be explicit in the commit message. Do not treat missing trailers as an acceptable shortcut.
 
 ## Enforcement
