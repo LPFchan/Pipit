@@ -2,10 +2,12 @@
 
 ## Canonical Docs
 
+- Treat [REPO.md](../REPO.md) as the canonical repo contract.
 - Treat [SPEC.md](../SPEC.md) as the project-level source of truth for what Pipit is supposed to be.
 - Treat [STATUS.md](../STATUS.md) as the source of truth for current accepted repo reality.
 - Treat [PLANS.md](../PLANS.md) as the source of truth for accepted future direction.
 - Treat [PIPIT_MASTER_ARCHITECTURE.md](../PIPIT_MASTER_ARCHITECTURE.md) as the authoritative reference for slot semantics, BLE flows, provisioning, and security constraints.
+- Read [skills/README.md](../skills/README.md) and the relevant `skills/<name>/SKILL.md` before executing repo-template workflows.
 - Use [records/decisions/](../records/decisions/) for durable rationale and [records/agent-worklogs/](../records/agent-worklogs/) for execution history.
 
 ## Architecture
@@ -36,7 +38,7 @@
 
 ## Collaboration
 
-- Route untriaged intake to `INBOX.md`, reusable dependency context to `research/`, durable decisions to `records/decisions/`, and execution history to `records/agent-worklogs/`.
+- Route untriaged capture to `INBOX.md`, reusable dependency context to `research/`, durable decisions to `records/decisions/`, and execution history to `records/agent-worklogs/`.
 - Prefer appending to the current relevant `LOG-*` when the same workstream continues; create a new `LOG-*` only when the execution thread is materially distinct or reuse would obscure provenance.
 - Ask clarifying questions when user intent, constraints, or acceptance criteria are ambiguous instead of guessing.
 - Prefer current repository docs and internet verification over memory when checking APIs, libraries, frameworks, platform behavior, or tool availability.

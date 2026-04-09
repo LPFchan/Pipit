@@ -41,7 +41,7 @@ Pipit now uses an in-repo operating model instead of agent-brief files:
 - `SPEC.md`: durable project-level truth
 - `STATUS.md`: current operational reality
 - `PLANS.md`: accepted future direction
-- `INBOX.md`: ephemeral intake
+- `INBOX.md`: ephemeral capture
 - `research/`: curated dependency and exploration notes
 - `records/decisions/`: durable decisions
 - `records/agent-worklogs/`: execution history
@@ -61,7 +61,7 @@ Use [PIPIT_MASTER_ARCHITECTURE.md](PIPIT_MASTER_ARCHITECTURE.md) for the deep pr
 | `vendor/` | Vendored third-party code, including the local Three.js dependency used by the iOS viewer path. |
 | `.githooks/` | Local Git hook entrypoints used for commit provenance enforcement. |
 | `scripts/` | Local provenance validation and hook-install helpers. |
-| `skills/` | Reusable repo-local workflows such as the repo orchestrator procedure. |
+| `skills/` | Required repo-native procedures such as repo orchestration and daily inbox pressure review. |
 | `research/` | Reusable research and ecosystem dependency notes. |
 | `records/` | Decision records and worklogs. |
 

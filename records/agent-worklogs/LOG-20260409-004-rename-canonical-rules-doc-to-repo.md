@@ -44,3 +44,21 @@ Rename the root repo contract to `REPO.md`, update thin entrypoints and active g
 - Output: Pipit now preserves strict artifact-linked commit provenance while explicitly allowing normal commits to reference updated existing artifacts; worklogs are append-first unless a distinct execution record improves clarity
 - Blockers: none
 - Next: verify there are no remaining active docs that imply a new `LOG-*` is the default for each meaningful commit
+
+## Entry 2026-04-09 20-19-20 KST
+
+- Action: adopted repo-template's sparse promotion discipline and capture packet vocabulary into Pipit's live policy surfaces while preserving the repo's deliberate omission of `upstream-intake/`
+- Files touched: `REPO.md`, `AGENTS.md`, `INBOX.md`, `README.md`, `.github/copilot-instructions.md`, `skills/README.md`, `skills/repo-orchestrator/SKILL.md`, `records/agent-worklogs/LOG-20260409-004-rename-canonical-rules-doc-to-repo.md`
+- Checks run: compared Pipit policy surfaces with `/Users/yeowool/Documents/repo-template/scaffold/REPO.md`, `AGENTS.md`, `INBOX.md`, and the template repo-orchestrator plus daily inbox skills
+- Output: live generic policy now uses capture, capture packet, and raw external source event vocabulary; promotion policy now says raw shaping may remain in capture or inbox, promotion is sparse, durable docs receive concise outcomes, and each touched layer needs a distinct job
+- Blockers: none
+- Next: verify no live generic policy still uses the old capture vocabulary or implies debate should be mirrored across repo surfaces
+
+## Entry 2026-04-09 20-32-00 KST
+
+- Action: adopted repo-template's required root `skills/` layer by syncing the generic skills README shape, adding the required daily inbox pressure review skill, and updating live policy to require reading root repo skills
+- Files touched: `REPO.md`, `AGENTS.md`, `README.md`, `.github/copilot-instructions.md`, `skills/README.md`, `skills/daily-inbox-pressure-review/SKILL.md`, `skills/repo-orchestrator/SKILL.md`, `records/agent-worklogs/LOG-20260409-004-rename-canonical-rules-doc-to-repo.md`
+- Checks run: compared Pipit's root `skills/` with `/Users/yeowool/Documents/repo-template/scaffold/skills/`; checked that `upstream-intake/` is absent
+- Output: root `skills/repo-orchestrator/SKILL.md` and `skills/daily-inbox-pressure-review/SKILL.md` are now the required baseline procedure layer; upstream-intake skill remains omitted because the upstream-intake module remains intentionally omitted
+- Blockers: none
+- Next: verify relative links inside root skill files and search for stale wording that treats the baseline skills layer as optional
