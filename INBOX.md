@@ -54,4 +54,4 @@ Use this section during a daily IBX review, then clear it after entries are rout
 
 ## Purge Rule
 
-Once an item has been reflected into `SPEC.md`, `STATUS.md`, `PLANS.md`, `research/`, `records/decisions/`, `records/agent-worklogs/`, or a deliberate discard/hold note, remove the inbox entry.
+Once an item has been reflected into `SPEC.md`, `STATUS.md`, `PLANS.md`, `research/`, `records/decisions/`, a committed `LOG-*` execution record, or a deliberate discard/hold note, remove the inbox entry.

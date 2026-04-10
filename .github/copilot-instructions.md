@@ -8,7 +8,7 @@
 - Treat [PLANS.md](../PLANS.md) as the source of truth for accepted future direction.
 - Treat [PIPIT_MASTER_ARCHITECTURE.md](../PIPIT_MASTER_ARCHITECTURE.md) as the authoritative reference for slot semantics, BLE flows, provisioning, and security constraints.
 - Read [skills/README.md](../skills/README.md) and the relevant `skills/<name>/SKILL.md` before executing repo-template workflows.
-- Use [records/decisions/](../records/decisions/) for durable rationale and [records/agent-worklogs/](../records/agent-worklogs/) for execution history.
+- Use [records/decisions/](../records/decisions/) for durable rationale and git commit history via commit-backed `LOG-*` records for execution history.
 
 ## Architecture
 
@@ -38,8 +38,8 @@
 
 ## Collaboration
 
-- Route untriaged capture to `INBOX.md`, reusable dependency context to `research/`, durable decisions to `records/decisions/`, and execution history to `records/agent-worklogs/`.
-- Prefer appending to the current relevant `LOG-*` when the same workstream continues; create a new `LOG-*` only when the execution thread is materially distinct or reuse would obscure provenance.
+- Route untriaged capture to `INBOX.md`, reusable dependency context to `research/`, durable decisions to `records/decisions/`, and execution history to git commit history via commit-backed `LOG-*` records.
+- Prefer continuing the current relevant `LOG-*` through amend or rebase when the same workstream continues; create a new `LOG-*` only when the execution thread is materially distinct or reuse would obscure provenance.
 - Ask clarifying questions when user intent, constraints, or acceptance criteria are ambiguous instead of guessing.
 - Prefer current repository docs and internet verification over memory when checking APIs, libraries, frameworks, platform behavior, or tool availability.
 - Before recommending a specific external dependency, service, framework, or API, verify that it exists, is readily available, and is not end-of-life.

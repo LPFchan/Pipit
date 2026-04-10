@@ -13,7 +13,7 @@ This document tracks current accepted operational truth for the repo.
 
 ## Current State Summary
 
-Pipit is an active Kotlin Multiplatform mobile repo with Android, iOS, and shared crypto or transport code in place. The shared module contains AES-CCM payload building, Argon2id-backed provisioning helpers, onboarding gates, QR parsing, and shared proximity settings. Android includes the BLE proximity service, settings UI, onboarding UI, and USB backend. iOS includes a SwiftUI shell, BLE service, onboarding and settings flows, and a bundled WebKit-backed Three.js viewer path for the fob surface. The repo now uses canonical truth, status, planning, research, decision, and worklog surfaces, and the previous brief-based planning system has been retired.
+Pipit is an active Kotlin Multiplatform mobile repo with Android, iOS, and shared crypto or transport code in place. The shared module contains AES-CCM payload building, Argon2id-backed provisioning helpers, onboarding gates, QR parsing, and shared proximity settings. Android includes the BLE proximity service, settings UI, onboarding UI, and USB backend. iOS includes a SwiftUI shell, BLE service, onboarding and settings flows, and a bundled WebKit-backed Three.js viewer path for the fob surface. The repo now uses canonical truth, status, planning, research, decision, and commit-backed execution surfaces, and the previous brief-based planning system has been retired.
 
 ## Active Phases Or Tracks
 
@@ -44,7 +44,7 @@ Pipit is an active Kotlin Multiplatform mobile repo with Android, iOS, and share
 - Goal: Keep project truth, plans, research, decisions, execution history, and commit provenance legible and enforceable in-repo.
 - Status: `done`
 - Why this matters now: The repo had durable information mixed into agent-specific briefs and relied on social rather than enforced commit provenance, which made both recovery and auditability weaker than the operating model intended.
-- Current work: Using `SPEC.md`, `STATUS.md`, `PLANS.md`, `research/`, and `records/` as the canonical routing surfaces, with thin `AGENTS.md` and `CLAUDE.md` entrypoints and local plus CI commit checks in place.
+- Current work: Using `SPEC.md`, `STATUS.md`, `PLANS.md`, `research/`, `records/decisions/`, and git commit history via commit-backed `LOG-*` records as the canonical routing surfaces, with thin `AGENTS.md` and `CLAUDE.md` entrypoints and local plus CI commit checks in place.
 - Exit criteria: Future work lands in the canonical surfaces and commit messages are checked locally and remotely by default.
 - Dependencies: Contributor adherence, local skill guidance, installed hooks, and CI workflow execution.
 - Risks: Habit drift back toward ad hoc documents, or developers skipping hook installation in fresh clones until CI catches a commit.

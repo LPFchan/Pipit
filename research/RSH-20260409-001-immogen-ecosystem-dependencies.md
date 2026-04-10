@@ -40,7 +40,7 @@ The retired brief workflow mixed Pipit's repo-local work with context about exte
 - Location: `vendor/three/`
 - Current shape: Vendored as a git submodule pinned in-repo for offline or deterministic viewer packaging.
 - Why it matters: The iOS viewer path uses a bundled `viewer.html` plus `LocalSchemeHandler` and local module resolution instead of a CDN dependency.
-- Repo-local implication: Viewer fixes or version changes should be treated as Pipit implementation work, but general vendor rationale belongs in research and worklogs rather than in `SPEC.md`.
+- Repo-local implication: Viewer fixes or version changes should be treated as Pipit implementation work, but general vendor rationale belongs in research and commit-backed execution history rather than in `SPEC.md`.
 
 ### Shared KMP Contracts
 
@@ -58,4 +58,4 @@ The retired brief workflow mixed Pipit's repo-local work with context about exte
 - Keep cross-repo dependency context in `research/`.
 - Reflect only Pipit-local accepted reality into `STATUS.md`.
 - Record future workflow or policy changes in `records/decisions/`.
-- Record implementation sessions that touch dependency-sensitive code in `records/agent-worklogs/`.
+- Record implementation sessions that touch dependency-sensitive code in git commit history via commit-backed `LOG-*` records.

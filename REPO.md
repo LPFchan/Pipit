@@ -1,54 +1,81 @@
 # Pipit Repo Contract
 
-This document defines how Pipit's repo-local truth, status, plans, research, decisions, and execution history are kept separate and durable over time.
+This document is the canonical repo contract for Pipit.
 
 ## Purpose
 
-Pipit is run as a multi-agent, multi-surface project with cross-repo dependencies on Immogen firmware and the Whimbrel dashboard. This operating model keeps the repo legible by separating:
+Pipit is run as a multi-agent, multi-surface project with cross-repo dependencies on Immogen firmware and the Whimbrel dashboard. The goal is simple:
 
-- what Pipit is supposed to be
-- what is true right now
-- what future work is accepted
-- what was learned
-- what was decided
-- what happened during execution
+- keep canonical truth in-repo
+- keep noisy activity out of truth docs
+- keep provenance explicit
+- let the orchestrator route work without inventing new storage rules each time
 
-## Canonical Surfaces
+## Core Surfaces
+
+Every repo using this system should separate these surfaces:
 
 | Surface | Role | Mutability |
 | --- | --- | --- |
 | `REPO.md` | Canonical repo contract, routing ladder, and provenance rules. | rewritten deliberately |
 | `AGENTS.md` | Thin compatibility entrypoint for repo-root agent instructions. | rewritten deliberately |
-| `CLAUDE.md` | Thin compatibility entrypoint for Claude-oriented repo instructions. | rewritten deliberately |
+| `CLAUDE.md` | Thin compatibility shim for Claude-oriented repo instructions. | rewritten deliberately |
 | `SPEC.md` | Durable project-level truth for Pipit. | rewritten |
 | `STATUS.md` | Current accepted operational reality. | rewritten |
 | `PLANS.md` | Accepted future direction that is not current truth yet. | rewritten |
 | `INBOX.md` | Ephemeral capture waiting for triage. | append then purge |
 | `research/` | Curated reusable research and dependency notes. | append by new file |
 | `records/decisions/` | Durable decision records with rationale. | append by new file |
-| `records/agent-worklogs/` | Execution history for migrations, runs, and implementation sessions. | append-only |
+| `git commit history` | Canonical execution history through commit-backed `LOG-*` records. | append-only by new commit |
+| `skills/` | Required procedural workflows for repeatable agent tasks. | edit by skill |
 | `PIPIT_MASTER_ARCHITECTURE.md` | Deep protocol, security, provisioning, and system-design reference. | rewritten deliberately |
 
 `upstream-intake/` is intentionally omitted for now. Pipit depends on upstream projects, but this repo is not being run as a recurring downstream fork-review system.
 
-## Agent Instruction Entry Points
+## Agent Compatibility Files
 
-`AGENTS.md` and `CLAUDE.md` exist as compatibility surfaces for tools that look for repo-root instructions.
+Some coding agents look for repo-root instruction files such as `AGENTS.md` or `CLAUDE.md`.
 
-- Keep both thin.
-- Point them back to `REPO.md`.
-- Preserve Pipit-specific engineering rules by referring to `.github/copilot-instructions.md` rather than duplicating large policy blocks.
-- Do not fork the repo policy layer into multiple files.
+When a repo using this model includes them:
+
+- they should act as entrypoints into the canonical rules, not competing policy documents
+- they should stay short enough that they do not drift from `REPO.md`
+- `AGENTS.md` should be the main editable agent-instructions file when both files exist
+- `CLAUDE.md` should be a thin shim that points to `AGENTS.md` when the tool supports it
+- `skills/` should ship with adopted repos as repo-native procedural documentation, even when the agent runtime does not auto-load skills
+- optional repo subsystems may have optional companion skills
+
+Recommended split:
+
+- `REPO.md`
+  - canonical rules
+- `AGENTS.md`
+  - canonical editable agent-instructions file
+- `CLAUDE.md`
+  - Claude Code shim that points to `AGENTS.md`
+- `skills/<name>/SKILL.md`
+  - procedure for one repeatable workflow
 
 ## Separation Rules
+
+These boundaries are mandatory:
 
 - `SPEC.md` is not a changelog.
 - `STATUS.md` is not a transcript.
 - `PLANS.md` is not a brainstorm dump.
 - `INBOX.md` is not durable truth.
 - `research/` is not raw execution history.
-- `records/decisions/` is not the same thing as `records/agent-worklogs/`.
-- Cross-repo context about `Immogen`, `Whimbrel`, `Bifrost`, or vendored dependencies belongs in research or dependency notes unless it changes Pipit's own truth directly.
+- `records/decisions/` is not the same as git commit history.
+- Off-Git memory is not a substitute for repo-local canonical docs.
+
+That separation gives future operators and future agents fast answers to different questions:
+
+- What is the project? -> `SPEC.md`
+- What is true right now? -> `STATUS.md`
+- What future work is actually accepted? -> `PLANS.md`
+- What did we learn from exploration? -> `research/`
+- What did we decide and why? -> `records/decisions/`
+- What actually happened during execution? -> git commit history via `commit: LOG-*`
 
 ## Routing Ladder
 
@@ -60,9 +87,9 @@ When new work arrives, route it in this order:
 4. Accepted future direction -> `PLANS.md`
 5. Reusable research or dependency analysis -> `research/`
 6. Durable decision with rationale -> `records/decisions/`
-7. Execution history -> `records/agent-worklogs/`
+7. Execution history -> git commit history via commit-backed `LOG-*` records
 
-One task may legitimately touch more than one surface. Example: a feature kickoff can create a `DEC-*`, update `PLANS.md`, and later append to an existing relevant `LOG-*` or create a new one if clarity requires it.
+One task may legitimately touch more than one surface. Example: a feature kickoff can create a `DEC-*`, update `PLANS.md`, and later land a commit-backed `LOG-*` record if the execution itself changes.
 
 ## Capture Packets
 
@@ -127,8 +154,8 @@ Use each layer for its distinct job:
   - concise durable product or system truth after the argument is settled
 - `STATUS.md`
   - current operational reality
-- `records/agent-worklogs/`
-  - execution history, not truth, decision, plan, or research mirrors
+- git commit history via `commit: LOG-*`
+  - canonical execution history, not truth, decision, plan, or research mirrors
 
 A research memo may remain research forever.
 A decision record should exist only when a real product, architecture, workflow, trust, upstream, or repo-operating choice has been made.
@@ -144,11 +171,24 @@ The operator is the final authority on product direction, acceptance of truth ch
 
 ### Orchestrator
 
-The orchestrator owns routing and synthesis. It may update `SPEC.md`, `STATUS.md`, `PLANS.md`, create research memos, write decisions, and create worklogs.
+The orchestrator owns routing and synthesis. It may update `SPEC.md`, `STATUS.md`, `PLANS.md`, create research memos, write decisions, and create commit-backed execution records.
 
 ### Worker
 
-Workers execute bounded tasks. They should prefer appending to the current relevant `LOG-*`, or creating one only when the execution thread is materially distinct, and should propose truth changes through the orchestrator instead of rewriting canonical docs ad hoc.
+Workers execute bounded tasks. They should prefer continuing the current relevant `LOG-*` through amend or rebase when the same workstream continues, or creating one only when the execution thread is materially distinct, and should propose truth changes through the orchestrator instead of rewriting canonical docs ad hoc.
+
+### External Capture Surfaces
+
+External capture surfaces are capture and control channels.
+
+They may:
+
+- create or append inbox capture
+- request approvals
+- deliver summaries
+- surface blocked states
+
+They must not write truth docs directly.
 
 ## Write Rules
 
@@ -157,9 +197,8 @@ Workers execute bounded tasks. They should prefer appending to the current relev
 - Daily inbox review should reduce pressure by clustering, routing, holding, or purging capture; it should not generate a larger digest by default.
 - Put reusable dependency or ecosystem context in `research/`.
 - Record durable product, architecture, or workflow choices in `records/decisions/`.
-- Record migrations, implementations, and noteworthy execution sessions in `records/agent-worklogs/`.
-- Prefer appending new timestamped entries to the current relevant `LOG-*` when the same workstream continues.
-- Create a new `LOG-*` only when the work is materially distinct, a separate agent or subagent owns it, or reuse would harm clarity.
+- Record migrations, implementations, and noteworthy execution sessions in git commit history through commit-backed `LOG-*` records.
+- Do not invent a parallel execution-history file layer.
 - When `PIPIT_MASTER_ARCHITECTURE.md` conflicts with `SPEC.md`, `STATUS.md`, or current code on non-protocol implementation details, treat the architecture document as authoritative for protocol and security only, and prefer the newer project-level docs for repo reality.
 - Before editing `research/` or `records/`, read the local directory `README.md` first. If it defines a default section order or canonical example, follow that shape instead of inventing a new one.
 
@@ -178,31 +217,49 @@ Use these prefixes:
 - `IBX-YYYYMMDD-NNN`
 - `RSH-YYYYMMDD-NNN`
 - `DEC-YYYYMMDD-NNN`
-- `LOG-YYYYMMDD-NNN`
+- `LOG-YYYYMMDD-HHMMSS-<agent-suffix>`
+- `UPS-YYYYMMDD-NNN` only if `upstream-intake/` is enabled later
 
-Numbering is per day and per artifact type using the least available `NNN`.
+Numbering is per day and per artifact type using the least available `NNN` for file-backed artifact types.
 
-Every stable-ID-bearing artifact should include:
+File-backed stable-ID-bearing artifacts should include:
 
 - `Opened: YYYY-MM-DD HH-mm-ss KST`
 - `Recorded by agent: <agent-id>`
 
-## Commit Provenance
+Commit-backed `LOG-*` records live in git commit history and use commit trailers plus structured body keys instead of file openings.
+
+## Commit-Backed Execution Records
 
 After adopting this model, commits should include these trailers:
 
 - `project: pipit`
 - `agent: <agent-id>`
 - `role: orchestrator|worker|subagent|operator`
+- `commit: LOG-YYYYMMDD-HHMMSS-<agent-suffix>[, LOG-...]`
+
+Optional:
+
 - `artifacts: <artifact-id>[, <artifact-id>...]`
 
-Normal commits should reference at least one stable artifact, whether newly created or updated. Artifact-less commits are migration/bootstrap exceptions only.
+Normal commits should use these body keys:
 
-Normal commits do not require a brand-new `LOG-*`.
+- `timestamp:`
+- `changes:`
+- `rationale:`
+- `checks:`
+- optional `notes:`
 
-- Prefer appending to an existing relevant `LOG-*` when the same workstream continues.
-- Commits may reference an updated `LOG-*`, `DEC-*`, `RSH-*`, or another relevant artifact type.
-- Create a new `LOG-*` only when a separate execution record improves clarity.
+The first `LOG-*` id is the primary execution id for the commit.
+Additional `LOG-*` ids mean the landed commit canonically absorbs earlier execution records whose separate commits will not remain separate landed history.
+Merge commits must mint their own primary `LOG-*` id.
+`--amend` keeps the same primary `LOG-*` id.
+`rebase` keeps the same primary `LOG-*` id.
+If cherry-pick relocates work and the original commit will not also land, keep the same primary `LOG-*` id.
+If both original and cherry-picked commits could land, the later commit must mint a new primary `LOG-*` id and mention source `LOG-*` ids only in `notes:` if needed.
+If a collision is discovered before landing, the later branch renumbers before merge.
+`artifacts:` is optional and should reference only related non-`LOG-*` durable artifacts.
+Bootstrap or migration exceptions must be explicit in the commit message.
 
 ## Commit Provenance Enforcement
 

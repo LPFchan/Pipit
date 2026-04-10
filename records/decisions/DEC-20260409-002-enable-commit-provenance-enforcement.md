@@ -15,7 +15,7 @@ Enable commit provenance enforcement in Pipit through both local Git hooks and C
 
 ## Context
 
-Pipit already defined commit provenance in `repo-operating-model.md`, but those rules were only social expectations. Without local hook enforcement and remote CI checks, contributors could still create non-compliant commits and only discover the mismatch later, or not at all.
+Pipit already defined commit provenance in `REPO.md`, but those rules were only social expectations. Without local hook enforcement and remote CI checks, contributors could still create non-compliant commits and only discover the mismatch later, or not at all.
 
 The repo also lacked root `AGENTS.md` and `CLAUDE.md` entrypoints, which meant tools looking for repo-root instruction files would miss the commit-message contract unless they happened to read the operating model or `.github/copilot-instructions.md`.
 

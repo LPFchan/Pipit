@@ -44,7 +44,7 @@ Pipit now uses an in-repo operating model instead of agent-brief files:
 - `INBOX.md`: ephemeral capture
 - `research/`: curated dependency and exploration notes
 - `records/decisions/`: durable decisions
-- `records/agent-worklogs/`: execution history
+- git commit history via commit-backed `LOG-*` records: execution history
 - `REPO.md`: canonical repo contract, routing, and provenance rules
 
 Use [PIPIT_MASTER_ARCHITECTURE.md](PIPIT_MASTER_ARCHITECTURE.md) for the deep protocol, provisioning, and security reference.
@@ -63,7 +63,7 @@ Use [PIPIT_MASTER_ARCHITECTURE.md](PIPIT_MASTER_ARCHITECTURE.md) for the deep pr
 | `scripts/` | Local provenance validation and hook-install helpers. |
 | `skills/` | Required repo-native procedures such as repo orchestration and daily inbox pressure review. |
 | `research/` | Reusable research and ecosystem dependency notes. |
-| `records/` | Decision records and worklogs. |
+| `records/decisions/` | Decision records. |
 
 ## Commit Provenance Enforcement
 
@@ -72,7 +72,8 @@ Pipit enforces commit provenance both locally and in CI:
 - Run `scripts/install-hooks.sh` once per clone to configure `core.hooksPath` to `.githooks`.
 - Local commits then pass through `.githooks/commit-msg`, which runs `scripts/check-commit-standards.sh`.
 - `.github/workflows/commit-standards.yml` validates pushed and pull-request commit ranges remotely.
-- A normal commit must reference at least one relevant artifact, but it can update an existing `LOG-*`, `DEC-*`, or `RSH-*` instead of creating a new worklog by default.
+- A normal commit should keep artifact linkage on the relevant non-`LOG-*` surfaces when one exists, while the execution record itself lives in `commit: LOG-*`.
+- `artifacts:` is optional and should list only non-`LOG-*` durable artifacts.
 
 ## Ecosystem Integration
 

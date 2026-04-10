@@ -28,7 +28,7 @@ As the repo accumulated Android, iOS, shared KMP, viewer, and cross-repo ecosyst
 
 ### Adopt Repo-Template As The Canonical Repo Structure
 
-- Upside: gives Pipit explicit root surfaces for truth, status, plans, research, decisions, and worklogs
+- Upside: gives Pipit explicit root surfaces for truth, status, plans, research, decisions, and commit-backed execution
 - Upside: matches the repo-template operating model already chosen for this workspace
 - Downside: requires a one-time migration and contributor retraining
 
@@ -46,10 +46,10 @@ Full repo-template adoption gives Pipit one legible in-repo operating system ins
 - `SPEC.md`, `STATUS.md`, `PLANS.md`, and `INBOX.md` are the canonical root surfaces.
 - `research/` holds curated dependency and exploration notes.
 - `records/decisions/` holds durable decisions.
-- `records/agent-worklogs/` holds execution history.
-- `repo-operating-model.md` defines the routing and provenance rules.
-- The local `skills/repo-orchestrator/` helper is kept as the only repo-template skill for now.
-- Stable IDs use `IBX-*`, `RSH-*`, `DEC-*`, and `LOG-*`.
-- Commit provenance uses `project: pipit`, `agent: <agent-id>`, `role: ...`, and `artifacts: ...`.
+- git commit history via commit-backed `LOG-*` records holds execution history.
+- `REPO.md` defines the routing and provenance rules.
+- The local `skills/` layer keeps the required `repo-orchestrator` and `daily-inbox-pressure-review` skills, while `upstream-intake` remains omitted.
+- Stable IDs use `IBX-*`, `RSH-*`, `DEC-*`, `LOG-*`, and `UPS-*` when upstream intake is enabled later.
+- Commit provenance uses `project: pipit`, `agent: <agent-id>`, `role: ...`, `commit: ...`, and optional `artifacts: ...` that must not include `LOG-*`.
 - `upstream-intake/` remains omitted because Pipit is not currently run as a recurring downstream fork-review repo.
 - Cross-repo implementation history for `Immogen` and `Whimbrel` is summarized as dependency research instead of being promoted into Pipit's project truth.
