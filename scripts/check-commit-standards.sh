@@ -2,13 +2,14 @@
 
 set -eu
 
-if [ "$#" -ne 1 ]; then
-  echo "usage: $0 <commit-message-file>" >&2
+if [ "$#" -ne 1 ] && [ "$#" -ne 2 ]; then
+  echo "usage: $0 <commit-message-file> [commit-sha]" >&2
   exit 2
 fi
 
 msg_file=$1
 repo_root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+validation_sha=${2:-$(git -C "$repo_root" rev-parse -q --verify HEAD 2>/dev/null || true)}
 
 if [ ! -f "$msg_file" ]; then
   echo "commit standards check failed: commit message file not found: $msg_file" >&2
@@ -223,8 +224,8 @@ validate_body() {
 
 check_primary_id_uniqueness() {
   primary_id=$1
+  validation_sha_local=${2:-$validation_sha}
   refs=""
-  head_sha=$(git -C "$repo_root" rev-parse -q --verify HEAD 2>/dev/null || true)
 
   current_ref=$(git -C "$repo_root" symbolic-ref -q --short HEAD 2>/dev/null || true)
   default_ref=$(default_branch_ref || true)
@@ -245,7 +246,7 @@ check_primary_id_uniqueness() {
 
     for existing_id in $(extract_commit_ids_from_value "$existing_value"); do
       if [ "$existing_id" = "$primary_id" ]; then
-        if [ -n "$head_sha" ] && [ "$sha" = "$head_sha" ]; then
+        if [ -n "$validation_sha_local" ] && [ "$sha" = "$validation_sha_local" ]; then
           continue
         fi
         fail "primary \`commit:\` id already exists in history: $primary_id"
@@ -337,4 +338,4 @@ if [ -n "$artifacts_value" ]; then
   done
 fi
 
-check_primary_id_uniqueness "$primary_commit_id"
+check_primary_id_uniqueness "$primary_commit_id" "$validation_sha"
