@@ -58,3 +58,9 @@ When you write or update repo artifacts, adherence to the repo's ruleset is requ
 - Keep them procedural.
 - Do not duplicate canonical repo policy inside them.
 - Use them to standardize repeatable tasks, escalation triggers, and output shape.
+
+## Local Divergence
+
+- Read [.github/copilot-instructions.md](.github/copilot-instructions.md) for Pipit-specific build, test, architecture, BLE, and security constraints.
+- [PIPIT_MASTER_ARCHITECTURE.md](PIPIT_MASTER_ARCHITECTURE.md) remains the deep protocol, security, provisioning, and system-design reference for this repo.
+- `upstream-intake/` remains intentionally omitted unless the repo enables it later.

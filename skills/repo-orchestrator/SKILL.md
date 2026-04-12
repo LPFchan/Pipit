@@ -1,7 +1,7 @@
 ---
 name: repo-orchestrator
-description: "Route new Pipit work into the correct canonical artifact layer."
-argument-hint: "Task, capture item, maintenance request, or summary to route"
+description: "Route work into the correct artifact layer in a repo that uses repo-template."
+argument-hint: "Task, capture item, or maintenance request"
 ---
 
 # Repo Orchestrator
@@ -9,23 +9,20 @@ argument-hint: "Task, capture item, maintenance request, or summary to route"
 Use this skill with:
 
 - [../../REPO.md](../../REPO.md)
-- [../../SPEC.md](../../SPEC.md)
-- [../../STATUS.md](../../STATUS.md)
-- [../../PLANS.md](../../PLANS.md)
 
 ## What This Skill Produces
 
-- correctly routed Pipit repo artifacts
+- correctly routed repo artifacts
 - clear separation between truth, plans, research, decisions, and commit-backed execution
 - stable IDs plus lightweight provenance
-- fewer ad hoc brief or external-tool-only files
+- operator escalation only when a real judgment call exists
 
 ## Procedure
 
 1. Classify the work in routing order.
    - Is this untriaged capture?
    - Is this recurring upstream review?
-   - Is this durable project truth?
+   - Is this durable truth?
    - Is this current operational reality?
    - Is this accepted future direction?
    - Is this reusable research?
@@ -33,13 +30,14 @@ Use this skill with:
    - Is this execution history?
 
 2. Route it to the correct artifact layer.
-   - `INBOX.md`
    - `SPEC.md`
    - `STATUS.md`
    - `PLANS.md`
+   - `INBOX.md`
    - `research/`
    - `records/decisions/`
    - git commit history via `commit: LOG-*`
+   - `upstream-intake/`
 
 3. Assign stable IDs when needed.
    - `IBX-*`
@@ -74,7 +72,7 @@ Use this skill with:
    - `role: orchestrator|worker|subagent|operator`
    - `commit: LOG-...[, LOG-...]`
    - `artifacts:` is optional and must not contain `LOG-*`
-   - If commit hooks are enabled, make the commit message pass the local validator before retrying.
+   - Make the commit message pass the required local validator before retrying.
    - Use the structured body keys `timestamp:`, `changes:`, `rationale:`, and `checks:` with `notes:` optional.
 
 8. If the task is recurring upstream maintenance and the optional module is enabled, use `upstream-intake/` instead of inventing a parallel workflow.
@@ -92,7 +90,7 @@ Escalate instead of guessing when the work:
 - changes public contracts or compatibility posture
 - resolves a real policy conflict
 - changes operator-facing workflow in a non-obvious way
-- overrides a security-sensitive firmware or provisioning constraint
+- overrides a security-sensitive upstream change
 
 ## Quality Bar
 

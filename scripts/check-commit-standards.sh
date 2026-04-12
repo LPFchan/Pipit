@@ -9,6 +9,7 @@ fi
 
 msg_file=$1
 repo_root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+# Local divergence: allow range validation to pass the commit under test so backfilled LOG history can be checked without self-collision.
 validation_sha=${2:-$(git -C "$repo_root" rev-parse -q --verify HEAD 2>/dev/null || true)}
 
 if [ ! -f "$msg_file" ]; then
